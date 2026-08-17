@@ -43,6 +43,9 @@ services:
       - backend
     volumes:
       - mariadb_data:/var/lib/mysql
+      # Gate 1D requires backups to live on an owned volume, never a bind mount or a
+      # host path. Project-scoped and unnamed, same as the data volume.
+      - backup_data:/backup
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       start_period: 60s
@@ -73,3 +76,4 @@ networks:
 
 volumes:
   mariadb_data: {}
+  backup_data: {}

@@ -33,7 +33,7 @@ nongkaewta, offset-design-platform, pol-core, primeaccountclaudecowork, viriyah)
 | Workspace | git worktree ของรีโป `samsoniteci4` branch `feat/db-foundation` |
 | Service | `db` (ไม่กำหนด `container_name`) |
 | Network | `backend` (project-scoped) |
-| Volume | `mariadb_data` → `/var/lib/mysql` |
+| Volume | `mariadb_data` → `/var/lib/mysql`, `backup_data` → `/backup` (ทั้งคู่ project-scoped) |
 | Image | `mariadb:11.4.12@sha256:67873d30a17f6a9c331f06363b2fa15f38abca415529966d67c84f87f82439fe` |
 | Database | `samsonitetracking` utf8mb4 / utf8mb4_general_ci |
 
@@ -71,6 +71,11 @@ nongkaewta, offset-design-platform, pol-core, primeaccountclaudecowork, viriyah)
 ./db/dbctl.sh import           # import ครบ 6 ไฟล์ (ระบุชื่อไฟล์เพื่อ import เฉพาะตัวได้)
 ./db/dbctl.sh verify           # ตรวจ 17 ข้อ
 ./db/dbctl.sh collation        # พิสูจน์ collation parity กับของเดิม (BLK-001)
+./db/dbctl.sh backup [label]   # backup ลง owned volume คืน backup ID
+./db/dbctl.sh backups          # ดูรายการ backup พร้อมขนาดและ checksum
+./db/dbctl.sh restore <id>     # กู้คืน (ตรวจ checksum ก่อนเสมอ)
+./db/dbctl.sh upgrade-check    # ตรวจว่า schema จาก 10.6 ไม่ต้อง upgrade บน 11.4
+./db/dbctl.sh rehearsal        # ชุด backup/restore/rollback 2 รอบ (BLK-010)
 ./db/dbctl.sh snapshot after && ./db/dbctl.sh diff   # พิสูจน์ว่าไม่กระทบใคร
 ./db/dbctl.sh status           # ดูสถานะ + port mapping
 ./db/dbctl.sh reset            # DROP + CREATE DATABASE เท่านั้น ไม่แตะ volume/container
@@ -191,6 +196,13 @@ import ใช้เวลา ~20 วินาที
 | L1 | schema เพี้ยน | `./db/dbctl.sh reset && ./db/dbctl.sh import` — `DROP DATABASE` + `CREATE DATABASE` ผ่าน SQL ไม่แตะ volume/container ใช้กรณีนี้เป็นหลัก |
 | L2 | เปลี่ยนค่า server | ตรวจ label `com.docker.compose.project` ของ container ก่อน แล้ว `up -d --force-recreate --wait db` แบบมี `-p`/`-f` ครบ ข้อมูลอยู่ใน volume ไม่หาย |
 | L3 | datadir เสียหายจริง | ต้องมี manifest + backup/restore proof + คนอนุมัติก่อน ปกติไม่ต้องใช้เพราะ L1 ให้ผลเดียวกัน |
+
+**กู้จาก backup แทนการ import ใหม่**: `./db/dbctl.sh backups` แล้ว `./db/dbctl.sh restore <id>`
+ใช้เวลา ~8 วินาที เทียบกับ import ใหม่ทั้งชุด ~20 วินาที และได้สภาพ ณ เวลาที่ backup ไว้
+ไม่ใช่สภาพตั้งต้นจาก dump — ดู `2026-08-17_backup-restore-rehearsal_v1.md`
+
+หลักฐาน backup/restore ที่ DKR-11 ต้องการก่อนแตะ volume มีครบแล้ว (backup ID + checksum +
+restore log 2 รอบ) แต่ **ยังต้องมีคนอนุมัติเป็นราย ๆ ไป** การมีหลักฐานไม่ใช่ใบอนุญาตถาวร
 
 ## 11. ความปลอดภัยของข้อมูล
 

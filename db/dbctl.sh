@@ -44,8 +44,13 @@ mkdir -p "$ISO" "$BASE" "$MANIFEST"
 die()  { echo "FAIL: $*" >&2; exit 1; }
 note() { echo "==> $*"; }
 
+# Re-entrant within one run: rehearsal calls backup and restore, which each want the lock.
+# LOCK_HELD is inherited by subshells, so a nested call becomes a no-op instead of a failure.
+LOCK_HELD=0
 lock() {
+  [ "$LOCK_HELD" = 1 ] && return 0
   mkdir "$LOCK" 2>/dev/null || die "another dbctl run holds $LOCK"
+  LOCK_HELD=1
   trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 }
 
@@ -404,6 +409,99 @@ verify() {
   return $rc
 }
 
+# ---------------------------------------------------------------- backup / restore (BLK-010)
+
+# Backups live on the owned `backup_data` volume, never a bind mount or a host path:
+# Gate 1D fails on shared or external backup storage.
+BK=/backup
+
+# Run a shell inside the db container with the root password available.
+dbsh() { dc exec -T -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db bash -c "$1"; }
+
+backup() {
+  lock
+  local id started ended secs bytes sum
+  id="bk-$(date -u +%Y%m%dT%H%M%SZ)${1:+-$1}"
+  started=$(date +%s)
+  # --single-transaction gives a consistent snapshot without locking now that every table
+  # is InnoDB. --add-drop-database makes the restore self-contained and re-runnable.
+  dbsh "set -o pipefail; mariadb-dump -u root --single-transaction --quick \
+        --default-character-set=utf8mb4 --add-drop-database --databases '$DB' \
+        | gzip -6 > '$BK/$id.sql.gz'"
+  ended=$(date +%s); secs=$((ended - started))
+  bytes=$(dbsh "stat -c %s '$BK/$id.sql.gz'" | tr -d '\r')
+  sum=$(dbsh "sha256sum '$BK/$id.sql.gz' | cut -d' ' -f1" | tr -d '\r')
+  dbsh "printf '%s  %s\n' '$sum' '$id.sql.gz' > '$BK/$id.sha256'"
+  printf '%s\t%s\t%s\t%s\n' "$id" "$bytes" "$secs" "$sum" >> "$BASE/backup-manifest.tsv"
+  note "PASS backup id=$id bytes=$bytes seconds=$secs sha256=${sum:0:16}..."
+  echo "$id"
+}
+
+backups() {
+  note "backups on owned volume $BK"
+  dbsh "ls -l $BK/*.sql.gz 2>/dev/null || echo '(none)'"
+  [ -f "$BASE/backup-manifest.tsv" ] && { echo "id/bytes/seconds/sha256:"; cat "$BASE/backup-manifest.tsv"; } || true
+}
+
+restore() {
+  lock
+  local id=${1:?usage: restore <backup-id>} started ended secs
+  # Never restore an archive that fails its own checksum or gzip integrity.
+  dbsh "cd $BK && sha256sum -c '$id.sha256'" >/dev/null || die "checksum mismatch for $id"
+  dbsh "gzip -t '$BK/$id.sql.gz'" || die "corrupt archive $id"
+  note "restoring $id"
+  started=$(date +%s)
+  dbsh "set -o pipefail; gunzip -c '$BK/$id.sql.gz' | mariadb -u root --default-character-set=utf8mb4"
+  ended=$(date +%s); secs=$((ended - started))
+  note "PASS restore id=$id seconds=$secs"
+  printf 'restore\t%s\t%s\n' "$id" "$secs" >> "$BASE/restore-log.tsv"
+}
+
+upgrade_check() {
+  # Proves the 10.6-era schema needs no upgrade action on 11.4. CHECK TABLE ... FOR UPGRADE
+  # under the hood, so it reads rather than rewrites system tables.
+  local out bad total
+  out=$(dbsh "mariadb-check -u root --check-upgrade --all-databases" 2>&1)
+  total=$(printf '%s\n' "$out" | grep -c . || true)
+  # Every checked table reports "<db>.<table>   OK". Anything else is a finding.
+  bad=$(printf '%s\n' "$out" | grep -vE 'OK$' | grep -c . || true)
+  if [ "$bad" != 0 ]; then
+    printf '%s\n' "$out" | grep -vE 'OK$'
+    echo "FAIL upgrade check: $bad line(s) did not report OK"
+    return 1
+  fi
+  note "PASS upgrade check: $total tables OK, none needs upgrading on 11.4"
+}
+
+# BLK-010 wants timed restore and rollback logs over two rounds, and treats "no successful
+# restore/rollback" as a No-Go. This drives the whole loop and fails loudly.
+rehearsal() {
+  lock
+  local round id rows_before rows_after
+  for round in 1 2; do
+    note "=== rehearsal round $round/2 ==="
+    id=$(backup "r$round" | tail -1)
+    rows_before=$(sqldb -e "SELECT COUNT(*) FROM rating;")
+
+    # Rollback drill: damage the database, then prove the backup brings it back.
+    note "round $round: simulating data loss (DROP TABLE rating)"
+    sqldb -e "DROP TABLE rating;"
+    [ "$(sqldb -e "SELECT COUNT(*) FROM information_schema.TABLES
+                   WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='rating';")" = 0 ] \
+      || die "damage step did not take effect; the drill would prove nothing"
+
+    restore "$id"
+    rows_after=$(sqldb -e "SELECT COUNT(*) FROM rating;")
+    ck "round $round rollback restored row count" "$rows_before" "$rows_after" || die "rollback failed"
+    upgrade_check || die "upgrade check failed in round $round"
+    verify > "$BASE/rehearsal-round$round-verify.txt" 2>&1 \
+      || { tail -20 "$BASE/rehearsal-round$round-verify.txt"; die "verify failed after restore in round $round"; }
+    note "round $round: full verification passed after restore"
+  done
+  note "BLK-010 REHEARSAL COMPLETE (2 rounds)"
+  cat "$BASE/backup-manifest.tsv" "$BASE/restore-log.tsv"
+}
+
 # ---------------------------------------------------------------- collation parity (BLK-001)
 
 # Proves the chosen utf8mb4 collation behaves exactly like the legacy utf8mb3_general_ci.
@@ -466,8 +564,13 @@ case "${1:-}" in
   import)    shift; import "$@" ;;
   verify)    verify ;;
   collation) collation ;;
+  backup)    shift; backup "${1:-}" ;;
+  backups)   backups ;;
+  restore)   shift; restore "${1:-}" ;;
+  upgrade-check) upgrade_check ;;
+  rehearsal) rehearsal ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|reset|status|down>"; exit 2 ;;
 esac
