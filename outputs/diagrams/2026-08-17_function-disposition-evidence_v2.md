@@ -1990,6 +1990,8 @@ ID ผูกกับ line number — source เลื่อนบรรทั�
 
 ไม่มี rollback path จาก git: 19 ไฟล์นี้ไม่ปรากฏใน commit ใดของ repo CI3 (`bf5355c` มีแค่ `README.md`) เนื้อหาที่เหลืออยู่มีสำเนาเดียวคือ `demo/application/views/tracking/report_tracking.php` — พบว่าลบผิดต้องกู้จาก production host.
 
+Business owner approval: project owner ตัดสินเมื่อ 2026-08-17 ให้ปิดทั้ง 247 จุดด้วยหลักฐาน no-caller (รวม 83 จุดที่ v1 เคยเป็น `MIGRATE` ซึ่งถามแยกและอนุมัติแยก) — บันทึกการตัดสินอยู่ใน PR ของ commit นี้ นี่คือ approval ที่ AC field `Retirement` และ `FN-BLK-005` เรียกหาสำหรับจุดกลุ่มนี้.
+
 ### Transition ต่อ disposition เดิม
 
 | Disposition เดิมใน v1 | Points | Transition | เหตุผลที่บันทึก |
@@ -2360,7 +2362,7 @@ ID ผูกกับ line number — source เลื่อนบรรทั�
 | `FN-BLK-002` No CI4 implementation | ไม่พบ `app/` หรือ `spark` | implement target แล้ว capture file hash/source line |
 | `FN-BLK-003` No before/after fixtures | มี source evidence แต่ไม่มี replay artifact | สร้าง golden-master fixture ต่อ AC และ deterministic comparator |
 | `FN-BLK-004` Dirty baseline | **CLOSED 2026-08-17** — source pin clean และ checker verify manifest hash ทุกไฟล์ต่อ pin | คงปิดตราบที่ checker ยัง exit 0 ต่อ pin เดิม |
-| `FN-BLK-005` Retirement approval | static no-caller ไม่พิสูจน์ production no-use | traffic/coverage/external-consumer=0 + business owner approval + rollback |
+| `FN-BLK-005` Retirement approval | static no-caller ไม่พิสูจน์ production no-use — 247 จุดที่ไฟล์หายปิดแล้วด้วย deletion evidence + owner decision 2026-08-17 (rollback ทำได้จาก production host เท่านั้น) | คงเปิดสำหรับ retirement ของ live points ในอนาคต: traffic/coverage/external-consumer=0 + business owner approval + rollback |
 | `FN-BLK-006` Third-party compatibility | vendor implementation ถูกแยกจาก application denominator; library ที่เคยอยู่ `application/libraries/` ถูกลบที่ pin แล้ว | inventory dependency version/license/CVE/PHP 8.5/CI4 replacement และ integration tests |
 | `FN-BLK-007` Secret exposure | ค่าใน repo เป็น placeholder แล้ว แต่ค่าจริงเคยอยู่ใน source | rotate/revoke, history exposure review, secret scanning pass |
 | `FN-BLK-008` JavaScript dependency/order | custom callback พึ่ง jQuery/plugins/global variables | lock dependency versions, script-order manifest, browser parity และ error-console evidence |

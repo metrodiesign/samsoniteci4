@@ -147,3 +147,4 @@ checker ตรวจ: commit pin, worktree clean, manifest hash รายไฟ�
 | ไม่มี CI4 tree | `app/` และ `spark` ยังไม่มี ทุก destination จึงเป็น `PLANNED_NOT_IMPLEMENTED` และ after-evidence ยัง MISSING |
 | credential เป็น placeholder | before-behavior ของ SMS/email/DB/encryption ต้องรันใน environment ที่มีค่าจริง |
 | baseline ก่อน pin กู้ไม่ได้ | evidence v1 ไม่สามารถ reproduce ได้อีก เพราะ tree ที่ใช้ generate ไม่ถูก commit ไว้ |
+| hash manifest ครอบเฉพาะไฟล์ที่มี point | ไฟล์ที่ enumerate ได้ 0 point (เช่น `application/models/index.php`) ไม่มีแถวใน manifest ของ v2 — เนื้อหาเปลี่ยนโดยไม่เพิ่มฟังก์ชันจะไม่ถูก checker จับ; pin commit เป็นด่านที่จับกรณีนี้ |
