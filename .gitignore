@@ -1,3 +1,10 @@
 .env
 .env.*
 !.env.example
+
+# production dump ห้ามเข้า repo เด็ดขาด (PII)
+*.sql
+
+# evidence และ lock เก็บ local เท่านั้น
+evidence/
+.dbctl.lock/

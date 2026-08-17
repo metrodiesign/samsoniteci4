@@ -1,0 +1,75 @@
+name: samsonitetracking-ci4-migration
+
+services:
+  db:
+    image: "${MARIADB_IMAGE:?MARIADB_IMAGE is required}"
+    # Server config via command flags, not my.cnf: the image ships a Debian layout with two
+    # !includedir levels, so a mounted conf file can be silently overridden. Flags beat every
+    # config file and show up in `docker compose config` so they can be hashed as evidence.
+    command:
+      - mariadbd
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      # 11.4.12 ships character_set_collations=utf8mb4=utf8mb4_uca1400_ai_ci, so any bare
+      # `utf8mb4` literal or DDL would get uca1400 and collide with our general_ci tables
+      # (ERROR 1267). Pin the charset default too, not just the server default.
+      - --character-set-collations=utf8mb4=utf8mb4_general_ci
+      # Must NOT contain NO_ZERO_DATE / NO_ZERO_IN_DATE: the legacy data holds 44,941 real
+      # zero-date values plus DEFAULT '0000-00-00 00:00:00' column defaults.
+      - --sql-mode=NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION
+      # DYNAMIC keeps the index prefix limit at 3072 bytes; uploadstaus.tracking_id is
+      # 1000 bytes as utf8mb4 and would fail under COMPACT's 767-byte limit.
+      - --innodb-default-row-format=dynamic
+      - --innodb-buffer-pool-size=1073741824
+      - --innodb-log-file-size=536870912
+      # Rehearsal box only. Never carry this to production.
+      - --innodb-flush-log-at-trx-commit=2
+      - --max-allowed-packet=67108864
+      - --skip-name-resolve
+    environment:
+      MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is required}"
+      MARIADB_DATABASE: "${MARIADB_DATABASE:?MARIADB_DATABASE is required}"
+      MARIADB_USER: "${MARIADB_USER:?MARIADB_USER is required}"
+      MARIADB_PASSWORD: "${MARIADB_PASSWORD:?MARIADB_PASSWORD is required}"
+    ports:
+      # DEV-DB-PORT-001: publishing the DB port deviates from DKR-05/DKR-07.
+      # Compensating control: loopback-only bind, never all-interface.
+      - name: mariadb
+        target: 3306
+        host_ip: 127.0.0.1
+        published: "${DB_HOST_PORT:?DB_HOST_PORT is required}"
+        protocol: tcp
+    networks:
+      - backend
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Never auto-start with Docker Desktop: keeps this project's host footprint deliberate.
+    restart: "no"
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # DEV-DB-PORT-001: `internal: true` is incompatible with a published port, so it is
+  # deliberately absent. Still project-scoped, not external, no explicit name, no fixed
+  # subnet. Restore `internal: true` and drop the ports block once an app service exists.
+  backend: {}
+
+volumes:
+  mariadb_data: {}
