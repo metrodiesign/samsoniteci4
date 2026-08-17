@@ -75,6 +75,10 @@ nongkaewta, offset-design-platform, pol-core, primeaccountclaudecowork, viriyah)
 ./db/dbctl.sh down             # หยุด container (ไม่มี --volumes เด็ดขาด)
 ```
 
+ทุกคำสั่งรันซ้ำได้ปลอดภัย: `preflight` รู้จัก port ที่ project ตัวเองเผยแพร่อยู่แล้วจึงไม่
+เลื่อน port หนีตัวเอง, การตรวจ volume/network ดูที่ label เจ้าของไม่ใช่ดูว่ามีอยู่หรือไม่,
+และ `import` สั่ง `DROP TABLE IF EXISTS` เฉพาะ table ที่อยู่ในไฟล์นั้นก่อนเสมอ
+
 ต่อจาก host ด้วย GUI: host `127.0.0.1` port `13306` user/password จาก `.env`
 
 ## 6. วิธี import ที่ใช้

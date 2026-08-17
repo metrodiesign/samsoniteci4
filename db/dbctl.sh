@@ -104,8 +104,18 @@ diff_hosts() {
 # ---------------------------------------------------------------- preflight
 
 preflight() {
-  local chosen="" p
+  local chosen="" p mine=""
+  # A running db of ours already occupies its port, which would otherwise read as "busy"
+  # and make preflight hop to the next pool entry on every re-run. Keep our own port.
+  mine=$(dc port db 3306 2>/dev/null | sed 's/.*://') || true
   for p in $PORT_POOL; do
+    if [ -n "$mine" ] && [ "$p" = "$mine" ]; then
+      note "port $p is already published by this project, keeping it"
+      chosen=$p; break
+    fi
+  done
+  for p in $PORT_POOL; do
+    [ -z "$chosen" ] || break
     if port_busy "$p"; then
       note "port $p busy, skipping (owner untouched)"
     else
@@ -120,10 +130,17 @@ preflight() {
   fi
   note "selected host port $DB_HOST_PORT"
 
-  [ "$(docker volume ls -q  | grep -c "^${PROJECT}_" || true)" = 0 ] \
-    || die "a volume named ${PROJECT}_* already exists; inspect before reusing"
-  [ "$(docker network ls -q --filter "name=^${PROJECT}_" | wc -l | tr -d ' ')" = 0 ] \
-    || die "a network named ${PROJECT}_* already exists; inspect before reusing"
+  # Any resource carrying our name must actually be labelled as ours. Re-running after the
+  # project exists is normal; a same-named resource owned by someone else is not.
+  local r owner
+  for r in $(docker volume ls -q | grep "^${PROJECT}_" || true); do
+    owner=$(docker volume inspect "$r" --format '{{index .Labels "com.docker.compose.project"}}')
+    [ "$owner" = "$PROJECT" ] || die "volume $r is owned by '$owner', not this project"
+  done
+  for r in $(docker network ls --format '{{.Name}}' | grep "^${PROJECT}_" || true); do
+    owner=$(docker network inspect "$r" --format '{{index .Labels "com.docker.compose.project"}}')
+    [ "$owner" = "$PROJECT" ] || die "network $r is owned by '$owner', not this project"
+  done
 
   dc config > "$ISO/rendered-config.yaml"
   local bad
@@ -367,8 +384,14 @@ verify() {
                         REGEXP '[^\\\\x00-\\\\x7F]';")" || rc=1
 
   note "V16 indexes still usable"
-  sqldb -e "EXPLAIN SELECT 1 FROM uploadstaus WHERE tracking_id='X';"
-  sqldb -e "EXPLAIN SELECT 1 FROM request_order r JOIN uploadstaus u ON u.tracking_id=r.trackID LIMIT 1;"
+  local plans
+  plans=$(sqldb -e "EXPLAIN SELECT 1 FROM uploadstaus WHERE tracking_id='X';
+                    EXPLAIN SELECT 1 FROM uploadstaus WHERE Telephone='X';
+                    EXPLAIN SELECT 1 FROM request_order WHERE trackID='X';
+                    EXPLAIN SELECT 1 FROM request_order r JOIN uploadstaus u ON u.tracking_id=r.trackID LIMIT 1;")
+  echo "$plans"
+  ck "V16 no full table scan in plans" "0" \
+     "$(echo "$plans" | awk -F'\t' '$4=="ALL"' | wc -l | tr -d ' ')" || rc=1
 
   ck "V17 host port reachable" "1" "$(nc -z 127.0.0.1 "$DB_HOST_PORT" >/dev/null 2>&1 && echo 1 || echo 0)" || rc=1
 
