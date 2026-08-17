@@ -68,6 +68,43 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # CI3 rehearsal runtime. Built separately by `dbctl.sh web-build` so the build can point
+  # its context at the pinned CI3 repo and its exclude list at web/Dockerfile.dockerignore.
+  web:
+    image: "${CI3_WEB_IMAGE:?CI3_WEB_IMAGE is required}"
+    environment:
+      CI3_DB_HOST: db
+      CI3_DB_PORT: "3306"
+      CI3_DB_NAME: "${MARIADB_DATABASE:?}"
+      CI3_DB_USER: "${MARIADB_USER:?}"
+      CI3_DB_PASSWORD: "${MARIADB_PASSWORD:?}"
+    ports:
+      - name: http
+        target: 80
+        host_ip: 127.0.0.1
+        published: "${WEB_HOST_PORT:?WEB_HOST_PORT is required}"
+        protocol: tcp
+    networks:
+      - backend
+    depends_on:
+      db:
+        # CI3 autoloads the database library, so it connects during bootstrap on every
+        # request. Starting before the database is ready means every page 500s.
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   # DEV-DB-PORT-001: `internal: true` is incompatible with a published port, so it is
   # deliberately absent. Still project-scoped, not external, no explicit name, no fixed

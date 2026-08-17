@@ -94,8 +94,8 @@ diff_hosts() {
   local rc=0 f
   : > "$ISO/noninterference.diff"
   # Lines this project is allowed to own: anything carrying the project name, plus the
-  # single loopback port it publishes. Everything else must be byte-identical.
-  local mine="$PROJECT|^127\.0\.0\.1\.$DB_HOST_PORT\$"
+  # loopback ports it publishes. Everything else must be byte-identical.
+  local mine="$PROJECT|^127\.0\.0\.1\.$DB_HOST_PORT\$|^127\.0\.0\.1\.${WEB_HOST_PORT:-18404}\$"
   for f in containers networks volumes ports; do
     [ -f "$ISO/before-$f.txt" ] || die "missing before-$f.txt; run 'snapshot before' first"
     [ -f "$ISO/after-$f.txt" ]  || die "missing after-$f.txt; run 'snapshot after' first"
@@ -158,8 +158,10 @@ preflight() {
         "$ISO/rendered-config.yaml" || true)
   [ "$bad" = 0 ] || die "rendered config contains a forbidden construct ($bad hits)"
   [ "$(grep -c '@sha256:' "$ISO/rendered-config.yaml")" -ge 1 ] || die "image is not digest-pinned"
-  [ "$(grep -c 'published:' "$ISO/rendered-config.yaml")" = 1 ] || die "expected exactly one published port"
-  grep -q 'host_ip: 127.0.0.1' "$ISO/rendered-config.yaml" || die "published port is not loopback-only"
+  local pub loop
+  pub=$(grep -c 'published:' "$ISO/rendered-config.yaml")
+  loop=$(grep -c 'host_ip: 127.0.0.1' "$ISO/rendered-config.yaml")
+  [ "$pub" = "$loop" ] || die "$pub published port(s) but only $loop bound to loopback"
 
   # This script must not contain host-wide destructive commands. Comment lines and the
   # marker line below are excluded so the check does not trip over its own pattern.
@@ -409,6 +411,158 @@ verify() {
   return $rc
 }
 
+# ---------------------------------------------------------------- CI3 rehearsal (WP-00K)
+
+CI3_REPO=${CI3_SOURCE_ROOT:-}
+WEB_BASE="http://127.0.0.1:${WEB_HOST_PORT:-18404}"
+
+ci3_repo_state() { echo "$(git -C "$CI3_REPO" rev-parse HEAD) $(git -C "$CI3_REPO" status --short | wc -l | tr -d ' ')"; }
+
+web_build() {
+  lock
+  : "${CI3_REPO:?CI3_SOURCE_ROOT is required}" "${CI3_WEB_IMAGE:?}"
+  local before after
+  before=$(ci3_repo_state)
+  [ "${before##* }" = 0 ] || die "CI3 repo is dirty before build; refusing to touch it"
+
+  # Not routed through dc(): this is `docker build`, not a compose command, and it needs an
+  # exact -f plus two contexts. The exclude list rides along as web/Dockerfile.dockerignore
+  # because the context root (the pinned repo) is read-only.
+  DOCKER_BUILDKIT=1 docker build \
+    -f "$ROOT/web/Dockerfile" --build-context ws="$ROOT/web" \
+    -t "$CI3_WEB_IMAGE" "$CI3_REPO"
+
+  after=$(ci3_repo_state)
+  [ "$before" = "$after" ] || die "CI3 repo changed during build: '$before' -> '$after'"
+  note "PASS build, CI3 repo untouched (${before% *})"
+
+  # WP-00F: the release artifact must carry no admin tool, no secrets, no customer data.
+  local p
+  for p in SECRETS-LOCAL.md tools demo lib/ApnsPHP-master lib/mysqli.php; do
+    docker run --rm "$CI3_WEB_IMAGE" test -e "/var/www/html/$p" \
+      && die "forbidden path leaked into the image: $p" || true
+  done
+  note "PASS artifact clean (no secrets, no phpMyAdmin, no demo copy, no dead libs)"
+}
+
+web_up() {
+  lock
+  preflight
+  dc up -d --wait
+  local mapped
+  mapped=$(dc port web 80)
+  [ "$mapped" = "127.0.0.1:$WEB_HOST_PORT" ] || die "web port map is '$mapped'"
+  note "PASS web up: $mapped"
+}
+
+# One HTTP assertion. `hs <label> <expected-status> <path> [curl args...]`
+hs() {
+  local label=$1 want=$2 path=$3; shift 3
+  local got
+  got=$(curl -s -o "$SMOKE_BODY" -w '%{http_code}' --max-time 30 "$@" "$WEB_BASE$path")
+  if [ "$got" = "$want" ]; then echo "PASS $label ($got)"; else echo "FAIL $label: want $want got $got  [$path]"; return 1; fi
+}
+body_has() {
+  local label=$1 needle=$2
+  if grep -q -- "$needle" "$SMOKE_BODY"; then echo "PASS $label"; else echo "FAIL $label: body missing '$needle'"; return 1; fi
+}
+body_lacks() {
+  local label=$1 needle=$2
+  if grep -q -- "$needle" "$SMOKE_BODY"; then echo "FAIL $label: body contains '$needle'"; return 1; else echo "PASS $label"; fi
+}
+
+smoke() {
+  lock
+  local rc=0 id user_id username temp_pw hash track
+  # Globals, not locals: the EXIT trap outlives this function's scope.
+  SMOKE_BODY=$(mktemp); SMOKE_JAR=$(mktemp)
+  trap 'rm -f "$SMOKE_BODY" "$SMOKE_JAR"; rmdir "$LOCK" 2>/dev/null || true' EXIT
+
+  local repo_before; repo_before=$(ci3_repo_state)
+
+  note "taking a restore point before touching any data"
+  id=$(backup "pre-smoke" | tail -1)
+
+  # Login matches tbl_users.username (not email, despite the form field naming) and joins
+  # tbl_roles, so pick a user that satisfies both.
+  read -r user_id username <<<"$(sqldb -e "
+    SELECT u.userId, u.username FROM tbl_users u JOIN tbl_roles r ON r.roleId=u.roleId
+    WHERE u.isDeleted=0 AND u.username IS NOT NULL AND u.username<>'' ORDER BY u.userId LIMIT 1;")"
+  [ -n "$user_id" ] || die "no loginable user found"
+  track=$(sqldb -e "SELECT trackID FROM request_order WHERE trackID IS NOT NULL AND trackID<>'' ORDER BY request_id DESC LIMIT 1;")
+  [ -n "$track" ] || die "no trackID found"
+  note "using userId=$user_id trackID=$track"
+
+  # Generate the hash with the same PHP that will verify it. Password rule caps at 32 chars
+  # (Login.php:55).
+  temp_pw="smoke-$(date +%s)"
+  hash=$(dc exec -T web php -r 'echo password_hash($argv[1], PASSWORD_BCRYPT);' "$temp_pw")
+  [ -n "$hash" ] || die "failed to generate bcrypt hash"
+  sqldb -e "UPDATE tbl_users SET password='$hash' WHERE userId=$user_id;"
+
+  note "--- public pages ---"
+  hs "S1 GET / (track)" 200 "/" || rc=1
+  hs "S2 GET /track_th/index" 200 "/track_th/index" || rc=1
+  body_lacks "S2 no mojibake in Thai page" "à¸" || rc=1
+  grep -qE $'[฀-๿]' "$SMOKE_BODY" && echo "PASS S2 Thai characters present" || { echo "FAIL S2: no Thai characters"; rc=1; }
+  hs "S3 GET /track/trackstatus/$track" 200 "/track/trackstatus/$track" || rc=1
+  hs "S4 GET /login" 200 "/login" || rc=1
+
+  note "--- authenticated flow ---"
+  # loginMe redirects to /dashboard on success and back to /login on failure.
+  curl -s -o "$SMOKE_BODY" -c "$SMOKE_JAR" -b "$SMOKE_JAR" --max-time 30 \
+       -d "username=$username" -d "password=$temp_pw" "$WEB_BASE/loginMe" >/dev/null
+  hs "S5 GET /dashboard after login" 200 "/dashboard" -b "$SMOKE_JAR" -c "$SMOKE_JAR" || rc=1
+  body_lacks "S5 not bounced back to the login form" 'name="password"' || rc=1
+  hs "S6 GET /order" 200 "/order" -b "$SMOKE_JAR" -c "$SMOKE_JAR" || rc=1
+
+  note "--- WP-00F deny tests ---"
+  local d code
+  for d in /application/config/config.php /system/core/CodeIgniter.php /SECRETS-LOCAL.md; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$WEB_BASE$d")
+    if [ "$code" = 200 ]; then echo "FAIL S7 $d served with 200"; rc=1; else echo "PASS S7 $d denied ($code)"; fi
+  done
+  # tools/ never entered the image, so this must not return admin-tool content. It answers
+  # 200 only because the app's 404 handler is broken - see the S7b note below.
+  curl -s -o "$SMOKE_BODY" --max-time 15 "$WEB_BASE/tools/pma/" >/dev/null
+  body_lacks "S7 phpMyAdmin not served" "phpMyAdmin" || rc=1
+
+  # Known legacy defect, not a migration regression: application/controllers/Error.php is
+  # never loaded because PHP 7 has a built-in class named Error, so 404_override resolves to
+  # the built-in and every missing route answers 200 with a PHP warning instead of 404.
+  # Production runs PHP 7.4.32, so this is live there too. Reported, not asserted.
+  if grep -q "does not have a method 'index'" "$SMOKE_BODY"; then
+    echo "INFO S7b known defect confirmed: 404 handler broken (controller Error collides with PHP 7 built-in Error)"
+  fi
+
+  note "--- server logs ---"
+  if dc logs web 2>&1 | grep -iE 'PHP Fatal|Uncaught|Unable to connect to your database|A Database Error Occurred' | head -5 | grep -q .; then
+    dc logs web 2>&1 | grep -iE 'PHP Fatal|Uncaught|Unable to connect|A Database Error Occurred' | head -5
+    echo "FAIL S8 web log contains fatal/database errors"; rc=1
+  else
+    echo "PASS S8 no fatal or database errors in web log"
+  fi
+  if dc logs db 2>&1 | grep -qE 'Illegal mix of collations|ERROR 1267'; then
+    echo "FAIL S9 collation mix error in database log"; rc=1
+  else
+    echo "PASS S9 no collation mix errors"
+  fi
+
+  note "--- restoring the pre-smoke state ---"
+  restore "$id"
+  verify > "$BASE/smoke-postrestore-verify.txt" 2>&1 \
+    && echo "PASS S10 full verification passed after restore" \
+    || { tail -20 "$BASE/smoke-postrestore-verify.txt"; echo "FAIL S10 verification failed after restore"; rc=1; }
+  ck "S10 temp password rolled back" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE userId=$user_id AND password='$hash';")" || rc=1
+
+  local repo_after; repo_after=$(ci3_repo_state)
+  ck "S11 CI3 repo untouched" "$repo_before" "$repo_after" || rc=1
+
+  [ "$rc" = 0 ] && note "CI3 SMOKE SUITE PASSED" || note "CI3 SMOKE SUITE FAILED"
+  return $rc
+}
+
 # ---------------------------------------------------------------- backup / restore (BLK-010)
 
 # Backups live on the owned `backup_data` volume, never a bind mount or a host path:
@@ -569,8 +723,11 @@ case "${1:-}" in
   restore)   shift; restore "${1:-}" ;;
   upgrade-check) upgrade_check ;;
   rehearsal) rehearsal ;;
+  web-build) web_build ;;
+  web-up)    web_up ;;
+  smoke)     smoke ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|smoke|reset|status|down>"; exit 2 ;;
 esac

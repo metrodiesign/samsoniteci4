@@ -1,0 +1,35 @@
+# Exclude list for the CI3 build context. Lives next to the Dockerfile because the context
+# root is the read-only pinned CI3 repo and cannot hold a .dockerignore of its own.
+
+# Real credentials (gitignored upstream). Must never enter an image layer.
+SECRETS-LOCAL.md
+SECURITY-NOTES.md
+
+# phpMyAdmin. WP-00F requires no admin tool in the release artifact.
+tools/
+
+# Full second copy of the application - 454 MB, not under test.
+demo/
+
+# Real customer images (PII). The Dockerfile recreates the directory structure empty.
+uploads/
+
+# Dead vendored libraries: nothing in application/ references them, and they are the only
+# source of mcrypt_*, ereg() and create_function() in the tree.
+lib/ApnsPHP-master/
+lib/fbsdk/
+lib/facebook-SDK/
+lib/phpfreechat2.1.0/
+lib/jwplayer6/
+lib/projekktor1.3.09/
+lib/videojs/
+lib/aes_encrypt.php
+lib/mail.php
+lib/mysqli.php
+lib/files2.0.php
+lib/test.php
+
+.git/
+.gitignore
+.DS_Store
+**/.DS_Store
