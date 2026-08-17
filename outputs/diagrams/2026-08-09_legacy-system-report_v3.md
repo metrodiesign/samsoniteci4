@@ -6,6 +6,8 @@
 > Updated: 2026-08-11
 > Version: v3.1 — เพิ่ม function inventory baseline และ disposition evidence linkage
 
+**หมายเหตุ baseline (2026-08-17)**: เอกสารนี้เขียนจาก working tree ก่อน CI3 pin — source ที่เป็นทางการตอนนี้คือ commit `8dad4e33` ตาม `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md` ซึ่งไม่มีไฟล์ `application/controllers/--User.php`, `application/libraries/Google_oauth.php` และ `application/views/includes/header_report.php` แล้ว (ถูกลบเป็น dead code) จุดที่เอกสารนี้ยังอ้างถึงสามไฟล์นั้นให้ถืออ่านเป็นประวัติ ไม่ใช่ข้อเท็จจริงที่ pin — disposition ของทุกจุดอยู่ `2026-08-17_function-disposition-evidence_v2.md` หัวข้อ Retired points
+
 เอกสารนี้อธิบายสิ่งที่ระบบเดิมทำจาก code จริง พร้อม actor, process contract, business rules, flow, logical data relationship, ข้อจำกัดและจุดควบคุมสำหรับตรวจสอบย้อนหลัง.
 
 ## การควบคุมเอกสาร

@@ -2198,6 +2198,17 @@ Function body identity ต้องมี source blob/file SHA-256, start/end li
 
 ### 21.2 Static discovery baseline ปัจจุบัน
 
+**อัปเดต 2026-08-17 — baseline ย้ายไป CI3 pin**: ตัวเลขในตารางด้านล่างเป็น discovery รอบแรกจาก working tree ที่ยังไม่ commit และไม่สามารถ reproduce ได้อีก (commit ที่อ้างไม่มีในคลังของ repo CI3) baseline ที่เป็นทางการตอนนี้คือ CI3 pin `8dad4e331a90f5c6765954454910b451eb0ff8e5` ตาม `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md`
+
+| Layer | discovery รอบแรก (v1) | ที่ CI3 pin (v2) |
+|---|---:|---:|
+| PHP named function | 631 | 514 |
+| JavaScript candidate token | 780 | 650 |
+| **รวม live acceptance points** | **1411** | **1164** |
+| Retired ด้วยหลักฐาน (ไฟล์ไม่มีที่ pin) | — | 247 |
+
+`1411 − 247 = 1164` — 247 จุดมาจาก 19 ไฟล์ที่ commit `5409901` ลบเป็น dead code (disposition เดิม: RETIRE_PROPOSED 130, MIGRATE 83, REPLACE 34) ทุกจุดปิดเป็น `RETIRED_VERIFIED` พร้อม deletion evidence + no-caller proof ในหัวข้อ Retired points ของ v2 ห้ามถือว่าเลขหดเอง
+
 | Source area | Static candidates | วิธีนับ | สถานะ |
 |---|---:|---|---|
 | `application/controllers` | 223 named PHP functions | PHP `token_get_all()` | `OBSERVED_FACT` |
@@ -2214,19 +2225,20 @@ Function body identity ต้องมี source blob/file SHA-256, start/end li
 PHP 631 มาจาก application roots 580 + top-level local/adapted utilities 51. Probe รอบหนึ่งเคยสลับ application library internals 51 ออกแล้วแทนด้วย utility 51 ทำให้ยอดยังเป็น 580; independent checker พบ source-set mismatch จึงแก้โดยรวมทั้งสองชุด. ผล JavaScript 780 มาจาก view `function` 690 + view arrow 11 + custom `function` 79. ความต่างจาก probe เดิม 773 มี root cause เป็น arrow 7 จุดที่ตกจากการนับรอบแรก โดย 4 จุดอยู่ใน untracked working-tree views; ไม่มีการ exclude เพื่อบังคับตัวเลขให้ตรง. รัน citation reconciliation ด้วย:
 
 ```bash
-php scripts/check-function-disposition.php outputs/diagrams/2026-08-11_function-disposition-evidence_v1.md
+export CI3_SOURCE_ROOT=/Users/king_developer/Desktop/Project/samsoniteci3
+php scripts/check-function-disposition.php outputs/diagrams/2026-08-17_function-disposition-evidence_v2.md
 ```
 
-Checker นี้ยืนยัน exact source citation, one-source-to-one-row, Function ID/AC-FUNC uniqueness, disposition และ execution-state schema. ยังไม่พิสูจน์ว่า caller/behavior/target/retirement claim ในแถวเป็นจริง; หลักฐาน runtime, ownership, parity, implementation และ retirement ยังต้องผ่าน AC-FNC และ Gate ตาม section นี้.
+Checker นี้ยืนยัน CI3 commit pin, worktree clean, manifest hash รายไฟล์, exact source citation, one-source-to-one-row, Function ID/AC-FUNC uniqueness, สูตร Function ID, disposition และ execution-state schema. รันกับ v1 จะ exit 1 พร้อม hash mismatch 26 ไฟล์ — เป็นพฤติกรรมที่ถูกต้องเพราะ v1 ไม่ตรง pin แล้ว. ยังไม่พิสูจน์ว่า caller/behavior/target/retirement claim ในแถวเป็นจริง; หลักฐาน runtime, ownership, parity, implementation และ retirement ยังต้องผ่าน AC-FNC และ Gate ตาม section นี้.
 
 ตัวเลข JavaScript เป็น discovery candidate เพราะ regex อาจรวม nested/duplicated handler และยังไม่พิสูจน์ asset ownership. Final denominator ต้องใช้ parser/source review, deduplicate ด้วย Function ID, เชื่อม view/asset callers และแยก vendor manifest.
 
-จุดที่ห้าม exclude โดยเดา:
+จุดที่ห้าม exclude โดยเดา (สถานะที่ CI3 pin กำกับไว้):
 
-- `application/controllers/--User.php` มี named methods แม้ชื่อคล้าย backup.
-- `application/config/Contact.php` มี executable methods แม้อยู่ผิด directory.
-- `Youtube.php`, `Google_oauth.php`, `Sftp.php`, `Oftp.php`, `Email.php`, `MY_Upload.php` และ `php-excel.class.php` อยู่ใน application libraries แต่ active caller ยังต้องพิสูจน์.
-- Inline JavaScript ใน backup/test views อาจยังถูก route/include เรียก; ต้อง route/view/runtime proof ก่อน retire.
+- `application/config/Contact.php` มี executable methods แม้อยู่ผิด directory — ยังอยู่ที่ pin และอยู่ใน denominator (4 points).
+- `Email.php` ยังอยู่ที่ pin และอยู่ใน denominator (2 points).
+- `--User.php`, `Youtube.php`, `Google_oauth.php`, `Sftp.php`, `Oftp.php`, `MY_Upload.php` และ `php-excel.class.php` **ไม่มีอยู่ที่ pin แล้ว** — ปิดเป็น `RETIRED_VERIFIED` ด้วย deletion evidence + no-caller proof ในหัวข้อ Retired points ของ v2 ไม่ใช่การ exclude โดยเดา.
+- Inline JavaScript ใน backup/test views ที่ยังมีไฟล์อยู่ที่ pin ยังอยู่ใน denominator; ที่ไฟล์ถูกลบไปแล้วอยู่ Retired points พร้อมผล grep loader/routes/script-src = 0 hit.
 
 ### 21.3 CI3 source ไป CI4 target mapping rule
 
