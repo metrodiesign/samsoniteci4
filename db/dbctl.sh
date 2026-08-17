@@ -76,7 +76,12 @@ snapshot() {
     | sort > "$ISO/$tag-networks.txt"
   docker volume ls --format '{{.Name}}|{{.Driver}}' | sort > "$ISO/$tag-volumes.txt"
   docker compose ls --all --format json > "$ISO/$tag-projects.json"
-  netstat -an -f inet -p tcp | awk '$NF=="LISTEN"{print $4}' | sort -u > "$ISO/$tag-ports.txt"
+  # Drop the OS ephemeral range (49152-65535 on this host): those listeners belong to
+  # transient host processes and churn between snapshots. A published Docker port can never
+  # live there - the port protocol requires candidates outside the ephemeral range.
+  netstat -an -f inet -p tcp \
+    | awk '$NF=="LISTEN"{n=split($4,a,"."); if (a[n]+0 < 49152) print $4}' \
+    | sort -u > "$ISO/$tag-ports.txt"
   note "snapshot '$tag' written to $ISO"
 }
 
@@ -399,6 +404,57 @@ verify() {
   return $rc
 }
 
+# ---------------------------------------------------------------- collation parity (BLK-001)
+
+# Proves the chosen utf8mb4 collation behaves exactly like the legacy utf8mb3_general_ci.
+# Works inside one server because the data holds no 4-byte characters, so
+# CONVERT(col USING utf8mb3) is lossless and the legacy collation stays available.
+collation() {
+  local out="$BASE/collation-parity.txt" rc=0 gen
+  : > "$out"
+
+  note "C1 weight parity across every string column"
+  gen=$(sqldb -e "
+    SELECT CONCAT('SELECT ''', TABLE_NAME, '.', COLUMN_NAME, ''' AS col, COUNT(*) AS n, ',
+      'SUM(WEIGHT_STRING(CONVERT(\`', COLUMN_NAME, '\` USING utf8mb3) COLLATE utf8mb3_general_ci) <=> ',
+      'WEIGHT_STRING(\`', COLUMN_NAME, '\` COLLATE utf8mb4_general_ci)) AS same FROM \`', TABLE_NAME, '\` UNION ALL')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA='$DB' AND DATA_TYPE IN ('char','varchar','text','tinytext','mediumtext','longtext')
+    ORDER BY TABLE_NAME, ORDINAL_POSITION;")
+  gen="${gen% UNION ALL};"
+  # Empty tables yield n=0 and same=NULL, which is not a mismatch.
+  local mismatched
+  mismatched=$(printf '%s\n' "$gen" | sqldb | awk -F'\t' '$2>0 && $2!=$3' | tee -a "$out" | wc -l | tr -d ' ')
+  ck "C1 columns whose weights differ from legacy" "0" "$mismatched" || rc=1
+
+  note "C2 whole-table ordering and distinctness vs legacy"
+  local res
+  res=$(sqldb -e "
+    WITH a AS (SELECT id, ROW_NUMBER() OVER (ORDER BY CONVERT(Listname USING utf8mb3) COLLATE utf8mb3_general_ci, id) rn FROM uploadstaus),
+         b AS (SELECT id, ROW_NUMBER() OVER (ORDER BY Listname COLLATE utf8mb4_general_ci, id) rn FROM uploadstaus)
+    SELECT COUNT(*) FROM a JOIN b USING (id) WHERE a.rn <> b.rn;")
+  ck "C2 rows out of place under utf8mb4_general_ci" "0" "$res" || rc=1
+  res=$(sqldb -e "
+    SELECT COUNT(DISTINCT Listname COLLATE utf8mb4_general_ci)
+           - COUNT(DISTINCT CONVERT(Listname USING utf8mb3) COLLATE utf8mb3_general_ci) FROM uploadstaus;")
+  ck "C2 distinct-value drift under utf8mb4_general_ci" "0" "$res" || rc=1
+
+  note "C3 contrast: the rejected candidate must actually differ"
+  res=$(sqldb -e "
+    WITH a AS (SELECT id, ROW_NUMBER() OVER (ORDER BY CONVERT(Listname USING utf8mb3) COLLATE utf8mb3_general_ci, id) rn FROM uploadstaus),
+         c AS (SELECT id, ROW_NUMBER() OVER (ORDER BY Listname COLLATE utf8mb4_unicode_ci, id) rn FROM uploadstaus)
+    SELECT COUNT(*) FROM a JOIN c USING (id) WHERE a.rn <> c.rn;")
+  echo "INFO C3 rows out of place under utf8mb4_unicode_ci: $res" | tee -a "$out"
+  [ "$res" -gt 0 ] || { echo "FAIL C3 contrast collation is indistinguishable; the choice is unproven"; rc=1; }
+  res=$(sqldb -e "
+    SELECT COUNT(DISTINCT CONVERT(Listname USING utf8mb3) COLLATE utf8mb3_general_ci)
+           - COUNT(DISTINCT Listname COLLATE utf8mb4_unicode_ci) FROM uploadstaus;")
+  echo "INFO C3 distinct values lost under utf8mb4_unicode_ci: $res" | tee -a "$out"
+
+  [ "$rc" = 0 ] && note "COLLATION PARITY PROVEN (evidence: $out)" || note "COLLATION PARITY FAILED"
+  return $rc
+}
+
 # ---------------------------------------------------------------- entrypoint
 
 case "${1:-}" in
@@ -409,8 +465,9 @@ case "${1:-}" in
   up)        up ;;
   import)    shift; import "$@" ;;
   verify)    verify ;;
+  collation) collation ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|reset|status|down>"; exit 2 ;;
 esac

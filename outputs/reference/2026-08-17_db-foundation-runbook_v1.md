@@ -21,6 +21,7 @@ nongkaewta, offset-design-platform, pol-core, primeaccountclaudecowork, viriyah)
 | port ชน | เปลี่ยนไป port ว่างตัวถัดไปใน pool อัตโนมัติ ห้าม stop / restart / แก้ config ของเจ้าของ port |
 | volume `ci4_*` | ห้ามแตะ เป็นของ project `ci4` คนละตัว (label `com.docker.compose.project=ci4` สร้าง 2025-09-19) เหตุผลที่ชื่อ project ต้องยาว |
 | พิสูจน์ด้วยหลักฐาน | `dbctl.sh snapshot before` / `after` แล้ว `diff` ต้องได้ 0 ทุกครั้งหลังงานหนัก |
+| ไม่นับ port ชั่วคราว | snapshot ตัด listener ในช่วง ephemeral 49152–65535 ออก เพราะเป็นของ process บนเครื่องที่เกิดดับเองตลอดเวลา (เจอจริง: `codex` เปิด 54222/54223 ระหว่างทำงาน) และ published port ของ Docker อยู่ในช่วงนั้นไม่ได้ตาม protocol เลือก port |
 | ไม่ auto-start | `restart: "no"` container จะไม่โผล่มาเองตอนเปิดเครื่อง |
 
 ## 2. Identity ของโปรเจกต์
@@ -69,6 +70,7 @@ nongkaewta, offset-design-platform, pol-core, primeaccountclaudecowork, viriyah)
 ./db/dbctl.sh up               # preflight แล้ว up -d --wait
 ./db/dbctl.sh import           # import ครบ 6 ไฟล์ (ระบุชื่อไฟล์เพื่อ import เฉพาะตัวได้)
 ./db/dbctl.sh verify           # ตรวจ 17 ข้อ
+./db/dbctl.sh collation        # พิสูจน์ collation parity กับของเดิม (BLK-001)
 ./db/dbctl.sh snapshot after && ./db/dbctl.sh diff   # พิสูจน์ว่าไม่กระทบใคร
 ./db/dbctl.sh status           # ดูสถานะ + port mapping
 ./db/dbctl.sh reset            # DROP + CREATE DATABASE เท่านั้น ไม่แตะ volume/container
@@ -217,5 +219,7 @@ dump เป็น production data จริง ไม่ใช่ sample:
   `tbl_users.password`, `tbl_reset_password.activation_id`, `ci_sessions.session_id`
   ถูกเทียบแบบ case-insensitive ซึ่งลด entropy ของ token แต่เป็นพฤติกรรมเดิมของ
   production การแก้ตอนนี้อาจทำให้ login พัง ควรทำพร้อม regression test ในงาน security
-- BLK-001 ยังไม่ปิดอย่างเป็นทางการ — `utf8mb4_general_ci` เป็นค่าที่เลือกสำหรับ DB ซ้อม
-  ยังต้องมี signed decision + Thai search/sort/export parity test
+- **BLK-001 ปิดแล้ว** — ดู `2026-08-17_collation-decision_v1.md` พิสูจน์ว่า
+  `utf8mb4_general_ci` ให้ผลเหมือน `utf8mb3_general_ci` เดิมทุกค่า (8,633,439 ค่า
+  จาก 160 คอลัมน์, ลำดับการเรียงเปลี่ยน 0 แถว) ส่วน parity ระดับแอปยังต้องรอ CI3
+  ขึ้นมารันบน DB ตัวนี้ (WP-00K/WP-00M)
