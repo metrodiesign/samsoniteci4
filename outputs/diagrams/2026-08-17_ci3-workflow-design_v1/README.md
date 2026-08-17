@@ -1,6 +1,6 @@
 # Samsonite Tracking — Workflow Design สำหรับ CI4 (สกัดจาก CI3)
 
-> Source: `samsoniteci3/application/` ทั้งระบบ — controllers 23 ตัว + models + views + routes (อ่านจาก working tree 2026-08-16)
+> Source: `samsoniteci3/application/` ทั้งระบบ — controllers 23 ตัว + models + views + routes ที่ CI3 pin `8dad4e331a90f5c6765954454910b451eb0ff8e5` (สกัดจาก working tree 2026-08-16 ตรวจแล้วว่าไม่อ้าง path ที่ถูกลบเลย); สัญญาของ pin อยู่ `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md`
 > Scope: workflow ของระบบครบทุก module ระดับ design พร้อม mapping ไป CI4 ต่อ workflow — ใช้คู่กับแผน migration `2026-08-09_ci3-to-ci4-upgrade-plan_v3.md`
 > Generated: 2026-08-17
 
@@ -38,7 +38,7 @@
 | Menu | menuListing, addNewMenu, addMenu, editMunuOld, editMenu | §5.3 | สำเนาหลงไม่มี route 7 ตัว: index, deleteUser, loadChangePass, changePassword, loginHistoy, get_list_branch, get_list_book |
 | Background_web | BackgroundListing, BackgroundNew, addBackground, editBackgroundOld, editBackground, deleteBackground | §5.4 | UI ไม่มีปุ่มเข้า BackgroundNew/delete (เข้า URL ตรงได้) |
 
-รายการ RETIRE ทั้งหมดต้องปิดด้วย Function ID + retirement proof ในเอกสาร `2026-08-11_function-disposition-evidence_v1.md` (G-09) — ตารางนี้เป็น index ไม่ใช่ตัวแทนหลักฐาน
+รายการ RETIRE ทั้งหมดต้องปิดด้วย Function ID + retirement proof ในเอกสาร `2026-08-17_function-disposition-evidence_v2.md` (G-09) — ตารางนี้เป็น index ไม่ใช่ตัวแทนหลักฐาน
 
 ## Cross-cutting — พฤติกรรมร่วมที่ทุก module อ้าง
 
@@ -63,12 +63,12 @@
 
 1. **ตอนเขียน spec ต่อ slice** (plan v3 ใช้ vertical slice + route-level strangler): เปิดไฟล์ theme ของ module นั้น — ตาราง contract + diagram คือ acceptance baseline, ตาราง Mapping → CI4 คือโครง implement, หัวข้อ decision ใน Notes ต้อง resolve ก่อนเริ่มเขียนโค้ด
 2. **ตอนเขียน parity test**: ใช้ตาราง failure path + quirk เป็น test case โดยตรง — quirk ที่ตัดสินใจคงไว้ต้องมี test ตรึงเท่ากับ happy path
-3. **ตอนปิด G-09**: coverage matrix ด้านบนต้องตรงกับ disposition ใน `2026-08-11_function-disposition-evidence_v1.md` — พบไม่ตรงให้ปรับ disposition doc พร้อมหลักฐาน ไม่ใช่แก้ตารางนี้เงียบ ๆ
+3. **ตอนปิด G-09**: coverage matrix ด้านบนต้องตรงกับ disposition ใน `2026-08-17_function-disposition-evidence_v2.md` — พบไม่ตรงให้ปรับ disposition doc พร้อมหลักฐาน ไม่ใช่แก้ตารางนี้เงียบ ๆ
 4. **ความสัมพันธ์กับ legacy report**: `2026-08-09_legacy-system-report_v3.md` เป็นภาพรวมระบบ + diagram หลัก 7 ตัว — ชุดนี้ลงลึกต่อ action ที่ระดับ implement ได้ ถ้าขัดกันให้ถือ file:line ในชุดนี้ (สกัดใหม่ 2026-08-16) แล้วบันทึกข้อขัดแย้งลง work history
 
 ## Notes
 
-- ตัวเลขบรรทัด (file:line) อ้างอิง working tree ของ `samsoniteci3` ณ 2026-08-16 — โค้ดเดิมเปลี่ยนเมื่อไรต้อง re-verify ก่อนใช้
+- ตัวเลขบรรทัด (file:line) อ้างอิง `samsoniteci3` ที่ CI3 pin `8dad4e33` — เปลี่ยน pin เมื่อไรต้อง re-verify ก่อนใช้ (ยืนยัน pin ด้วย `git -C $CI3_SOURCE_ROOT rev-parse HEAD`)
 - Diagram ทุก block ผ่าน `node scripts/check-mermaid.mjs` แล้ว
 - schema จริงของ DB ยืนยันไม่ได้จาก repo (ไม่มีไฟล์ `.sql`) — จุดที่เอกสารระบุ "ตรวจ schema ตอน baseline" เป็นงานของ phase discovery ใน plan v3
 
