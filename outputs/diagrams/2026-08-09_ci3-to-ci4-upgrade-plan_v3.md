@@ -3,8 +3,8 @@
 > Source: CodeIgniter 3.1.6 source code ใน working tree และเอกสารทางการ CodeIgniter/PHP/MariaDB
 > Scope: migration ไป CodeIgniter 4 บน PHP 8.5 และ mandatory database target, compatibility, roadmap, verification, cutover และ rollback
 > Generated: 2026-08-10
-> Updated: 2026-08-13
-> Version: v3.8 — เพิ่ม Docker isolation, safe-port allocation และ cross-project non-interference proof
+> Updated: 2026-08-18
+> Version: v3.9 — เพิ่ม UX/UI parity contract โดยคงหน้าตาและ interaction เดิมทั้งหมด แต่ปรับ frontend implementation ภายในได้
 
 เอกสารนี้กำหนดแผนย้ายระบบเดิมไป CodeIgniter 4 บน target stack ที่อนุมัติ. ทุก behavior ต้องผ่าน Functional Parity 100%; database platform conversion ต้องแยก release จาก CI4 application cutover เพื่อพิสูจน์ผลกระทบและ rollback ได้อิสระ.
 
@@ -15,7 +15,7 @@
 | วัตถุประสงค์ | ใช้เป็น migration charter, delivery roadmap, quality gate และ cutover/rollback baseline |
 | ผู้อนุมัติหลัก | Business owner, product owner, engineering lead, QA lead, security และ operations |
 | In scope | Application conversion, PHP 8.5, CI4, MariaDB 11.4.x LTS, MySQLi/mysqlnd, utf8mb4, InnoDB, tests, deployment, data compatibility และ operations |
-| Out of scope | UX redesign, authentication product ใหม่, business-schema redesign และ data cleansing ที่ไม่เกิดจาก verified target-stack conversion |
+| Out of scope | การ redesign หรือเปลี่ยน UX/UI เดิม, authentication product ใหม่, business-schema redesign และ data cleansing ที่ไม่เกิดจาก verified target-stack conversion |
 | Delivery model | Vertical slice + route-level strangler + shared database ชั่วคราว |
 | Version target | PHP 8.5.x + CI4 ≥4.7.4 + MariaDB 11.4.x LTS; pin exact patch/image และผ่าน CI/rehearsal |
 | Estimate class | ROM ±40%; re-baseline หลัง discovery/baseline phase |
@@ -35,10 +35,12 @@
 | G-07 | ใช้ target stack ที่อนุมัติครบ | version/driver/charset/engine assertions และ production-like rehearsal ผ่าน |
 | G-08 | พิสูจน์ผลสำเร็จได้ทุกจุด | normative point ทุกตัวมี before/cause-or-basis/change/after/impact/independent-review record และสถานะ `CLOSED` |
 | G-09 | ไม่มี function ตกหล่นหรือถูกยกเลิกโดยไม่มีหลักฐาน | application-owned function/handler ทุกตัวมี Function ID, caller, CI4 target/retirement disposition, test, impact และ P5 closure |
+| G-10 | รักษา UX/UI Parity 100% | ทุกหน้าคง layout, visual styling, content, control, state และ interaction เดิมโดยไม่มี unapproved user-visible difference |
 
 ### Non-goals
 
 - ไม่เปลี่ยน business process หรือชื่อสถานะระหว่าง parity phase
+- ไม่เปลี่ยน UX/UI เดิม; ปรับ JavaScript, jQuery, event binding, DOM/template internals หรือ frontend logic ได้เมื่อหน้าตาและพฤติกรรมที่ผู้ใช้รับรู้ยังตรง baseline 100%
 - ไม่เปิด Auto Routing Legacy เพื่อเลียนแบบ CI3
 - ไม่สร้าง generic repository, event bus หรือ abstraction ที่ยังไม่มี use case
 - ไม่รวม MariaDB/charset/engine conversion กับ CI4 application cutover release เดียวกัน
@@ -144,6 +146,7 @@ flowchart LR
 | Principle | กติกา |
 |---|---|
 | Parity before redesign | ย้าย behavior เดิมและเพิ่ม test ก่อนเปลี่ยน business rules |
+| UX/UI parity | ใช้ layout, visual styling, typography, color, spacing, content order, label, control, state, responsive behavior และ interaction flow เดิมทั้งหมด; เปลี่ยน JavaScript/jQuery หรือ implementation ภายในได้เฉพาะเมื่อผลที่ผู้ใช้เห็นและใช้งานไม่เปลี่ยน |
 | Explicit boundaries | routes, filters, validation, transaction และ external adapters ต้องเห็นตำแหน่งชัด |
 | One write owner | route/slice เดียวเขียนโดย CI3 หรือ CI4 เพียงระบบเดียวระหว่าง coexistence |
 | Database-enforced integrity | unique/FK/index ใช้เมื่อ schema ยืนยันและรองรับ rollback |
@@ -158,7 +161,7 @@ flowchart LR
 |---|---|---|
 | `application/controllers` | `app/Controllers` | namespace, typed response, request validation และ filters |
 | `application/models` | `app/Models` | ย้าย query ทีละ use case; ไม่บังคับ repository layer |
-| `application/views` | `app/Views` | layout/escaping/assets ต้องรักษา output contract |
+| `application/views` | `app/Views` | ใช้ UX/UI, assets และ interaction contract เดิมทั้งหมด; เปลี่ยน template/JavaScript/jQuery ภายในได้โดยต้องไม่เกิด user-visible difference และยังคง escaping ที่ปลอดภัย |
 | `application/helpers` | `app/Helpers` หรือ focused service | pure helper คง helper; integration ใช้ service |
 | `application/libraries/BaseController.php` | CI4 `BaseController` + filters | แยก login gate จาก layout/menu loading |
 | `application/config/routes.php` | `app/Config/Routes.php` | explicit routes + route-name/URL regression tests |
@@ -327,7 +330,7 @@ flowchart TD
 |---|---|---|---|---|
 | WP-00A Source inventory | route/controller/model/view/integration map | ทุก route มี owner และ migration disposition | Engineering | working tree ที่ระบุ commit SHA |
 | WP-00B Data baseline | DDL, indexes, FK, triggers, status/role/menu seed | restore เข้า isolated DB และ checksum/row counts ตรง | DBA/Engineering | sanitized database access |
-| WP-00C Behavior baseline | full characterization catalog + approved fixtures | ทุก in-scope behavior ผ่าน CI3, มี expected output และ trace ถึง test ID | QA/Business | test accounts/data |
+| WP-00C Behavior baseline | full characterization catalog + approved UX/UI snapshots + fixtures | ทุก in-scope behavior และหน้าจอผ่าน CI3, มี expected output/visual/interaction baseline และ trace ถึง test ID | QA/Business | test accounts/data + pinned browser/viewport |
 | WP-00D Security containment | rotate SMTP/DB/encryption material ที่เคยอยู่ใน source; invalidate sessions | credential เดิม revoke, sessions ใช้ต่อไม่ได้ และ source/log ไม่มีค่าจริง | Security/Ops | provider/key/DB access |
 | WP-00E Operations baseline | current deploy, backup, restore, cron, log map | restore rehearsal และ dependency list | Operations | deployment access |
 | WP-00F Web exposure containment | deny `tools`, `lib`, config, session, uploads execution; remove phpMyAdmin จาก release | external deny tests ผ่านและ artifact manifest ไม่มี admin tool | Security/Ops | web-server access |
@@ -366,7 +369,7 @@ flowchart TD
 | WP-03B Authorization | filters + branch/group policy | deny-by-default, IDOR และ branch isolation tests | Engineering/Security | role/menu seed |
 | WP-03C Master data | CRUD slices ตาม dependency order | historical references และ delete behavior approved | Engineering/Business | schema/FK inventory |
 | WP-03D Password reset | random one-time token hash + expiry + throttle + audit | expired/replayed/brute-force tests และ no-token logs ผ่าน | Engineering/Security | email sandbox |
-| WP-03E View boundary | controller supplies data; view ไม่เรียก model/session policy โดยตรง | migrate 70 coupled views/19 direct-model-call views พร้อม escape tests | Engineering/QA | approved output snapshots |
+| WP-03E View boundary | controller supplies data; view ไม่เรียก model/session policy โดยตรง โดย UX/UI เดิมไม่เปลี่ยน | migrate 70 coupled views/19 direct-model-call views พร้อม escape tests และ paired visual/interaction comparison ที่ไม่มี unapproved difference | Engineering/QA | approved UX/UI snapshots + pinned browser/viewport |
 
 ### Phase 4–6: Core transaction, import และ report
 
@@ -386,7 +389,7 @@ flowchart TD
 | Work package | Deliverable | Verify | Owner role | Dependency |
 |---|---|---|---|---|
 | WP-07A Staging rehearsal | production-like deployment + rollback | runbook ทำได้ภายใน RTO ที่อนุมัติ | Operations/QA | all prior gates |
-| WP-07B Shadow comparison | route/read/report comparison ระหว่าง CI3/CI4 | parity/test/point closure 100%, P5 evidence ครบ; unapproved difference = 0 | QA/Business | representative dataset |
+| WP-07B Shadow comparison | route/read/report/UX/UI comparison ระหว่าง CI3/CI4 | parity/test/point closure 100%, P5 evidence ครบ; unapproved functional หรือ user-visible difference = 0 | QA/Business | representative dataset |
 | WP-07C Cutover | versioned release + route switch | go/no-go sign-off, monitoring green | Operations | change window |
 | WP-07D Stabilization | incident watch + defect triage | error/business metrics stable ตาม observation window | All leads | production traffic |
 | WP-07E CI3 retirement plan | dependency/data/archive checklist | ไม่มี route/caller ที่ยังพึ่ง CI3 | Engineering/Ops | stabilization sign-off |
@@ -738,7 +741,7 @@ Functional Parity หมายถึง เมื่อ actor, permission, input
 | มิติ | ต้องเท่ากัน | สิ่งที่ไม่ต้องเหมือนภายใน |
 |---|---|---|
 | HTTP contract | URL, method, parameter, status, redirect, content type และ download contract | namespace, controller class และ framework bootstrap |
-| UI behavior | field, label, default, validation, action, filter, sort, pagination, message และข้อมูลที่แสดง | template/layout implementation ที่ไม่กระทบผลสังเกตได้ |
+| UX/UI contract | layout, visual styling, typography, color, spacing, content order, field, label, control, default, validation, action, filter, sort, pagination, message, state, responsive behavior และ interaction flow เดิมทั้งหมด | JavaScript, jQuery, native browser API, event binding และ DOM/template implementation ภายใน เมื่อหน้าตาและพฤติกรรมที่ผู้ใช้รับรู้ไม่เปลี่ยน |
 | Authorization | actor เดิมทำสิ่งที่อนุญาตได้ และถูกปฏิเสธในสิ่งที่ไม่อนุญาต | filter/middleware implementation |
 | Business rule | calculation, status transition, date rule, duplicate rule และ branch scope | service/model decomposition |
 | Data effect | row ที่ insert/update/delete, relation, audit record และ transaction outcome | SQL text หรือ Query Builder chain |
@@ -807,7 +810,7 @@ Functional Parity หมายถึง เมื่อ actor, permission, input
 | AC-WEB-005 | Menu, button, bulk action และ direct URL แสดง/ทำงานตาม role/group/branch เดิม; UI visibility ไม่ถูกใช้แทน server authorization | role-browser matrix + negative tests |
 | AC-WEB-006 | AJAX request/response มี content type, JSON keys, value types, success/failure semantics และ DOM/DB result ตรง baseline | contract tests + DB assertion |
 | AC-WEB-007 | EN/TH routes แสดง field, status meaning, date, error, contact และ tracking flow ครบคู่กัน | bilingual snapshot/UAT evidence |
-| AC-WEB-008 | Print views, download links, asset paths, image rendering, browser back/refresh, keyboard navigation, focus/label semantics และ zoom ผ่านบน pinned browser/viewport โดยไม่มี critical accessibility regression | screenshots + browser/accessibility/keyboard test log |
+| AC-WEB-008 | ทุกหน้าที่ใช้งาน รวม print views คง layout, typography, color, spacing, content order, label, control, visible state, responsive behavior และ interaction flow ตรง approved CI3 baseline บน pinned browser/viewport; download links, asset paths, image rendering, back/refresh, keyboard navigation, focus/label semantics และ zoom ผ่านโดยไม่มี unapproved user-visible difference หรือ critical accessibility regression; เปลี่ยน JavaScript/jQuery หรือ implementation ภายในได้ | paired CI3/CI4 screenshots + visual diff + browser/accessibility/keyboard test log |
 | AC-WEB-009 | User-visible values ผ่าน context-aware escaping โดยไม่เปลี่ยน approved plain-text output; rich content ใช้ allowlist ที่อนุมัติ | XSS regression + visual comparison |
 | AC-WEB-010 | Root, login, dashboard, page-not-found, application error และ retired/dev routes ให้ approved status/view/redirect โดยไม่เปิด stack trace | route/error-path tests |
 
@@ -975,7 +978,7 @@ Automate ทุก test ที่ deterministic. Manual test อนุญาต�
 3. รัน CI3 baseline ซ้ำจน deterministic หรือบันทึก normalization ที่อนุมัติ.
 4. ยืนยัน Gate 1D: exact target stack, DB conversion rehearsal, CI3 target-DB parity และ database stabilization ผ่าน.
 5. รัน CI4 full suite บน release artifact เดียวกับ staging.
-6. สร้าง differential report สำหรับ HTTP, UI, DB, file, integration, report และ performance.
+6. สร้าง differential report สำหรับ HTTP, UX/UI, visual/interaction, DB, file, integration, report และ performance.
 7. แก้หรือ re-baseline ทุก diff ผ่าน change control แล้ว rerun impacted tests.
 8. ยืนยัน required tests PASS 100%, reconciliation 100%, unapproved diff = 0 และ blocking defect = 0.
 9. รัน backup/restore/cutover/rollback rehearsal และเก็บเวลา/ผลจริง.
@@ -984,7 +987,7 @@ Automate ทุก test ที่ deterministic. Manual test อนุญาต�
 
 ### 14.17 Execution readiness และ success assurance
 
-Acceptance catalog v3.8 มี 210 AC: §14.14 มี 7 ข้อด้าน target stack, กลุ่มนี้ 20 ข้อด้าน readiness/assurance, §18.12 มี 20 ข้อด้าน process control, §19.11 มี 16 ข้อด้าน root cause/change history, §20.12 มี 15 ข้อด้าน point-by-point proof, §21.11 มี 15 ข้อด้าน function disposition/comparison และ §22.7 มี 10 ข้อด้าน Docker isolation/port safety. AC กลุ่มนี้ป้องกันการประกาศว่า “พร้อม” ทั้งที่ function, caller, child point, input, owner, environment, Docker ownership, impact, rollback หรือ production evidence ยังไม่ครบ.
+Acceptance catalog v3.9 มี 210 AC: §14.14 มี 7 ข้อด้าน target stack, กลุ่มนี้ 20 ข้อด้าน readiness/assurance, §18.12 มี 20 ข้อด้าน process control, §19.11 มี 16 ข้อด้าน root cause/change history, §20.12 มี 15 ข้อด้าน point-by-point proof, §21.11 มี 15 ข้อด้าน function disposition/comparison และ §22.7 มี 10 ข้อด้าน Docker isolation/port safety. AC กลุ่มนี้ป้องกันการประกาศว่า “พร้อม” ทั้งที่ function, caller, child point, input, owner, environment, Docker ownership, impact, rollback หรือ production evidence ยังไม่ครบ.
 
 | AC ID | เกณฑ์ผ่าน | หลักฐานขั้นต่ำ |
 |---|---|---|
@@ -1020,7 +1023,7 @@ Acceptance catalog v3.8 มี 210 AC: §14.14 มี 7 ข้อด้าน ta
 7. Source function/handler ทุกตัวของ slice มี Function ID, target/retirement disposition, before/after comparison และ independent verification; unknown/orphan = 0.
 8. Docker resource อยู่ใต้ project `samsonitetracking-ci4-migration`, published port ผ่าน preflight และ unrelated-project before/after diff = 0.
 9. Logging/metrics/runbook ไม่มี PII/secret เกินจำเป็น.
-10. Data/report/file/integration reconciliation 100%, unapproved difference = 0 และ business acceptance ผ่าน.
+10. UX/UI visual/interaction, data, report, file และ integration reconciliation 100%, unapproved difference = 0 และ business acceptance ผ่าน.
 11. Rollback route/schema compatibility ถูกยืนยัน.
 
 ## 15. Decision Log เริ่มต้น
@@ -1089,7 +1092,7 @@ Acceptance catalog v3.8 มี 210 AC: §14.14 มี 7 ข้อด้าน ta
 
 | ระดับ | คำที่อนุญาต | เงื่อนไข | สถานะปัจจุบัน |
 |---|---|---|---|
-| L0 | Document Complete | scope, architecture, roadmap, blockers, 210 AC, gates, rollback, point/function/Docker-proof contract ครบ | ผ่านหลัง v3.8 validation |
+| L0 | Document Complete | scope, architecture, roadmap, blockers, 210 AC, gates, rollback, point/function/Docker-proof contract ครบ | ผ่านหลัง v3.9 validation |
 | L1 | Ready to Implement | Gate 0–1D ผ่าน, baseline/database target/owner/security/environment inputs พร้อม | ยังไม่ผ่าน; ต้องปิด BLK ตาม §11 |
 | L2 | Ready to Cut Over | Gate 2–4 ผ่าน, CI4 implementation, 210 AC, verification point, function mapping และ Docker isolation ทั้งหมดผ่าน, rehearsal 2 รอบ, Go/No-Go ลงนาม | ยังไม่ผ่าน; target application ยังไม่ได้สร้าง |
 | L3 | Success Proven | production stabilization ผ่าน, reconciliation 100%, SLO ผ่าน, no blocking incident และ signed acceptance | ยังไม่ผ่าน; ประกาศได้หลัง production evidence เท่านั้น |
@@ -1185,7 +1188,7 @@ flowchart TD
 
 | Gate | Entry | Pass criteria | Mandatory evidence | เมื่อไม่ผ่าน |
 |---|---|---|---|---|
-| Gate 0 Plan freeze/containment | v3.8 validated | BLK-011/013/015/016 ปิด, scope/ADR/process/RCA/point/function/Docker-isolation charter/change control ลงนาม, secret rotation เริ่มมีผล | owner/capacity register, plan/process hash, point/function/Docker schema, containment/control record | หยุดใช้ provider/real data; ห้ามเริ่ม migration branch ที่พึ่ง secret เดิม |
+| Gate 0 Plan freeze/containment | v3.9 validated | BLK-011/013/015/016 ปิด, scope/ADR/process/RCA/point/function/Docker-isolation charter/change control ลงนาม, secret rotation เริ่มมีผล | owner/capacity register, plan/process hash, point/function/Docker schema, containment/control record | หยุดใช้ provider/real data; ห้ามเริ่ม migration branch ที่พึ่ง secret เดิม |
 | Gate 1 Reproducible baseline | Gate 0 pass | BLK-001–005/007/009/010 ปิด, CI3 baseline 3 รอบ deterministic, restore ผ่าน | schema/data/file fingerprints, fixtures, route/behavior/test catalogs, restore logs | ห้ามเริ่ม business slice; แก้ baseline ก่อน |
 | Gate 1D Database target | Gate 1 pass | exact MariaDB 11.4/utf8mb4/InnoDB contract, WP-00J–M, AC-STACK-004–007, CI3 target-DB parity, rehearsal 2 รอบ และ stabilization ผ่าน | stack/DB manifest, before/after inventory, conversion/reconciliation/rollback logs, signed stabilization | restore/rollback; CI3 คงใช้ before DB และห้ามเริ่ม route migration |
 | Gate 2 Target foundation | Gate 1D pass | BLK-006/008/012/014/015/017 ปิด, exact CI4/PHP/MySQLi/mysqlnd build, `public/`, CI checks, route/filter และ Docker isolation ผ่าน | image/lock/SBOM, stack/environment manifest, CI/control/routing logs, port/resource ownership และ non-interference evidence | ห้ามย้าย route; ห้ามแตะ owner ของ port; แก้ foundation หรือเลือก safe port ใหม่ |
@@ -1295,7 +1298,7 @@ Assurance ครอบ approved inventory, release artifact, environment manifes
 
 ### 17.11 Readiness verdict
 
-เอกสาร v3.8 อยู่ระดับ **L0 Document Complete** และพร้อมใช้เริ่ม Gate 0. สิ่งที่เหลือเป็น execution evidence จากคน/ระบบจริงตาม BLK-001–017 รวม exact collation, current DB baseline, target-stack rehearsal, Docker runtime isolation, point closure และ function before/after mapping ซึ่ง static repository สร้างแทนไม่ได้. เมื่อ evidence ครบ, Gate 1D ผ่าน, 210 AC, Docker/point/function reconciliation ทั้งหมดผ่าน, RCA/change history/rehearsal/rollback/stabilization ลงนาม จึงประกาศ **L3 Success Proven** ได้.
+เอกสาร v3.9 อยู่ระดับ **L0 Document Complete** และพร้อมใช้เริ่ม Gate 0. สิ่งที่เหลือเป็น execution evidence จากคน/ระบบจริงตาม BLK-001–017 รวม exact collation, current DB baseline, target-stack rehearsal, Docker runtime isolation, point closure และ function before/after mapping ซึ่ง static repository สร้างแทนไม่ได้. เมื่อ evidence ครบ, Gate 1D ผ่าน, 210 AC, Docker/point/function reconciliation ทั้งหมดผ่าน, RCA/change history/rehearsal/rollback/stabilization ลงนาม จึงประกาศ **L3 Success Proven** ได้.
 
 ## 18. Process Assurance System — รับประกันว่ากระบวนการไม่ถูกข้าม
 
@@ -1610,7 +1613,7 @@ Reset เป็น minimum; impact review อาจย้อนมากกว�
 
 ### 18.14 Process guarantee verdict
 
-เอกสาร v3.8 ปิด process-design gaps: authority, maker-checker, quorum, evidence validity, target-stack Gate 1D, Docker isolation, change/re-test, defect/RCA, point/function closure, discovery/retirement control, artifact promotion, environment drift, cutover control, handover, metrics และ audit closure. เมื่อ Gate 0 เปิดใช้งาน owner register, branch controls และ signed process/RCA/point/function/Docker-proof charter กระบวนการจะ fail closed และตรวจย้อนหลังได้.
+เอกสาร v3.9 ปิด process-design gaps: authority, maker-checker, quorum, evidence validity, target-stack Gate 1D, Docker isolation, UX/UI parity, change/re-test, defect/RCA, point/function closure, discovery/retirement control, artifact promotion, environment drift, cutover control, handover, metrics และ audit closure. เมื่อ Gate 0 เปิดใช้งาน owner register, branch controls และ signed process/RCA/point/function/Docker-proof charter กระบวนการจะ fail closed และตรวจย้อนหลังได้.
 
 สถานะปัจจุบันยังเป็น **Process Defined, Not Executed**. คำว่า “รับประกันกระบวนการสำเร็จ” ใช้ได้เมื่อ AC ทั้ง 210 ข้อ, AC-STACK, AC-PROC, AC-RCA, AC-EVD, AC-FNC และ AC-DKR ทุกข้อผ่าน 100%, point/function closure = 100%, Docker cross-project mutation = 0, gate bypass/self-approval/unproven cause/retirement/open discovery/orphan evidence/history gap = 0 และ Gate 5 ลงนาม; ก่อนหน้านั้นรับรองได้เฉพาะว่าแผนควบคุมครบ ไม่ใช่ว่าทีมได้ปฏิบัติครบแล้ว.
 
@@ -2167,7 +2170,7 @@ Point closure index ใช้คอลัมน์ขั้นต่ำ: Point I
 
 ### 20.15 Point-proof assurance verdict
 
-แผน v3.8 กำหนดวิธีพิสูจน์ความสำเร็จรายจุด/function, Docker isolation, before/after history, actual impact, alternative/non-code cause, retirement และงานที่ค้นพบนอก scope แบบ fail-closed แล้ว. Document validation ยืนยันได้เฉพาะว่า control ถูกนิยามและ cross-reference ครบ.
+แผน v3.9 กำหนดวิธีพิสูจน์ความสำเร็จรายจุด/function, Docker isolation, UX/UI parity, before/after history, actual impact, alternative/non-code cause, retirement และงานที่ค้นพบนอก scope แบบ fail-closed แล้ว. Document validation ยืนยันได้เฉพาะว่า control ถูกนิยามและ cross-reference ครบ.
 
 สถานะปัจจุบันคือ **Point/Function Proof System Defined, Execution Evidence Not Yet Produced**. จะประกาศ **L3 Success Proven** ได้เมื่อ registry จากระบบจริง freeze แล้ว, AC-EVD/AC-FNC/AC-DKR และ AC ทั้ง 210 ข้อผ่าน, point/function ทุกตัว P5/`CLOSED`, Docker cross-project mutation = 0, open discovery/unknown/unexpected/orphan/unproven-retirement/invalidated/history gap = 0 และ Gate 5 ลงนาม. ก่อนเงื่อนไขนี้ห้ามรับรองว่า CI4 ทำงานเหมือน CI3 100%.
 
@@ -2612,7 +2615,7 @@ Port, project name, Compose file, network, volume, bind source, Docker/OS versio
 - ไม่พบ migration, schema dump, seed หรือ automated test สำหรับยืนยัน runtime behavior
 - แผนนี้ไม่แก้ source code, schema หรือ credential
 - ADR ถูกกำหนดเป็น Baseline-locked หรือ Conditional แล้ว; business/data/operations input ยังต้องลงนามตาม blocker/gate
-- รายงาน v3.8 คง mandatory target stack/Gate 1D/point/function proof, เพิ่ม PC-17, BLK-017 และ AC-DKR 10 ข้อ รวมทั้งหมด 210 AC; AC เดิมไม่ถูกลดเกณฑ์
+- รายงาน v3.9 คง mandatory target stack/Gate 1D/point/function/Docker proof และ AC 210 ข้อ พร้อมเพิ่ม UX/UI parity contract โดยไม่เพิ่มหรือลด acceptance denominator
 - ประวัติ before/after ของการปรับเอกสารรอบนี้: [2026-08-09_ci3-to-ci4-upgrade-plan_work-history_v1.md](2026-08-09_ci3-to-ci4-upgrade-plan_work-history_v1.md)
 
 **Render**: GitHub / Obsidian / VS Code Mermaid
