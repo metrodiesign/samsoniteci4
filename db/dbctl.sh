@@ -26,12 +26,13 @@ fi
 RUNTIME_ROOT=$(cd -- "$RUNTIME_ROOT" && pwd -P)
 [ "$RUNTIME_ROOT" != / ] || { echo "FAIL: runtime root resolves to root" >&2; exit 2; }
 COMPOSE="$ROOT/compose.yaml"
-ENVFILE="$RUNTIME_ROOT/.env"
-EV="$RUNTIME_ROOT/evidence/db-foundation-001"
+ENVFILE="${DBCTL_ENV_FILE:-$RUNTIME_ROOT/.env}"
+EV="${DBCTL_EVIDENCE_DIR:-$RUNTIME_ROOT/evidence/db-foundation-001}"
 ISO="$EV/19-docker-isolation"
 BASE="$EV/01-baseline"
 MANIFEST="$EV/00-manifest"
-LOCK="$RUNTIME_ROOT/.dbctl.lock"
+# Env file identifies runtime owner. Worktrees sharing that runtime must share one lock.
+LOCK="${DBCTL_LOCK_DIR:-$(dirname "$ENVFILE")/.dbctl.lock}"
 
 # Fallback pool. 18404 and 18405-18419 are deliberately excluded: reserved as the web
 # port and its fallback range by port record PORT-CI4-LOCAL-001.
@@ -1092,8 +1093,11 @@ case "${1:-}" in
   web-up)    web_up ;;
   safe-preview-smoke) safe_preview_smoke ;;
   smoke)     smoke ;;
+  # Backward-compatible name from WP-00C. Route through the stricter empty-DB,
+  # zero-backup, loopback-only gate so this command cannot preserve real PII.
+  excel-preview-smoke) safe_preview_smoke ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|safe-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|safe-preview-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
 esac

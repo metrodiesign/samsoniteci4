@@ -103,6 +103,8 @@ preview_urls=$(printf '%s\n' "$safe_preview" \
   | grep -oE 'https?://[^"[:space:]]+' | sort -u)
 [ "$preview_urls" = 'http://127.0.0.1:$WEB_HOST_PORT' ] \
   || fail "safe preview URL allowlist changed"
+grep -Fxq '  excel-preview-smoke) safe_preview_smoke ;;' db/dbctl.sh \
+  || fail "legacy Excel preview command no longer uses the PII-safe gate"
 pass "safe preview route allowlist"
 
 disabled_tests=$(git grep -n -I -E '\.(only|skip)\(' -- '*.php' '*.js' '*.mjs' '*.ts' 2>/dev/null || true)
