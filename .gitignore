@@ -4,6 +4,8 @@
 
 # production dump ห้ามเข้า repo เด็ดขาด (PII)
 *.sql
+# Generated only after privacy-purge validates that it has DDL and zero data rows.
+!db/local-schema-only.sql
 
 # evidence และ lock เก็บ local เท่านั้น
 evidence/

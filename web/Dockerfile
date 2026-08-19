@@ -34,13 +34,15 @@ COPY --chown=www-data:www-data . /var/www/html/
 # config.php hardcodes the old server's session path, which every request touches because
 # autoload.php loads the session library.
 COPY --from=ws config/database.php /var/www/html/application/config/database.php
+COPY --from=ws config/outbound-messaging-deny.ini /usr/local/etc/php/conf.d/zz-outbound-messaging-deny.ini
 RUN set -eux; \
     sed -i \
       -e "s#^\$config\['sess_save_path'\].*#\$config['sess_save_path'] = '/var/www/html/application/sess/';#" \
       -e "s#^\$config\['log_threshold'\].*#\$config['log_threshold'] = 4;#" \
       /var/www/html/application/config/config.php; \
     grep -q "'/var/www/html/application/sess/'" /var/www/html/application/config/config.php; \
-    grep -q "log_threshold'\] = 4" /var/www/html/application/config/config.php
+    grep -q "log_threshold'\] = 4" /var/www/html/application/config/config.php; \
+    php -r '$required = array("mail", "mb_send_mail", "curl_exec", "curl_multi_exec", "fsockopen", "pfsockopen", "stream_socket_client", "popen", "proc_open", "exec", "shell_exec", "system", "passthru"); $disabled = array_map("trim", explode(",", ini_get("disable_functions"))); $missing = array_diff($required, $disabled); if ($missing) { fwrite(STDERR, "missing disabled function(s): ".implode(",", $missing).PHP_EOL); exit(1); } if (ini_get("allow_url_fopen")) { fwrite(STDERR, "allow_url_fopen must be Off".PHP_EOL); exit(1); } if (ini_get("sendmail_path") !== "/bin/false") { fwrite(STDERR, "sendmail_path must be /bin/false".PHP_EOL); exit(1); }'
 
 # Directories the app writes to at runtime. sess/ and uploads/ are gitignored upstream so
 # they are absent from the context; logs/ is created by CI_Log on every request regardless
@@ -60,7 +62,7 @@ RUN set -eux; \
 
 COPY --from=ws apache/ci3.conf /etc/apache2/sites-available/000-default.conf
 
-# Asserts Apache is serving. Application correctness is what the smoke suite is for, so this
-# deliberately does not depend on the database being reachable.
+# PID 1 is Apache in this image; a stopped server stops the container. Keep healthcheck free
+# of PHP networking functions because rehearsal policy disables every email/SMS socket path.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=6 \
-  CMD php -r '$f=@fsockopen("127.0.0.1", 80, $e, $s, 3); exit($f ? 0 : 1);'
+  CMD ["apache2ctl", "-t"]

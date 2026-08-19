@@ -49,13 +49,16 @@ Fixture สร้างใหม่ทุกครั้งด้วย Python s
 |---|---|
 | Order | `CI3/BASELINE/001` |
 | Name | `ผู้ทดสอบ CI3` |
-| Telephone | `0800000000` |
+| Telephone | `[REDACTED SYNTHETIC PLACEHOLDER]` |
 | Update date | `01/08/2026` |
 | Status | `สถานะทดสอบ` |
 | Received date | `31/07/2026` |
 | Price | `1234` |
 | Warranty | `IN` |
 | CMG | `CI3-CMG-001` |
+
+หมายเลข synthetic เดิมถูก redact จากเอกสารปัจจุบันเพื่อลดการเก็บข้อมูลที่มีรูปแบบเหมือนเบอร์โทรศัพท์;
+fixture hash ด้านบนยังเป็นค่าจากรอบ characterization เดิม
 
 ## Assertions
 
@@ -126,8 +129,11 @@ evidence/db-foundation-001/20-ci3-smoke/visual/excel-status-preview-1280x720.png
 ```bash
 DBCTL_ENV_FILE=/path/to/local/.env \
 DBCTL_EVIDENCE_DIR=/path/to/evidence/db-foundation-001 \
-./db/dbctl.sh excel-preview-smoke
+./db/dbctl.sh safe-preview-smoke
 ```
+
+ชื่อเดิม `excel-preview-smoke` ยังคงใช้ได้ แต่จะเรียก safety gate เดียวกันเพื่อบังคับฐานข้อมูลว่าง,
+backup ว่าง, loopback-only และปิด outbound email/SMS ก่อนทดสอบ
 
 ## ช่องว่างที่เหลือ
 
