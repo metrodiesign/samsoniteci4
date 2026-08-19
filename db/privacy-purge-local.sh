@@ -64,9 +64,7 @@ LOCK="$RUNTIME_ROOT/.dbctl.lock"
 [[ -f "$ENVFILE" ]] \
   || die "missing $ENVFILE; pass --runtime-root for the dedicated runtime worktree"
 
-set -a
 . "$ENVFILE"
-set +a
 
 : "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}"
 : "${MARIADB_DATABASE:?MARIADB_DATABASE is required}"

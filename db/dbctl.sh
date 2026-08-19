@@ -10,16 +10,28 @@
 #   - Port conflict means pick another free port, never touch the port's owner.
 #
 set -Eeuo pipefail
+umask 077
 
 PROJECT=samsonitetracking-ci4-migration
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+RUNTIME_ROOT="$ROOT"
+if [ "${1:-}" = "--runtime-root" ]; then
+  [ -n "${2:-}" ] || { echo "FAIL: --runtime-root requires an absolute path" >&2; exit 2; }
+  RUNTIME_ROOT=$2
+  shift 2
+fi
+[ "${RUNTIME_ROOT#/}" != "$RUNTIME_ROOT" ] \
+  || { echo "FAIL: runtime root must be absolute" >&2; exit 2; }
+[ -d "$RUNTIME_ROOT" ] || { echo "FAIL: runtime root not found: $RUNTIME_ROOT" >&2; exit 2; }
+RUNTIME_ROOT=$(cd -- "$RUNTIME_ROOT" && pwd -P)
+[ "$RUNTIME_ROOT" != / ] || { echo "FAIL: runtime root resolves to root" >&2; exit 2; }
 COMPOSE="$ROOT/compose.yaml"
-ENVFILE="$ROOT/.env"
-EV="$ROOT/evidence/db-foundation-001"
+ENVFILE="$RUNTIME_ROOT/.env"
+EV="$RUNTIME_ROOT/evidence/db-foundation-001"
 ISO="$EV/19-docker-isolation"
 BASE="$EV/01-baseline"
 MANIFEST="$EV/00-manifest"
-LOCK="$ROOT/.dbctl.lock"
+LOCK="$RUNTIME_ROOT/.dbctl.lock"
 
 # Fallback pool. 18404 and 18405-18419 are deliberately excluded: reserved as the web
 # port and its fallback range by port record PORT-CI4-LOCAL-001.
@@ -35,7 +47,7 @@ samsonitetracking_uploadstaus_001.sql
 "
 
 [ -f "$ENVFILE" ] || { echo "missing $ENVFILE (copy .env.example)"; exit 2; }
-set -a; . "$ENVFILE"; set +a
+. "$ENVFILE"
 DB=${MARIADB_DATABASE:?}
 DUMP_DIR=${DUMP_DIR:?}
 
@@ -55,7 +67,7 @@ lock() {
 }
 
 # Single choke point for docker. Always scoped to this project and this compose file.
-dc() { docker compose -p "$PROJECT" -f "$COMPOSE" "$@"; }
+dc() { docker compose --env-file "$ENVFILE" -p "$PROJECT" -f "$COMPOSE" "$@"; }
 
 sql() {
   dc exec -T -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db \
@@ -152,7 +164,14 @@ preflight() {
     [ "$owner" = "$PROJECT" ] || die "network $r is owned by '$owner', not this project"
   done
 
-  dc config > "$ISO/rendered-config.yaml"
+  dc config | /usr/bin/sed -E \
+    's/^([[:space:]]*[A-Z0-9_]*(PASSWORD|TOKEN|SECRET|API_KEY)[A-Z0-9_]*:).*/\1 "[REDACTED]"/' \
+    > "$ISO/rendered-config.yaml"
+  local secret_fields
+  secret_fields=$(grep -E \
+    '^[[:space:]]*[A-Z0-9_]*(PASSWORD|TOKEN|SECRET|API_KEY)[A-Z0-9_]*:' \
+    "$ISO/rendered-config.yaml" | grep -vc '"\[REDACTED\]"' || true)
+  [ "$secret_fields" = 0 ] || die "rendered config contains an unredacted secret field"
   local bad
   bad=$(grep -cE 'container_name|privileged|network_mode|^ *pid:|^ *ipc:|docker\.sock|external: true|type: bind' \
         "$ISO/rendered-config.yaml" || true)
@@ -459,7 +478,8 @@ web_up() {
 hs() {
   local label=$1 want=$2 path=$3; shift 3
   local got
-  got=$(curl -s -o "$SMOKE_BODY" -w '%{http_code}' --max-time 30 "$@" "$WEB_BASE$path")
+  got=$(curl --disable --noproxy '*' -s -o "$SMOKE_BODY" -w '%{http_code}' \
+             --max-time 30 "$@" "$WEB_BASE$path")
   if [ "$got" = "$want" ]; then echo "PASS $label ($got)"; else echo "FAIL $label: want $want got $got  [$path]"; return 1; fi
 }
 body_has() {
@@ -469,6 +489,348 @@ body_has() {
 body_lacks() {
   local label=$1 needle=$2
   if grep -q -- "$needle" "$SMOKE_BODY"; then echo "FAIL $label: body contains '$needle'"; return 1; else echo "PASS $label"; fi
+}
+
+database_row_count() {
+  local table rows total=0 tables
+  tables=$(sqldb -e "SELECT TABLE_NAME FROM information_schema.TABLES
+                     WHERE TABLE_SCHEMA='$DB' AND TABLE_TYPE='BASE TABLE'
+                     ORDER BY TABLE_NAME;")
+  while IFS= read -r table; do
+    [ -n "$table" ] || continue
+    case "$table" in *[!A-Za-z0-9_]*) die "unsafe table name from information_schema: $table" ;; esac
+    rows=$(sqldb -e "SELECT COUNT(*) FROM \`$table\`;")
+    case "$rows" in ''|*[!0-9]*) die "invalid row count for $table" ;; esac
+    total=$((total + rows))
+  done <<< "$tables"
+  echo "$total"
+}
+
+assert_outbound_messaging_denied() {
+  dc exec -T web php -r '
+    $required = array(
+      "mail", "mb_send_mail", "curl_exec", "curl_multi_exec", "fsockopen",
+      "pfsockopen", "stream_socket_client", "popen", "proc_open", "exec",
+      "shell_exec", "system", "passthru"
+    );
+    $disabled = array_map("trim", explode(",", ini_get("disable_functions")));
+    $missing = array_diff($required, $disabled);
+    if ($missing || ini_get("allow_url_fopen") || ini_get("sendmail_path") !== "/bin/false") {
+      fwrite(STDERR, "outbound messaging deny policy is incomplete".PHP_EOL);
+      exit(1);
+    }
+  '
+}
+
+make_synthetic_preview_fixture() {
+  local target=$1 order_id=$2 cmg=$3
+  python3 - "$target" "$order_id" "$cmg" <<'PY'
+import sys
+import zipfile
+from xml.sax.saxutils import escape
+
+target, order_id, cmg = sys.argv[1:]
+rows = [
+    ["Order", "Name", "Telephone", "Update", "Status", "Received", "Price", "Warranty", "CMG"],
+    [order_id, "SYNTHETIC CUSTOMER - NOT REAL", "0000000000", "01/08/2026",
+     "SYNTHETIC STATUS", "31/07/2026", "1234", "IN", cmg],
+]
+
+def column(number):
+    result = ""
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+sheet_rows = []
+for row_number, values in enumerate(rows, 1):
+    cells = []
+    for column_number, value in enumerate(values, 1):
+        reference = f"{column(column_number)}{row_number}"
+        cells.append(f'<c r="{reference}" t="inlineStr"><is><t>{escape(value)}</t></is></c>')
+    sheet_rows.append(f'<row r="{row_number}">{"".join(cells)}</row>')
+
+parts = {
+    "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""",
+    "_rels/.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""",
+    "xl/workbook.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Preview" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+    "xl/_rels/workbook.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+    "xl/worksheets/sheet1.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>{''.join(sheet_rows)}</sheetData>
+</worksheet>""",
+}
+
+with zipfile.ZipFile(target, "w") as workbook:
+    for name in sorted(parts):
+        info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o600 << 16
+        workbook.writestr(info, parts[name].encode("utf-8"))
+PY
+}
+
+SAFE_PREVIEW_ARMED=0
+SAFE_PREVIEW_WEB=0
+SAFE_PREVIEW_BODY=""
+SAFE_PREVIEW_JAR=""
+SAFE_PREVIEW_EXISTING=""
+SAFE_PREVIEW_NEW=""
+
+safe_preview_cleanup() {
+  local rc=$? post_rows cleanup_rc=0
+  trap - EXIT
+  set +e
+
+  if [ "$SAFE_PREVIEW_ARMED" = 1 ]; then
+    sqldb -e "
+      DELETE FROM tbl_last_login
+        WHERE userId IN (SELECT userId FROM tbl_users
+                         WHERE username='synthetic-preview'
+                           AND email='synthetic-preview@example.invalid');
+      DELETE FROM uploadstaus
+        WHERE Telephone='0000000000'
+          AND Listname='SYNTHETIC CUSTOMER - NOT REAL';
+      DELETE FROM status_log
+        WHERE order_id LIKE 'SYNTHETIC-%'
+           OR order_id IN (SELECT trackID FROM request_order
+                           WHERE customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                             AND customerTel='0000000000');
+      DELETE FROM temp_updatestatus_order
+        WHERE temp_orderIDShow IN ('SYN/0001','SYN/NEW-001')
+          AND temp_customerTel='0000000000';
+      DELETE FROM temp_updatestatus_price_order
+        WHERE temp_number_cmg IN ('SYNTHETIC-CMG-001','SYNTHETIC-CMG-NEW');
+      DELETE FROM temp_updatestatus_neworder
+        WHERE temp_orderIDShow IN ('SYN/0001','SYN/NEW-001')
+          AND temp_customerTel='0000000000';
+      DELETE FROM request_order
+        WHERE customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+          AND customerTel='0000000000';
+      DELETE FROM tbl_users
+        WHERE username='synthetic-preview'
+          AND email='synthetic-preview@example.invalid';
+      DELETE FROM branch
+        WHERE branch_id=1 AND branch_name='SYNTHETIC BRANCH - NOT REAL';
+      DELETE FROM tbl_roles
+        WHERE roleId=1 AND role='SYNTHETIC PREVIEW';
+    " || cleanup_rc=1
+  fi
+
+  if [ "$SAFE_PREVIEW_WEB" = 1 ]; then
+    dc logs web > "$BASE/safe-preview-web.log" 2>&1 || true
+    dc stop web >/dev/null 2>&1 || cleanup_rc=1
+    dc rm -f web >/dev/null 2>&1 || cleanup_rc=1
+  fi
+
+  [ -z "$SAFE_PREVIEW_BODY" ] || rm -f -- "$SAFE_PREVIEW_BODY"
+  [ -z "$SAFE_PREVIEW_JAR" ] || rm -f -- "$SAFE_PREVIEW_JAR"
+  [ -z "$SAFE_PREVIEW_EXISTING" ] || rm -f -- "$SAFE_PREVIEW_EXISTING"
+  [ -z "$SAFE_PREVIEW_NEW" ] || rm -f -- "$SAFE_PREVIEW_NEW"
+
+  if [ "$SAFE_PREVIEW_ARMED" = 1 ]; then
+    post_rows=$(database_row_count) || cleanup_rc=1
+    if [ "${post_rows:-invalid}" = 0 ]; then
+      note "PASS cleanup: database rows=0"
+    else
+      echo "FAIL cleanup: database rows=${post_rows:-unknown}" >&2
+      cleanup_rc=1
+    fi
+  fi
+  [ "$cleanup_rc" = 0 ] || rc=1
+  rmdir "$LOCK" 2>/dev/null || true
+  exit "$rc"
+}
+
+safe_preview_smoke() {
+  lock
+  local rc=0 temp_pw hash hash_hex got mapped started_at logs source_uploads backup_files
+  local docker_context docker_endpoint
+  : "${CI3_REPO:?CI3_SOURCE_ROOT is required}" "${CI3_WEB_IMAGE:?}"
+  [ "${COMPOSE_PROJECT_NAME:-}" = "$PROJECT" ] \
+    || die "COMPOSE_PROJECT_NAME must be $PROJECT"
+  case "$DB" in ''|*[!A-Za-z0-9_]*) die "MARIADB_DATABASE contains unsafe characters" ;; esac
+  case "${WEB_HOST_PORT:-}" in ''|*[!0-9]*) die "WEB_HOST_PORT must be numeric" ;; esac
+  [ "$WEB_HOST_PORT" -ge 1 ] && [ "$WEB_HOST_PORT" -le 65535 ] \
+    || die "WEB_HOST_PORT must be between 1 and 65535"
+  [ "$WEB_BASE" = "http://127.0.0.1:$WEB_HOST_PORT" ] \
+    || die "web base must resolve to loopback"
+  docker_context=$(docker context show)
+  docker_endpoint=${DOCKER_HOST:-$(docker context inspect "$docker_context" \
+    --format '{{.Endpoints.docker.Host}}')}
+  case "$docker_endpoint" in unix://*) ;; *) die "Docker endpoint is not a local Unix socket" ;; esac
+  docker info >/dev/null 2>&1 || die "Docker is unavailable"
+  [ -z "$(dc ps -aq web)" ] \
+    || die "web container already exists; stop and inspect it before safe preview smoke"
+  dc up -d --wait db
+  ck "P0 schema table count" "31" \
+    "$(sqldb -e "SELECT COUNT(*) FROM information_schema.TABLES
+                   WHERE TABLE_SCHEMA='$DB' AND TABLE_TYPE='BASE TABLE';")" || return 1
+  ck "P0 database starts empty" "0" "$(database_row_count)" || return 1
+  backup_files=$(dc exec -T db sh -c 'find /backup -type f -print | wc -l' | tr -d '[:space:]')
+  ck "P0 backup volume starts empty" "0" "$backup_files" || return 1
+  source_uploads=0
+  for path in "$CI3_REPO/uploads" "$CI3_REPO/demo/uploads"; do
+    [ ! -d "$path" ] || source_uploads=$((source_uploads + $(find -P "$path" -type f -print | wc -l | tr -d ' ')))
+  done
+  ck "P0 CI3 source uploads empty" "0" "$source_uploads" || return 1
+
+  web_build
+  SAFE_PREVIEW_WEB=1
+  trap safe_preview_cleanup EXIT
+  dc up -d --wait db web
+  mapped=$(dc port web 80)
+  [ "$mapped" = "127.0.0.1:$WEB_HOST_PORT" ] || die "web port map is '$mapped'"
+  assert_outbound_messaging_denied || die "outbound messaging deny policy is not active"
+  note "PASS outbound email/SMS transports disabled"
+  ck "P0 database remains empty before synthetic seed" "0" "$(database_row_count)" \
+    || die "database changed during build; refusing to seed"
+
+  SAFE_PREVIEW_BODY=$(mktemp -t ci3-safe-preview-body)
+  SAFE_PREVIEW_JAR=$(mktemp -t ci3-safe-preview-cookie)
+  SAFE_PREVIEW_EXISTING=$(mktemp -t ci3-safe-preview-existing)
+  SAFE_PREVIEW_NEW=$(mktemp -t ci3-safe-preview-new)
+  SMOKE_BODY=$SAFE_PREVIEW_BODY
+  make_synthetic_preview_fixture "$SAFE_PREVIEW_EXISTING" "SYN/0001" "SYNTHETIC-CMG-001"
+  make_synthetic_preview_fixture "$SAFE_PREVIEW_NEW" "SYN/NEW-001" "SYNTHETIC-CMG-NEW"
+
+  SAFE_PREVIEW_ARMED=1
+  temp_pw=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  [ "${#temp_pw}" = 32 ] || die "failed to generate temporary password"
+  hash=$(printf '%s' "$temp_pw" \
+    | dc exec -T web php -r '$p = stream_get_contents(STDIN); echo password_hash($p, PASSWORD_BCRYPT);')
+  [ -n "$hash" ] || die "failed to generate temporary password hash"
+  hash_hex=$(printf '%s' "$hash" | od -An -v -tx1 | tr -d ' \n')
+
+  sqldb -e "
+    INSERT INTO tbl_roles (roleId,role) VALUES (1,'SYNTHETIC PREVIEW');
+    INSERT INTO branch
+      (branch_id,branch_type,branch_user_name,branch_name,branch_details,
+       default_suffix,book_order,customer_ref,cdate)
+    VALUES
+      (1,1,'synthetic-preview','SYNTHETIC BRANCH - NOT REAL','SYNTHETIC ONLY',
+       'SYN','SYN','SYNTHETIC','2026-08-19 00:00:00');
+    INSERT INTO tbl_users
+      (email,username,password,name,mobile,group_id,roleId,branch_id,branch_type_id,
+       isDeleted,createdBy,createdDtm)
+    VALUES
+      ('synthetic-preview@example.invalid','synthetic-preview',UNHEX('$hash_hex'),
+       'SYNTHETIC OPERATOR - NOT REAL','0000000000',4,1,1,NULL,0,0,
+       '2026-08-19 00:00:00');
+    INSERT INTO request_order
+      (requestDate,trackID,numberID,orderID,orderIDShow,waranty_cmg,
+       customerFullname,customerTel,branchID,action_status,RepairPrice,number_cmg,date_create)
+    VALUES
+      ('2026-07-31 00:00:00','SYNTHETIC-TRACK-001','SYNTHETIC-001','SYN0001',
+       'SYN/0001','IN','SYNTHETIC CUSTOMER - NOT REAL','0000000000',1,2,
+       1234.00,'SYNTHETIC-CMG-001','2026-07-31 00:00:00');
+  "
+  ck "P1 synthetic operator" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE username='synthetic-preview'
+                   AND email LIKE '%@example.invalid';")" || rc=1
+  ck "P1 synthetic order" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE trackID='SYNTHETIC-TRACK-001' AND customerTel='0000000000';")" || rc=1
+  [ "$rc" = 0 ] || return "$rc"
+
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf 'username=synthetic-preview&password=%s' "$temp_pw" \
+    | curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+        -c "$SAFE_PREVIEW_JAR" -b "$SAFE_PREVIEW_JAR" \
+        --max-time 30 --data-binary @- "$WEB_BASE/loginMe"
+  temp_pw=""
+  hs "P2 login session reaches Status listing" 200 "/UploadexcelListing" \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" || rc=1
+  body_has "P2 Status upload form" "ExcelDataAdd" || rc=1
+  body_lacks "P2 not returned to login" 'name="password"' || rc=1
+
+  got=$(curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 60 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    -F "file=@$SAFE_PREVIEW_EXISTING;filename=synthetic-status.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+    "$WEB_BASE/ExcelDataAdd")
+  ck "P3 Status preview HTTP" "200" "$got" || rc=1
+  body_has "P3 Status preview rendered" "Data Upload file Management" || rc=1
+  body_has "P3 Status preview synthetic row" "SYNTHETIC CUSTOMER - NOT REAL" || rc=1
+  body_has "P3 Status preview valid" "ข้อมูลถูกต้อง กรุณากด Comfirm เพื่ออัพโหลดสถานะ" || rc=1
+  ck "P3 Status temp row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_order
+                   WHERE temp_orderIDShow='SYN/0001' AND temp_customerTel='0000000000';")" || rc=1
+
+  got=$(curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 60 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    -F "file=@$SAFE_PREVIEW_EXISTING;filename=synthetic-price.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+    "$WEB_BASE/ExcelPriceDataAdd")
+  ck "P4 Price preview HTTP" "200" "$got" || rc=1
+  body_has "P4 Price preview rendered" "Data Upload file Price Management" || rc=1
+  body_has "P4 Price preview valid" "ข้อมูลถูกต้อง กรุณากด Comfirm เพื่ออัพโหลดราคา" || rc=1
+  ck "P4 Price temp row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_price_order
+                   WHERE temp_number_cmg='SYNTHETIC-CMG-001';")" || rc=1
+
+  got=$(curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 60 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    -F "file=@$SAFE_PREVIEW_NEW;filename=synthetic-new-order.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+    "$WEB_BASE/ExcelNewOrderDataAdd")
+  ck "P5 New Order preview HTTP" "200" "$got" || rc=1
+  body_has "P5 New Order preview rendered" "Data Upload New REQUEST file Management" || rc=1
+  body_has "P5 New Order preview synthetic row" "SYN/NEW-001" || rc=1
+  body_lacks "P5 New Order is not duplicate" "ซ้ำในระบบ" || rc=1
+  ck "P5 New Order temp row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_neworder
+                   WHERE temp_orderIDShow='SYN/NEW-001' AND temp_customerTel='0000000000';")" || rc=1
+
+  ck "P6 Confirm table untouched" "0" "$(sqldb -e 'SELECT COUNT(*) FROM uploadstaus;')" || rc=1
+  ck "P6 status log untouched" "0" "$(sqldb -e 'SELECT COUNT(*) FROM status_log;')" || rc=1
+  ck "P6 no order created by New Order preview" "1" "$(sqldb -e 'SELECT COUNT(*) FROM request_order;')" || rc=1
+  ck "P6 no password-reset record" "0" "$(sqldb -e 'SELECT COUNT(*) FROM tbl_reset_password;')" || rc=1
+
+  logs=$(dc logs --since "$started_at" web 2>&1)
+  for route in ExcelDataAdd ExcelPriceDataAdd ExcelNewOrderDataAdd; do
+    if printf '%s\n' "$logs" | grep -q "POST /$route "; then
+      echo "PASS P7 $route request observed"
+    else
+      echo "FAIL P7 $route request missing from access log"
+      rc=1
+    fi
+  done
+  if printf '%s\n' "$logs" \
+       | grep -qiE 'POST /(ExcelConfirm|ExcelPriceConfirm|ExcelNewOrderConfirm|forgotPassword|resetPasswordUser)|PHPMailer|SMTP|send_?sms|curl_exec.*disabled'; then
+    echo "FAIL P7 confirm/email/SMS activity found in web log"
+    rc=1
+  else
+    echo "PASS P7 confirm calls=0 messaging calls=0"
+  fi
+  if printf '%s\n' "$logs" | grep -qiE 'PHP Fatal|Uncaught|A Database Error Occurred'; then
+    echo "FAIL P7 fatal/database error found in web log"
+    rc=1
+  else
+    echo "PASS P7 no fatal/database error"
+  fi
+
+  backup_files=$(dc exec -T db sh -c 'find /backup -type f -print | wc -l' | tr -d '[:space:]')
+  ck "P8 backup volume remains empty" "0" "$backup_files" || rc=1
+  [ "$rc" = 0 ] && note "SAFE SYNTHETIC PREVIEW SMOKE PASSED" \
+                    || note "SAFE SYNTHETIC PREVIEW SMOKE FAILED"
+  return "$rc"
 }
 
 smoke() {
@@ -510,7 +872,8 @@ smoke() {
 
   note "--- authenticated flow ---"
   # loginMe redirects to /dashboard on success and back to /login on failure.
-  curl -s -o "$SMOKE_BODY" -c "$SMOKE_JAR" -b "$SMOKE_JAR" --max-time 30 \
+  curl --disable --noproxy '*' -s -o "$SMOKE_BODY" \
+       -c "$SMOKE_JAR" -b "$SMOKE_JAR" --max-time 30 \
        -d "username=$username" -d "password=$temp_pw" "$WEB_BASE/loginMe" >/dev/null
   hs "S5 GET /dashboard after login" 200 "/dashboard" -b "$SMOKE_JAR" -c "$SMOKE_JAR" || rc=1
   body_lacks "S5 not bounced back to the login form" 'name="password"' || rc=1
@@ -519,12 +882,14 @@ smoke() {
   note "--- WP-00F deny tests ---"
   local d code
   for d in /application/config/config.php /system/core/CodeIgniter.php /SECRETS-LOCAL.md; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$WEB_BASE$d")
+    code=$(curl --disable --noproxy '*' -s -o /dev/null -w '%{http_code}' \
+                --max-time 15 "$WEB_BASE$d")
     if [ "$code" = 200 ]; then echo "FAIL S7 $d served with 200"; rc=1; else echo "PASS S7 $d denied ($code)"; fi
   done
   # tools/ never entered the image, so this must not return admin-tool content. It answers
   # 200 only because the app's 404 handler is broken - see the S7b note below.
-  curl -s -o "$SMOKE_BODY" --max-time 15 "$WEB_BASE/tools/pma/" >/dev/null
+  curl --disable --noproxy '*' -s -o "$SMOKE_BODY" \
+       --max-time 15 "$WEB_BASE/tools/pma/" >/dev/null
   body_lacks "S7 phpMyAdmin not served" "phpMyAdmin" || rc=1
 
   # Known legacy defect, not a migration regression: application/controllers/Error.php is
@@ -725,9 +1090,10 @@ case "${1:-}" in
   rehearsal) rehearsal ;;
   web-build) web_build ;;
   web-up)    web_up ;;
+  safe-preview-smoke) safe_preview_smoke ;;
   smoke)     smoke ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|safe-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
 esac

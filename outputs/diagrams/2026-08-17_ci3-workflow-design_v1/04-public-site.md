@@ -125,7 +125,7 @@ flowchart TD
     INSDB --> INSOK{insert_id > 0?}
     INSOK -->|no| RINS[flashdata error + redirect contact]
     RINS --> END_F2((◉))
-    INSOK -->|yes| MAIL["PHPMailer SMTP<br/>ส่งไป info.thailand@samsonite.com<br/>SetFrom = อีเมลที่ลูกค้ากรอก"]
+    INSOK -->|yes| MAIL["PHPMailer SMTP<br/>ส่งไป internal-recipient@example.invalid<br/>SetFrom = อีเมลที่ลูกค้ากรอก"]
     MAIL --> MOK{ส่งเมลสำเร็จ?}
     MOK -->|"exception"| RMAIL["flashdata error<br/>แต่ row contact ค้างใน DB<br/>(ไม่ rollback)"]
     RMAIL --> END_F3((◉))
