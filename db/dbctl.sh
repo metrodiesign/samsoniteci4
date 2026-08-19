@@ -14,12 +14,13 @@ set -Eeuo pipefail
 PROJECT=samsonitetracking-ci4-migration
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 COMPOSE="$ROOT/compose.yaml"
-ENVFILE="$ROOT/.env"
-EV="$ROOT/evidence/db-foundation-001"
+ENVFILE="${DBCTL_ENV_FILE:-$ROOT/.env}"
+EV="${DBCTL_EVIDENCE_DIR:-$ROOT/evidence/db-foundation-001}"
 ISO="$EV/19-docker-isolation"
 BASE="$EV/01-baseline"
 MANIFEST="$EV/00-manifest"
-LOCK="$ROOT/.dbctl.lock"
+# Env file identifies runtime owner. Worktrees sharing that runtime must share one lock.
+LOCK="${DBCTL_LOCK_DIR:-$(dirname "$ENVFILE")/.dbctl.lock}"
 
 # Fallback pool. 18404 and 18405-18419 are deliberately excluded: reserved as the web
 # port and its fallback range by port record PORT-CI4-LOCAL-001.
@@ -471,6 +472,291 @@ body_lacks() {
   if grep -q -- "$needle" "$SMOKE_BODY"; then echo "FAIL $label: body contains '$needle'"; return 1; else echo "PASS $label"; fi
 }
 
+make_excel_preview_fixture() {
+  local target=$1
+  python3 - "$target" <<'PY'
+import sys
+import zipfile
+from xml.sax.saxutils import escape
+
+target = sys.argv[1]
+rows = [
+    ["Order", "Name", "Telephone", "Update", "Status", "Received", "Price", "Warranty", "CMG"],
+    ["CI3/BASELINE/001", "ผู้ทดสอบ CI3", "0800000000", "01/08/2026", "สถานะทดสอบ", "31/07/2026", "1234", "IN", "CI3-CMG-001"],
+]
+
+def column(number):
+    result = ""
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+sheet_rows = []
+for row_number, values in enumerate(rows, 1):
+    cells = []
+    for column_number, value in enumerate(values, 1):
+        reference = f"{column(column_number)}{row_number}"
+        cells.append(f'<c r="{reference}" t="inlineStr"><is><t>{escape(value)}</t></is></c>')
+    sheet_rows.append(f'<row r="{row_number}">{"".join(cells)}</row>')
+
+parts = {
+    "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""",
+    "_rels/.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""",
+    "xl/workbook.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Preview" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+    "xl/_rels/workbook.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+    "xl/worksheets/sheet1.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>{''.join(sheet_rows)}</sheetData>
+</worksheet>""",
+}
+
+with zipfile.ZipFile(target, "w") as workbook:
+    for name in sorted(parts):
+        info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o600 << 16
+        workbook.writestr(info, parts[name].encode("utf-8"))
+PY
+}
+
+EXCEL_RESTORE_ID=""
+EXCEL_BODY=""
+EXCEL_JAR=""
+EXCEL_FIXTURE=""
+EXCEL_BEFORE_FILES=""
+EXCEL_AFTER_FILES=""
+EXCEL_FILE_SNAPSHOT_READY=0
+EXCEL_SYNTHETIC_USER_ID=""
+
+excel_preview_cleanup() {
+  local rc=$? file restore_rc=0
+  trap - EXIT
+  set +e
+
+  if [ "$EXCEL_FILE_SNAPSHOT_READY" = 1 ] && [ -n "$EXCEL_BEFORE_FILES" ] && [ -f "$EXCEL_BEFORE_FILES" ]; then
+    dc exec -T web find /var/www/html/uploads/excel -maxdepth 1 -type f -printf '%f\n' \
+      | sort > "$EXCEL_AFTER_FILES"
+    while IFS= read -r file; do
+      case "$file" in
+        ""|.|..|*/*) rc=1 ;;
+        *) dc exec -T web rm -f -- "/var/www/html/uploads/excel/$file" || rc=1 ;;
+      esac
+    done < <(comm -13 "$EXCEL_BEFORE_FILES" "$EXCEL_AFTER_FILES")
+  fi
+
+  if [ -n "$EXCEL_RESTORE_ID" ]; then
+    note "restoring pre-preview database state after interrupted run"
+    restore "$EXCEL_RESTORE_ID" || restore_rc=1
+    [ "$restore_rc" = 0 ] || rc=1
+  fi
+
+  if [ -n "$EXCEL_SYNTHETIC_USER_ID" ]; then
+    sqldb -e "DELETE FROM tbl_last_login WHERE userId=$EXCEL_SYNTHETIC_USER_ID;
+              DELETE FROM tbl_users WHERE userId=$EXCEL_SYNTHETIC_USER_ID
+                AND username='ci3-baseline-operator';
+              DELETE FROM request_order WHERE trackID='CI3-BASELINE-TRACK';
+              DELETE FROM temp_updatestatus_order WHERE temp_orderIDShow='CI3/BASELINE/001';" || rc=1
+  fi
+
+  [ -z "$EXCEL_BODY" ] || rm -f -- "$EXCEL_BODY"
+  [ -z "$EXCEL_JAR" ] || rm -f -- "$EXCEL_JAR"
+  [ -z "$EXCEL_FIXTURE" ] || rm -f -- "$EXCEL_FIXTURE"
+  [ -z "$EXCEL_BEFORE_FILES" ] || rm -f -- "$EXCEL_BEFORE_FILES"
+  [ -z "$EXCEL_AFTER_FILES" ] || rm -f -- "$EXCEL_AFTER_FILES"
+  rmdir "$LOCK" 2>/dev/null || true
+  exit "$rc"
+}
+
+excel_preview_smoke() {
+  lock
+  local rc=0 id user_id username temp_pw hash got new_files repo_before repo_after started_at logs
+  local fixture_hash evidence_dir evidence_file file
+  : "${CI3_REPO:?CI3_SOURCE_ROOT is required}"
+
+  trap excel_preview_cleanup EXIT
+  EXCEL_BODY=$(mktemp)
+  EXCEL_JAR=$(mktemp)
+  EXCEL_FIXTURE=$(mktemp -t ci3-excel-preview)
+  mv "$EXCEL_FIXTURE" "$EXCEL_FIXTURE.xlsx"
+  EXCEL_FIXTURE="$EXCEL_FIXTURE.xlsx"
+  EXCEL_BEFORE_FILES=$(mktemp)
+  EXCEL_AFTER_FILES=$(mktemp)
+  SMOKE_BODY=$EXCEL_BODY
+
+  repo_before=$(ci3_repo_state)
+  [ "${repo_before##* }" = 0 ] || die "CI3 repo is dirty before Excel preview smoke"
+
+  dc exec -T web find /var/www/html/uploads/excel -maxdepth 1 -type f -printf '%f\n' \
+    | sort > "$EXCEL_BEFORE_FILES"
+  EXCEL_FILE_SNAPSHOT_READY=1
+  ck "X1 upload directory empty before setup" "0" \
+     "$(sed '/^$/d' "$EXCEL_BEFORE_FILES" | wc -l | tr -d ' ')" || rc=1
+
+  # Hard safety boundary: preview endpoints only. Never call confirm, email, SMS, contact,
+  # password-reset, notification, or provider paths from this characterization.
+  if awk '/ExcelDataAdd[[:space:]]*\(/{on=1} /ExcelConfirm[[:space:]]*\(/{if(on) exit} on' \
+       "$CI3_REPO/application/controllers/Upload_excel.php" \
+       | grep -qiE 'PHPMailer|->Send[[:space:]]*\(|send_?sms|cias_helper|mail[[:space:]]*\('; then
+    echo "FAIL X2 ExcelDataAdd contains a messaging call; refusing to run"
+    rc=1
+  else
+    echo "PASS X2 ExcelDataAdd contains no email/SMS call"
+  fi
+  [ "$rc" = 0 ] || return "$rc"
+
+  note "taking restore point for preview-only Excel characterization"
+  id=$(backup "pre-excel-preview-$$" | tail -1)
+  EXCEL_RESTORE_ID=$id
+
+  username="ci3-baseline-operator"
+  temp_pw="excel-preview-$(date +%s)-$$"
+  hash=$(dc exec -T web php -r 'echo password_hash($argv[1], PASSWORD_BCRYPT);' "$temp_pw")
+  [ -n "$hash" ] || die "failed to generate preview password hash"
+
+  ck "X1 synthetic operator absent before setup" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE username='$username';")" || rc=1
+  ck "X1 synthetic order absent before setup" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID='CI3-BASELINE-TRACK';")" || rc=1
+  [ "$rc" = 0 ] || return "$rc"
+
+  user_id=$(sqldb -e "INSERT INTO tbl_users
+      (email,username,password,name,mobile,group_id,roleId,branch_id,branch_type_id,
+       isDeleted,createdBy,createdDtm)
+    SELECT 'ci3-baseline@example.invalid','$username','$hash','CI3 BASELINE OPERATOR',
+           '0800000000',1,1,branch_id,NULL,0,0,'2026-08-18 00:00:00'
+    FROM branch ORDER BY branch_id LIMIT 1;
+    SELECT LAST_INSERT_ID();")
+  case "$user_id" in
+    ""|*[!0-9]*) die "synthetic operator ID is not numeric" ;;
+  esac
+  [ "$user_id" -gt 0 ] || die "failed to create synthetic operator"
+  EXCEL_SYNTHETIC_USER_ID=$user_id
+  ck "X1 synthetic operator created" "1" \
+     "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE userId=$user_id AND username='$username';")" || rc=1
+
+  sqldb -e "INSERT INTO request_order
+      (requestDate,trackID,numberID,orderID,orderIDShow,waranty_cmg,customerFullname,
+       customerTel,branchID,action_status,RepairPrice,number_cmg,date_create)
+    SELECT '2026-07-31 00:00:00','CI3-BASELINE-TRACK','BASELINE-001','CI3BASELINE001',
+           'CI3/BASELINE/001','IN','ผู้ทดสอบ CI3','0800000000',branch_id,2,1234.00,
+           'CI3-CMG-001','2026-07-31 00:00:00'
+    FROM branch ORDER BY branch_id LIMIT 1;"
+  ck "X1 synthetic order created" "1" \
+     "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID='CI3-BASELINE-TRACK';")" || rc=1
+
+  make_excel_preview_fixture "$EXCEL_FIXTURE"
+  [ -s "$EXCEL_FIXTURE" ] || die "failed to create synthetic XLSX fixture"
+  fixture_hash=$(shasum -a 256 "$EXCEL_FIXTURE" | awk '{print $1}')
+  ck "X2 canonical fixture SHA-256" \
+     "eb105f22550a5a3d80a94e260a26cc6047b90d54edfa3fb5427ffddbf4bb4522" \
+     "$fixture_hash" || return 1
+
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  curl -sS -o /dev/null -c "$EXCEL_JAR" -b "$EXCEL_JAR" --max-time 30 \
+       -d "username=$username" -d "password=$temp_pw" "$WEB_BASE/loginMe"
+  hs "X3 GET upload listing after login" 200 "/UploadexcelListing" \
+     -b "$EXCEL_JAR" -c "$EXCEL_JAR" || rc=1
+  body_has "X3 upload form rendered" "Excel File:" || rc=1
+  body_lacks "X3 not bounced to login" 'name="password"' || rc=1
+
+  if got=$(curl -sS -o "$EXCEL_BODY" -w '%{http_code}' --max-time 60 \
+       -b "$EXCEL_JAR" -c "$EXCEL_JAR" \
+       -F "file=@$EXCEL_FIXTURE;filename=ci3-baseline.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+       "$WEB_BASE/ExcelDataAdd"); then
+    ck "X4 POST ExcelDataAdd status" "200" "$got" || rc=1
+  else
+    echo "FAIL X4 POST ExcelDataAdd request failed"
+    rc=1
+  fi
+  body_has "X4 preview page rendered" "Data Upload file Management" || rc=1
+  body_has "X4 synthetic Thai row preserved" "ผู้ทดสอบ CI3" || rc=1
+  body_has "X4 valid-preview message rendered" "ข้อมูลถูกต้อง กรุณากด Comfirm เพื่ออัพโหลดสถานะ" || rc=1
+  body_lacks "X4 no PHP fatal in response" "Fatal error" || rc=1
+
+  dc exec -T web find /var/www/html/uploads/excel -maxdepth 1 -type f -printf '%f\n' \
+    | sort > "$EXCEL_AFTER_FILES"
+  new_files=$(comm -13 "$EXCEL_BEFORE_FILES" "$EXCEL_AFTER_FILES" | sed '/^$/d' | wc -l | tr -d ' ')
+  ck "X5 exactly one uploaded fixture created" "1" "$new_files" || rc=1
+  ck "X5 preview temp row" "1" \
+     "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_order
+                    WHERE temp_orderIDShow='CI3/BASELINE/001'
+                      AND temp_customerFullname='ผู้ทดสอบ CI3'
+                      AND temp_customerTel='0800000000';")" || rc=1
+  ck "X5 confirm table untouched" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus WHERE tracking_id='CI3-BASELINE-TRACK';")" || rc=1
+  ck "X5 status log untouched" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM status_log WHERE order_id='CI3-BASELINE-TRACK';")" || rc=1
+
+  logs=$(dc logs --since "$started_at" web 2>&1)
+  if printf '%s\n' "$logs" | grep -qiE 'ExcelConfirm|ExcelPriceConfirm|ExcelNewOrderConfirm|resetPasswordUser|PHPMailer|SMTP|send_?sms'; then
+    echo "FAIL X6 confirm/email/SMS activity found in web log"
+    rc=1
+  else
+    echo "PASS X6 no confirm/email/SMS activity in web log"
+  fi
+  if printf '%s\n' "$logs" | grep -qiE 'PHP Fatal|Uncaught|A Database Error Occurred'; then
+    echo "FAIL X6 fatal/database error found in web log"
+    rc=1
+  else
+    echo "PASS X6 no fatal/database error in web log"
+  fi
+
+  note "restoring pre-preview database state"
+  restore "$EXCEL_RESTORE_ID"
+  EXCEL_RESTORE_ID=""
+  verify > "$BASE/excel-preview-postrestore-verify.txt" 2>&1 \
+    && echo "PASS X7 full verification passed after restore" \
+    || { tail -20 "$BASE/excel-preview-postrestore-verify.txt"; echo "FAIL X7 verification failed after restore"; rc=1; }
+  ck "X7 synthetic order removed by restore" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID='CI3-BASELINE-TRACK';")" || rc=1
+  ck "X7 synthetic operator removed by restore" "0" \
+     "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE username='$username';")" || rc=1
+  EXCEL_SYNTHETIC_USER_ID=""
+
+  while IFS= read -r file; do
+    case "$file" in
+      ""|.|..|*/*) rc=1 ;;
+      *) dc exec -T web rm -f -- "/var/www/html/uploads/excel/$file" || rc=1 ;;
+    esac
+  done < <(comm -13 "$EXCEL_BEFORE_FILES" "$EXCEL_AFTER_FILES")
+  dc exec -T web find /var/www/html/uploads/excel -maxdepth 1 -type f -printf '%f\n' \
+    | sort > "$EXCEL_AFTER_FILES"
+  ck "X7 upload directory restored" "0" \
+     "$(comm -13 "$EXCEL_BEFORE_FILES" "$EXCEL_AFTER_FILES" | sed '/^$/d' | wc -l | tr -d ' ')" || rc=1
+
+  repo_after=$(ci3_repo_state)
+  ck "X8 CI3 repo untouched" "$repo_before" "$repo_after" || rc=1
+
+  if [ "$rc" = 0 ]; then
+    evidence_dir="$EV/20-ci3-smoke"
+    evidence_file="$evidence_dir/excel-preview-runs.tsv"
+    mkdir -p "$evidence_dir"
+    [ -f "$evidence_file" ] || printf 'timestamp_utc\tcase_id\tci3_sha\tfixture_sha256\tresult\tconfirm_calls\tmessaging_calls\n' > "$evidence_file"
+    printf '%s\tXLS-PREVIEW-001\t%s\t%s\tPASS\t0\t0\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${repo_before%% *}" "$fixture_hash" >> "$evidence_file"
+    note "CI3 EXCEL PREVIEW CHARACTERIZATION PASSED"
+  else
+    note "CI3 EXCEL PREVIEW CHARACTERIZATION FAILED"
+  fi
+  return "$rc"
+}
+
 smoke() {
   lock
   local rc=0 id user_id username temp_pw hash track
@@ -726,8 +1012,9 @@ case "${1:-}" in
   web-build) web_build ;;
   web-up)    web_up ;;
   smoke)     smoke ;;
+  excel-preview-smoke) excel_preview_smoke ;;
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|smoke|excel-preview-smoke|reset|status|down>"; exit 2 ;;
 esac
