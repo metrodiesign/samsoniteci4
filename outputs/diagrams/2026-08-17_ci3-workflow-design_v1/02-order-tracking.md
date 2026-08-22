@@ -4,6 +4,8 @@
 > Scope: วงจรงานซ่อม (UC-02..UC-05) — สร้าง order, ส่งเข้า workflow, เปลี่ยนสถานะ, ส่งคืน/ปิดงาน, ลบ พร้อม mapping ไป CI4 (รายงานแยกอยู่ `06-reports.md`)
 > Generated: 2026-08-17
 
+> Update 2026-08-21: เนื้อหาด้านล่างเป็น historical baseline ของ CI3 pin `8dad4e3`. ข้อสรุป defect/retirement ของ `ReportTrackingListingTest` ถูก supersede โดย PR #3 ที่ pin `ee1c95e`. ใช้ `../../reference/2026-08-21_ci3-source-repin-pr3_v1.md` เป็น change overlay.
+
 ข้อเท็จจริงหลักที่คุมการออกแบบ CI4: **transition guard ทั้งหมดอยู่ที่ dropdown ใน view ไม่ใช่ backend** — endpoint รับ `status_id` อะไรก็ได้ และไม่มี method ไหนตรวจสถานะปัจจุบันก่อนเขียนทับ
 
 | § | Diagram | Source UC |

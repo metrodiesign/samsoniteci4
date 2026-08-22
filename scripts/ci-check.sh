@@ -18,6 +18,27 @@ if grep -Eiq '^[[:space:]]*(INSERT|REPLACE)[[:space:]]+INTO|^[[:space:]]*LOAD[[:
 fi
 pass "schema-only SQL: tables=31 data statements=0"
 
+python3 scripts/wp00c-kit.py validate-data >/dev/null
+python3 -m py_compile scripts/wp00c-route-auth.py
+for command in validate seed verify clean; do
+  grep -Fq "  wp00c-fixture-$command)" db/dbctl.sh \
+    || fail "WP-00C fixture command is missing: $command"
+done
+pass "WP-00C catalog and synthetic fixture kit"
+
+grep -Fq \
+  'WP00C_CURRENT_CI3_STATE="ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6 0"' \
+  db/dbctl.sh \
+  || fail "WP-00C cleanup current CI3 pin is stale"
+grep -Fq \
+  'WP00C_LEGACY_CI3_STATE="8dad4e331a90f5c6765954454910b451eb0ff8e5 0"' \
+  db/dbctl.sh \
+  || fail "WP-00C cleanup lost legacy fixture-state compatibility"
+if grep -Fq 'report-tracking-test-empty-status' web/Dockerfile; then
+  fail "Docker build still applies obsolete Report Tracking patch"
+fi
+pass "CI3 PR3 repin and obsolete-patch removal"
+
 tracked_sql=$(git ls-files '*.sql')
 [ "$tracked_sql" = "db/local-schema-only.sql" ] \
   || fail "unexpected tracked SQL file"
@@ -106,6 +127,61 @@ preview_urls=$(printf '%s\n' "$safe_preview" \
 grep -Fxq '  excel-preview-smoke) safe_preview_smoke ;;' db/dbctl.sh \
   || fail "legacy Excel preview command no longer uses the PII-safe gate"
 pass "safe preview route allowlist"
+
+safe_confirm=$(sed -n '/^safe_confirm_smoke()/,/^}/p' db/dbctl.sh)
+confirm_routes=$(printf '%s\n' "$safe_confirm" \
+  | grep -o '\$WEB_BASE/[A-Za-z0-9_-]*' | sort -u)
+expected_confirm_routes=$(printf '%s\n' \
+  '$WEB_BASE/ExcelConfirm' \
+  '$WEB_BASE/ExcelNewOrderConfirm' \
+  '$WEB_BASE/ExcelPriceConfirm')
+[ "$confirm_routes" = "$expected_confirm_routes" ] \
+  || fail "safe confirm HTTP route allowlist changed"
+printf '%s\n' "$safe_confirm" | grep -Fq 'safe_preview_smoke' \
+  || fail "safe confirm no longer reuses synthetic preview setup"
+printf '%s\n' "$safe_confirm" | grep -Fq 'assert_outbound_messaging_denied' \
+  || fail "safe confirm does not enforce outbound deny policy"
+if printf '%s\n' "$safe_confirm" \
+     | grep -qiE 'forgotPassword|resetPasswordUser|THAIBULK'; then
+  fail "safe confirm contains a messaging path"
+fi
+confirm_urls=$(printf '%s\n' "$safe_confirm" \
+  | grep -oE 'https?://[^"[:space:]]+' | sort -u || true)
+[ -z "$confirm_urls" ] || fail "safe confirm contains an external URL"
+grep -Fxq '  safe-confirm-smoke) safe_confirm_smoke ;;' db/dbctl.sh \
+  || fail "safe confirm command is not wired to its isolated gate"
+pass "safe confirm route and outbound allowlist"
+
+grep -Fxq '  safe-confirm-negative-smoke) safe_confirm_negative_smoke ;;' db/dbctl.sh \
+  || fail "safe confirm negative command is not wired to its isolated gate"
+safe_confirm_negative=$(sed -n '/^safe_confirm_negative_smoke()/,/^}/p' db/dbctl.sh)
+negative_routes=$(printf '%s\n' "$safe_confirm_negative" \
+  | grep -o '\$WEB_BASE/[A-Za-z0-9_-]*' | sort -u)
+expected_negative_routes=$(printf '%s\n' \
+  '$WEB_BASE/ExcelConfirm' \
+  '$WEB_BASE/ExcelNewOrderConfirm' \
+  '$WEB_BASE/ExcelNewOrderDataAdd' \
+  '$WEB_BASE/ExcelPriceConfirm' \
+  '$WEB_BASE/loginMe')
+[ "$negative_routes" = "$expected_negative_routes" ] \
+  || fail "safe confirm negative HTTP route allowlist changed"
+printf '%s\n' "$safe_confirm_negative" | grep -Fq 'safe_preview_smoke' \
+  || fail "safe confirm negative no longer reuses synthetic preview setup"
+printf '%s\n' "$safe_confirm_negative" | grep -Fq 'assert_outbound_messaging_denied' \
+  || fail "safe confirm negative does not enforce outbound deny policy"
+if printf '%s\n' "$safe_confirm_negative" \
+     | grep -qiE 'forgotPassword|resetPasswordUser|THAIBULK'; then
+  fail "safe confirm negative contains a messaging path"
+fi
+negative_urls=$(printf '%s\n' "$safe_confirm_negative" \
+  | grep -oE 'https?://[^"[:space:]]+' | sort -u || true)
+[ -z "$negative_urls" ] || fail "safe confirm negative contains an external URL"
+printf '%s\n' "$safe_confirm_negative" | grep -Fq 'CSRF token absent from preview form' \
+  || fail "safe confirm negative does not characterize missing CSRF protection"
+printf '%s\n' "$safe_confirm_negative" \
+  | grep -Fq 'two-user overlapping-session isolation defect reproduced' \
+  || fail "safe confirm negative does not characterize two-user batch isolation"
+pass "safe confirm negative route and outbound allowlist"
 
 disabled_tests=$(git grep -n -I -E '\.(only|skip)\(' -- '*.php' '*.js' '*.mjs' '*.ts' 2>/dev/null || true)
 [ -z "$disabled_tests" ] || fail "committed test contains .only or .skip"

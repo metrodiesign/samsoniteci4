@@ -500,7 +500,8 @@ database_row_count() {
   while IFS= read -r table; do
     [ -n "$table" ] || continue
     case "$table" in *[!A-Za-z0-9_]*) die "unsafe table name from information_schema: $table" ;; esac
-    rows=$(sqldb -e "SELECT COUNT(*) FROM \`$table\`;")
+    # mariadb reads stdin even with -e; isolate it or it consumes the remaining loop input.
+    rows=$(sqldb -e "SELECT COUNT(*) FROM \`$table\`;" </dev/null)
     case "$rows" in ''|*[!0-9]*) die "invalid row count for $table" ;; esac
     total=$((total + rows))
   done <<< "$tables"
@@ -587,12 +588,208 @@ with zipfile.ZipFile(target, "w") as workbook:
 PY
 }
 
+# ---------------------------------------------------------- WP-00C fixture kit
+
+WP00C_KIT="$ROOT/scripts/wp00c-kit.py"
+WP00C_FIXTURE_STATE="$BASE/wp00c-fixture-state.json"
+WP00C_CURRENT_CI3_STATE="ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6 0"
+WP00C_LEGACY_CI3_STATE="8dad4e331a90f5c6765954454910b451eb0ff8e5 0"
+
+wp00c_kit_hash() {
+  python3 "$WP00C_KIT" summary \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["kit_sha256"])'
+}
+
+wp00c_state_field() {
+  python3 - "$WP00C_FIXTURE_STATE" "$1" <<'PY'
+import json
+import pathlib
+import sys
+
+try:
+    state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+    value = state[sys.argv[2]]
+except (OSError, KeyError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"invalid WP-00C fixture state: {exc}") from exc
+if not isinstance(value, str):
+    raise SystemExit(f"invalid WP-00C fixture state field: {sys.argv[2]}")
+print(value)
+PY
+}
+
+wp00c_state_write() {
+  local status=$1 kit_hash=$2 source_state=$3 image_id=$4
+  python3 - "$WP00C_FIXTURE_STATE" "$status" "$kit_hash" "$source_state" \
+    "$image_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" <<'PY'
+import json
+import pathlib
+import sys
+
+target = pathlib.Path(sys.argv[1])
+state = {
+    "status": sys.argv[2],
+    "kit_sha256": sys.argv[3],
+    "ci3_state": sys.argv[4],
+    "image_id": sys.argv[5],
+    "updated_at": sys.argv[6],
+}
+target.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+wp00c_fixture_validate() {
+  : "${CI3_REPO:?CI3_SOURCE_ROOT is required}"
+  python3 "$WP00C_KIT" validate --source-root "$CI3_REPO"
+}
+
+wp00c_fixture_verify() {
+  local table expected actual rc=0
+  while IFS=$'\t' read -r table expected; do
+    case "$table" in ''|*[!A-Za-z0-9_]*) die "unsafe WP-00C fixture table name: $table" ;; esac
+    actual=$(sqldb -e "SELECT COUNT(*) FROM \`$table\`;" </dev/null)
+    ck "WP-00C fixture $table rows" "$expected" "$actual" || rc=1
+  done < <(python3 "$WP00C_KIT" expected-counts)
+
+  ck "WP-00C fixture total rows" "116" "$(database_row_count)" || rc=1
+  ck "WP-00C active users" "3" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE userId BETWEEN 9001 AND 9004 AND isDeleted=0;")" || rc=1
+  ck "WP-00C deleted users" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users WHERE userId BETWEEN 9001 AND 9004 AND isDeleted=1;")" || rc=1
+  ck "WP-00C branch 1 orders" "6" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID LIKE 'WP00C-%' AND branchID=1;")" || rc=1
+  ck "WP-00C branch 2 orders" "3" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID LIKE 'WP00C-%' AND branchID=2;")" || rc=1
+  ck "WP-00C status 2 orders" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order WHERE trackID LIKE 'WP00C-%' AND action_status=2;")" || rc=1
+  ck "WP-00C tracking timeline rows" "4" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log WHERE order_id='WP00C-TRACK-005';")" || rc=1
+  ck "WP-00C rating rows" "8" \
+    "$(sqldb -e "SELECT COUNT(*) FROM rating WHERE order_id='WP00C-TRACK-007';")" || rc=1
+  ck "WP-00C rating score sum" "27" \
+    "$(sqldb -e "SELECT COALESCE(SUM(rating),0) FROM rating WHERE order_id='WP00C-TRACK-007';")" || rc=1
+  return "$rc"
+}
+
+wp00c_fixture_seed() {
+  lock
+  : "${CI3_REPO:?CI3_SOURCE_ROOT is required}" "${CI3_WEB_IMAGE:?}"
+  : "${WP00C_TEST_PASSWORD:?set WP00C_TEST_PASSWORD in the command environment; never commit or log it}"
+  [ "${#WP00C_TEST_PASSWORD}" -ge 12 ] && [ "${#WP00C_TEST_PASSWORD}" -le 32 ] \
+    || die "WP00C_TEST_PASSWORD must contain 12-32 characters"
+  [ ! -e "$WP00C_FIXTURE_STATE" ] \
+    || die "WP-00C fixture state already exists; inspect or clean it before seeding"
+
+  wp00c_fixture_validate
+  dc up -d --wait db
+  ck "WP-00C schema table count" "31" \
+    "$(sqldb -e "SELECT COUNT(*) FROM information_schema.TABLES
+                   WHERE TABLE_SCHEMA='$DB' AND TABLE_TYPE='BASE TABLE';")" \
+    || die "WP-00C schema differs from approved baseline"
+  ck "WP-00C database starts empty" "0" "$(database_row_count)" \
+    || die "WP-00C fixtures require an empty isolated database"
+  [ -z "$(dc ps -aq web)" ] \
+    || die "web container already exists; stop and inspect it before WP-00C seed"
+
+  if [ "${WP00C_REUSE_CI3_IMAGE:-0}" = 1 ]; then
+    docker image inspect "$CI3_WEB_IMAGE" >/dev/null 2>&1 \
+      || die "WP00C_REUSE_CI3_IMAGE=1 but image is unavailable: $CI3_WEB_IMAGE"
+    note "explicitly reusing local CI3 rehearsal image $CI3_WEB_IMAGE"
+  else
+    web_build
+  fi
+  dc up -d --wait db web
+  assert_outbound_messaging_denied \
+    || die "outbound messaging deny policy is not active"
+
+  local hash hash_hex kit_hash source_state image_id
+  hash=$(printf '%s' "$WP00C_TEST_PASSWORD" \
+    | dc exec -T web php -r '$p = stream_get_contents(STDIN); echo password_hash($p, PASSWORD_BCRYPT);')
+  [ -n "$hash" ] || die "failed to generate WP-00C bcrypt hash"
+  hash_hex=$(printf '%s' "$hash" | od -An -v -tx1 | tr -d ' \n')
+  kit_hash=$(wp00c_kit_hash)
+  source_state=$(ci3_repo_state)
+  image_id=$(docker image inspect --format '{{.Id}}' "$CI3_WEB_IMAGE")
+  [ -n "$image_id" ] || die "failed to resolve WP-00C image ID"
+  wp00c_state_write "SEEDING" "$kit_hash" "$source_state" "$image_id"
+  python3 "$WP00C_KIT" render-seed-sql --password-hash-hex "$hash_hex" | sqldb
+  unset hash hash_hex
+
+  wp00c_fixture_verify || die "WP-00C fixture verification failed"
+  wp00c_state_write "READY" "$kit_hash" "$source_state" "$image_id"
+  note "PASS WP-00C synthetic fixtures ready: users=4 orders=9 total_rows=116"
+  note "login users: wp00c-admin, wp00c-a, wp00c-b; password stays only in caller environment"
+}
+
+wp00c_fixture_clean() {
+  lock
+  [ -f "$WP00C_FIXTURE_STATE" ] \
+    || die "missing WP-00C fixture state; refusing broad synthetic cleanup"
+  local recorded_status recorded_hash recorded_source current_hash
+  recorded_status=$(wp00c_state_field status) \
+    || die "cannot read WP-00C fixture state status"
+  case "$recorded_status" in
+    SEEDING|READY) ;;
+    *) die "unexpected WP-00C fixture state status: $recorded_status" ;;
+  esac
+  recorded_hash=$(wp00c_state_field kit_sha256) \
+    || die "cannot read WP-00C fixture state kit hash"
+  current_hash=$(wp00c_kit_hash)
+  [ "$recorded_hash" = "$current_hash" ] \
+    || [ "$recorded_hash" = "f56c54075651c34cffc69e46c3028ad0efa5e976a37629427af562337236c554" ] \
+    || die "WP-00C kit changed after seed; preserve state and inspect before cleanup"
+  recorded_source=$(wp00c_state_field ci3_state) \
+    || die "cannot read WP-00C fixture source state"
+  [ "$recorded_source" = "$WP00C_CURRENT_CI3_STATE" ] \
+    || [ "$recorded_source" = "$WP00C_LEGACY_CI3_STATE" ] \
+    || die "fixture state was not created from approved clean CI3 source"
+  dc up -d --wait db
+
+  # Seed is allowed only on an empty isolated DB and creates the state file above. These
+  # predicates remove test-created side effects while avoiding any production identifier.
+  sqldb -e "
+    DELETE FROM tbl_last_login WHERE userId BETWEEN 9000 AND 9999;
+    DELETE FROM ci_sessions;
+    DELETE FROM rating WHERE order_id LIKE 'WP00C-%';
+    DELETE FROM rating_comment WHERE track_id LIKE 'WP00C-%';
+    DELETE FROM uploadstaus WHERE tracking_id LIKE 'WP00C-%';
+    DELETE FROM temp_updatestatus_order
+      WHERE temp_trackID LIKE 'WP00C-%' OR temp_orderIDShow LIKE 'WPC/%';
+    DELETE FROM temp_updatestatus_neworder
+      WHERE temp_trackID LIKE 'WP00C-%' OR temp_orderIDShow LIKE 'WPC/%';
+    DELETE FROM temp_updatestatus_price_order
+      WHERE temp_trackID LIKE 'WP00C-%' OR temp_orderIDShow LIKE 'WPC/%';
+    DELETE FROM status_log WHERE order_id LIKE 'WP00C-%';
+    DELETE FROM request_order_delete WHERE trackID LIKE 'WP00C-%';
+    DELETE FROM request_order WHERE trackID LIKE 'WP00C-%';
+    DELETE FROM contact WHERE email LIKE 'wp00c-%@example.invalid';
+    DELETE FROM tbl_reset_password WHERE email LIKE 'wp00c-%@example.invalid';
+    DELETE FROM tbl_users WHERE username LIKE 'wp00c-%' AND email LIKE '%@example.invalid';
+  "
+  python3 "$WP00C_KIT" render-cleanup-sql | sqldb
+
+  local rows source_state
+  rows=$(database_row_count)
+  source_state=$(ci3_repo_state)
+  [ "$rows" = 0 ] || die "WP-00C cleanup left $rows database rows; preserve state and inspect"
+  [ "$source_state" = "$recorded_source" ] \
+    || { [ "$recorded_source" = "$WP00C_LEGACY_CI3_STATE" ] \
+      && [ "$source_state" = "$WP00C_CURRENT_CI3_STATE" ]; } \
+    || die "CI3 source changed during WP-00C fixture lifecycle: $source_state"
+  dc stop web >/dev/null 2>&1 || true
+  dc rm -f web >/dev/null 2>&1 || true
+  rm -f -- "$WP00C_FIXTURE_STATE"
+  note "PASS WP-00C cleanup: database rows=0, web container removed, CI3 source unchanged"
+}
+
 SAFE_PREVIEW_ARMED=0
 SAFE_PREVIEW_WEB=0
 SAFE_PREVIEW_BODY=""
 SAFE_PREVIEW_JAR=""
+SAFE_PREVIEW_JAR_B=""
 SAFE_PREVIEW_EXISTING=""
 SAFE_PREVIEW_NEW=""
+SAFE_PREVIEW_NEW_B=""
+SAFE_PREVIEW_LOG=""
 
 safe_preview_cleanup() {
   local rc=$? post_rows cleanup_rc=0
@@ -603,8 +800,8 @@ safe_preview_cleanup() {
     sqldb -e "
       DELETE FROM tbl_last_login
         WHERE userId IN (SELECT userId FROM tbl_users
-                         WHERE username='synthetic-preview'
-                           AND email='synthetic-preview@example.invalid');
+                         WHERE username IN ('synthetic-preview','synthetic-preview-b')
+                           AND email LIKE 'synthetic-preview%@example.invalid');
       DELETE FROM uploadstaus
         WHERE Telephone='0000000000'
           AND Listname='SYNTHETIC CUSTOMER - NOT REAL';
@@ -619,14 +816,17 @@ safe_preview_cleanup() {
       DELETE FROM temp_updatestatus_price_order
         WHERE temp_number_cmg IN ('SYNTHETIC-CMG-001','SYNTHETIC-CMG-NEW');
       DELETE FROM temp_updatestatus_neworder
-        WHERE temp_orderIDShow IN ('SYN/0001','SYN/NEW-001')
+        WHERE temp_orderIDShow IN ('SYN/0001','SYN/NEW-001','SYN/NEW-B01')
           AND temp_customerTel='0000000000';
       DELETE FROM request_order
         WHERE customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
           AND customerTel='0000000000';
+      DELETE FROM tracking_status
+        WHERE status_id=9001
+          AND description_en='SYNTHETIC STATUS';
       DELETE FROM tbl_users
-        WHERE username='synthetic-preview'
-          AND email='synthetic-preview@example.invalid';
+        WHERE username IN ('synthetic-preview','synthetic-preview-b')
+          AND email LIKE 'synthetic-preview%@example.invalid';
       DELETE FROM branch
         WHERE branch_id=1 AND branch_name='SYNTHETIC BRANCH - NOT REAL';
       DELETE FROM tbl_roles
@@ -635,15 +835,17 @@ safe_preview_cleanup() {
   fi
 
   if [ "$SAFE_PREVIEW_WEB" = 1 ]; then
-    dc logs web > "$BASE/safe-preview-web.log" 2>&1 || true
+    dc logs web > "${SAFE_PREVIEW_LOG:-$BASE/safe-preview-web.log}" 2>&1 || true
     dc stop web >/dev/null 2>&1 || cleanup_rc=1
     dc rm -f web >/dev/null 2>&1 || cleanup_rc=1
   fi
 
   [ -z "$SAFE_PREVIEW_BODY" ] || rm -f -- "$SAFE_PREVIEW_BODY"
   [ -z "$SAFE_PREVIEW_JAR" ] || rm -f -- "$SAFE_PREVIEW_JAR"
+  [ -z "$SAFE_PREVIEW_JAR_B" ] || rm -f -- "$SAFE_PREVIEW_JAR_B"
   [ -z "$SAFE_PREVIEW_EXISTING" ] || rm -f -- "$SAFE_PREVIEW_EXISTING"
   [ -z "$SAFE_PREVIEW_NEW" ] || rm -f -- "$SAFE_PREVIEW_NEW"
+  [ -z "$SAFE_PREVIEW_NEW_B" ] || rm -f -- "$SAFE_PREVIEW_NEW_B"
 
   if [ "$SAFE_PREVIEW_ARMED" = 1 ]; then
     post_rows=$(database_row_count) || cleanup_rc=1
@@ -707,6 +909,7 @@ safe_preview_smoke() {
   SAFE_PREVIEW_JAR=$(mktemp -t ci3-safe-preview-cookie)
   SAFE_PREVIEW_EXISTING=$(mktemp -t ci3-safe-preview-existing)
   SAFE_PREVIEW_NEW=$(mktemp -t ci3-safe-preview-new)
+  SAFE_PREVIEW_LOG="$BASE/safe-preview-web.log"
   SMOKE_BODY=$SAFE_PREVIEW_BODY
   make_synthetic_preview_fixture "$SAFE_PREVIEW_EXISTING" "SYN/0001" "SYNTHETIC-CMG-001"
   make_synthetic_preview_fixture "$SAFE_PREVIEW_NEW" "SYN/NEW-001" "SYNTHETIC-CMG-NEW"
@@ -831,6 +1034,411 @@ safe_preview_smoke() {
   ck "P8 backup volume remains empty" "0" "$backup_files" || rc=1
   [ "$rc" = 0 ] && note "SAFE SYNTHETIC PREVIEW SMOKE PASSED" \
                     || note "SAFE SYNTHETIC PREVIEW SMOKE FAILED"
+  return "$rc"
+}
+
+safe_confirm_smoke() {
+  local rc=0 got logs started_at new_track backup_files
+
+  safe_preview_smoke || return 1
+  SAFE_PREVIEW_LOG="$BASE/safe-confirm-web.log"
+  assert_outbound_messaging_denied || die "outbound messaging deny policy is not active"
+  note "PASS confirm precondition: outbound email/SMS transports disabled"
+
+  sqldb -e "
+    INSERT INTO tracking_status
+      (status_id,description_th,description_en,success,cdate)
+    VALUES
+      (9001,'SYNTHETIC STATUS - NOT REAL','SYNTHETIC STATUS',0,
+       '2026-08-19 00:00:00');
+  "
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 30 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    --data 'count_ex=1' "$WEB_BASE/ExcelConfirm")
+  ck "C1 Status confirm HTTP" "200" "$got" || rc=1
+  body_has "C1 Status confirm success" "Upload updated successfully" || rc=1
+  ck "C1 Status upload row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus
+                   WHERE tracking_id='SYN0001'
+                     AND Telephone='0000000000'
+                     AND tracking_status=9001;")" || rc=1
+  ck "C1 Status log row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                   WHERE order_id='SYNTHETIC-TRACK-001' AND update_id=9001;")" || rc=1
+  ck "C1 Status order updated" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE trackID='SYNTHETIC-TRACK-001'
+                     AND customerTel='0000000000'
+                     AND action_status=3
+                     AND date_update_status='2026-08-01 00:00:00';")" || rc=1
+
+  sqldb -e "UPDATE request_order SET RepairPrice=321.00
+             WHERE trackID='SYNTHETIC-TRACK-001'
+               AND customerTel='0000000000';"
+  got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 30 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    --data 'count_ex=1' "$WEB_BASE/ExcelPriceConfirm")
+  ck "C2 Price confirm HTTP" "200" "$got" || rc=1
+  body_has "C2 Price confirm success" "Upload updated successfully" || rc=1
+  ck "C2 Price order updated" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE trackID='SYNTHETIC-TRACK-001'
+                     AND customerTel='0000000000'
+                     AND RepairPrice=1234.00;")" || rc=1
+  ck "C2 Price leaves Status upload row unchanged" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus
+                   WHERE Telephone='0000000000';")" || rc=1
+  ck "C2 Price leaves Status log unchanged" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                   WHERE order_id='SYNTHETIC-TRACK-001';")" || rc=1
+
+  got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 30 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    --data 'count_ex=1' "$WEB_BASE/ExcelNewOrderConfirm")
+  cp "$SAFE_PREVIEW_BODY" "$BASE/safe-confirm-new-order-response.html"
+  # CI3 characterization only. CI4 acceptance must replace both warnings with a redirect
+  # and rendered success page; this assertion must not become the migrated contract.
+  ck "C3 New Order legacy warning HTTP" "200" "$got" || rc=1
+  ck "C3 New Order legacy warning count" "2" \
+    "$(grep -c 'A PHP Error was encountered' "$SAFE_PREVIEW_BODY" || true)" || rc=1
+  body_has "C3 first monthly track warning captured" \
+    "A non-numeric value encountered" || rc=1
+  body_has "C3 redirect failure captured" \
+    "Cannot modify header information" || rc=1
+  body_lacks "C3 success page not rendered" "Upload updated successfully" || rc=1
+  ck "C3 New Order created once" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE orderIDShow='SYN/NEW-001'
+                     AND customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                     AND customerTel='0000000000'
+                     AND action_status=2
+                     AND RepairPrice=1234.00
+                     AND requestDate='2026-08-01 00:00:00'
+                     AND date_repair='2026-07-31 00:00:00';")" || rc=1
+  new_track=$(sqldb -e "SELECT trackID FROM request_order
+                         WHERE orderIDShow='SYN/NEW-001'
+                           AND customerTel='0000000000'
+                         ORDER BY request_id DESC LIMIT 1;")
+  [[ "$new_track" =~ ^G[0-9]{8}$ ]] \
+    && echo "PASS C3 generated synthetic track format" \
+    || { echo "FAIL C3 generated synthetic track format"; rc=1; }
+  ck "C3 New Order status log" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                   WHERE order_id='$new_track' AND action_id=2;")" || rc=1
+  ck "C3 total synthetic orders" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                     AND customerTel='0000000000';")" || rc=1
+  ck "C3 request-order recipients are synthetic only" "0" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE customerFullname<>'SYNTHETIC CUSTOMER - NOT REAL'
+                      OR customerTel<>'0000000000'
+                      OR customerTel IS NULL
+                      OR customerEmail IS NOT NULL;")" || rc=1
+  ck "C3 operator identity is synthetic only" "0" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users
+                   WHERE username<>'synthetic-preview'
+                      OR email<>'synthetic-preview@example.invalid'
+                      OR mobile<>'0000000000';")" || rc=1
+
+  logs=$(dc logs --since "$started_at" web 2>&1)
+  local route
+  for route in ExcelConfirm ExcelPriceConfirm ExcelNewOrderConfirm; do
+    if printf '%s\n' "$logs" | grep -q "POST /$route "; then
+      echo "PASS C4 $route request observed"
+    else
+      echo "FAIL C4 $route request missing from access log"
+      rc=1
+    fi
+  done
+  if printf '%s\n' "$logs" | grep -q '"POST /ExcelNewOrderConfirm HTTP/1.1" 200 ' \
+     && ! printf '%s\n' "$logs" | grep -q 'GET /UploadneworderexcelListing '; then
+    echo "PASS C4 known legacy New Order redirect defect reproduced"
+  else
+    echo "FAIL C4 New Order redirect behavior changed"
+    rc=1
+  fi
+  if printf '%s\n' "$logs" \
+       | grep -qiE 'PHPMailer|SMTP|send_?sms|mail\(\).*disabled|curl_exec.*disabled'; then
+    echo "FAIL C4 email/SMS attempt found in web log"
+    rc=1
+  else
+    echo "PASS C4 outbound attempts=0"
+  fi
+  if printf '%s\n' "$logs" | grep -qiE 'PHP Fatal|Uncaught|A Database Error Occurred'; then
+    echo "FAIL C4 fatal/database error found in web log"
+    rc=1
+  else
+    echo "PASS C4 no fatal/database error"
+  fi
+  assert_outbound_messaging_denied || rc=1
+  backup_files=$(dc exec -T db sh -c 'find /backup -type f -print | wc -l' | tr -d '[:space:]')
+  ck "C4 backup volume remains empty" "0" "$backup_files" || rc=1
+
+  {
+    printf 'check\tobserved\n'
+    printf 'confirm_routes\t3\n'
+    printf 'upload_status_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus WHERE Telephone='0000000000';")"
+    printf 'status_log_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                     WHERE order_id IN ('SYNTHETIC-TRACK-001','$new_track');")"
+    printf 'synthetic_orders\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                     WHERE customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                       AND customerTel='0000000000';")"
+    printf 'outbound_attempts\t0\n'
+    printf 'new_order_redirect\tblocked_by_known_legacy_warning\n'
+  } > "$BASE/safe-confirm-observed.tsv"
+
+  [ "$rc" = 0 ] \
+    && note "SAFE SYNTHETIC CONFIRM CHARACTERIZATION PASSED WITH KNOWN LEGACY REDIRECT DEFECT" \
+    || note "SAFE SYNTHETIC CONFIRM CHARACTERIZATION FAILED"
+  return "$rc"
+}
+
+safe_confirm_negative_smoke() {
+  local rc=0 got logs started_at backup_files route attempts
+  local temp_pw_b hash_b hash_b_hex
+  local csrf_form_token=present isolation_reproduced=no
+  local operator_a_b_rows operator_a_a_rows outbound_attempts
+
+  safe_preview_smoke || return 1
+  SAFE_PREVIEW_LOG="$BASE/safe-confirm-negative-web.log"
+  SAFE_PREVIEW_JAR_B=$(mktemp -t ci3-safe-preview-cookie-b)
+  SAFE_PREVIEW_NEW_B=$(mktemp -t ci3-safe-preview-new-b)
+  make_synthetic_preview_fixture "$SAFE_PREVIEW_NEW_B" \
+    "SYN/NEW-B01" "SYNTHETIC-CMG-B"
+  assert_outbound_messaging_denied || die "outbound messaging deny policy is not active"
+  note "PASS negative precondition: outbound email/SMS transports disabled"
+
+  sqldb -e "
+    INSERT INTO tracking_status
+      (status_id,description_th,description_en,success,cdate)
+    VALUES
+      (9001,'SYNTHETIC STATUS - NOT REAL','SYNTHETIC STATUS',0,
+       '2026-08-20 00:00:00');
+    UPDATE request_order SET RepairPrice=321.00
+      WHERE trackID='SYNTHETIC-TRACK-001'
+        AND customerTel='0000000000';
+  "
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  for attempts in 1 2; do
+    got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+      -w '%{http_code}' --max-time 30 \
+      -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+      --data 'count_ex=1' "$WEB_BASE/ExcelConfirm")
+    ck "N1 Status confirm attempt $attempts HTTP" "200" "$got" || rc=1
+    body_has "N1 Status confirm attempt $attempts accepted" \
+      "Upload updated successfully" || rc=1
+  done
+  ck "N1 Status replay creates duplicate upload rows" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus
+                   WHERE tracking_id='SYN0001'
+                     AND Telephone='0000000000'
+                     AND tracking_status=9001;")" || rc=1
+  ck "N1 Status replay creates duplicate log rows" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                   WHERE order_id='SYNTHETIC-TRACK-001' AND update_id=9001;")" || rc=1
+
+  for attempts in 1 2; do
+    got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+      -w '%{http_code}' --max-time 30 \
+      -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+      --data 'count_ex=1' "$WEB_BASE/ExcelPriceConfirm")
+    ck "N2 Price confirm attempt $attempts HTTP" "200" "$got" || rc=1
+    body_has "N2 Price confirm attempt $attempts accepted" \
+      "Upload updated successfully" || rc=1
+  done
+  ck "N2 Price replay leaves final value deterministic" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE trackID='SYNTHETIC-TRACK-001'
+                     AND customerTel='0000000000'
+                     AND RepairPrice=1234.00;")" || rc=1
+  ck "N2 Price replay adds no Status rows" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus WHERE Telephone='0000000000';")" || rc=1
+
+  temp_pw_b=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  [ "${#temp_pw_b}" = 32 ] || die "failed to generate operator B password"
+  hash_b=$(printf '%s' "$temp_pw_b" \
+    | dc exec -T web php -r '$p = stream_get_contents(STDIN); echo password_hash($p, PASSWORD_BCRYPT);')
+  [ -n "$hash_b" ] || die "failed to generate operator B password hash"
+  hash_b_hex=$(printf '%s' "$hash_b" | od -An -v -tx1 | tr -d ' \n')
+  sqldb -e "
+    INSERT INTO tbl_users
+      (email,username,password,name,mobile,group_id,roleId,branch_id,branch_type_id,
+       isDeleted,createdBy,createdDtm)
+    VALUES
+      ('synthetic-preview-b@example.invalid','synthetic-preview-b',UNHEX('$hash_b_hex'),
+       'SYNTHETIC OPERATOR B - NOT REAL','0000000000',4,1,1,NULL,0,0,
+       '2026-08-20 00:00:00');
+  "
+  ck "N3 synthetic operator B" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users
+                   WHERE username='synthetic-preview-b'
+                     AND email='synthetic-preview-b@example.invalid';")" || rc=1
+
+  printf 'username=synthetic-preview-b&password=%s' "$temp_pw_b" \
+    | curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+        -c "$SAFE_PREVIEW_JAR_B" -b "$SAFE_PREVIEW_JAR_B" \
+        --max-time 30 --data-binary @- "$WEB_BASE/loginMe"
+  temp_pw_b=""
+  hs "N3 operator B reaches New Order listing" 200 "/UploadneworderexcelListing" \
+    -b "$SAFE_PREVIEW_JAR_B" -c "$SAFE_PREVIEW_JAR_B" || rc=1
+  body_lacks "N3 operator B not returned to login" 'name="password"' || rc=1
+
+  got=$(curl --disable --noproxy '*' -sS -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 60 \
+    -b "$SAFE_PREVIEW_JAR_B" -c "$SAFE_PREVIEW_JAR_B" \
+    -F "file=@$SAFE_PREVIEW_NEW_B;filename=synthetic-new-order-b.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+    "$WEB_BASE/ExcelNewOrderDataAdd")
+  ck "N3 operator B preview HTTP" "200" "$got" || rc=1
+  body_has "N3 operator B preview row" "SYN/NEW-B01" || rc=1
+  body_lacks "N3 operator A pending row overwritten" "SYN/NEW-001" || rc=1
+  ck "N3 global temp contains operator B row" "1" \
+    "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_neworder
+                   WHERE temp_orderIDShow='SYN/NEW-B01'
+                     AND temp_customerTel='0000000000';")" || rc=1
+  ck "N3 global temp lost operator A row" "0" \
+    "$(sqldb -e "SELECT COUNT(*) FROM temp_updatestatus_neworder
+                   WHERE temp_orderIDShow='SYN/NEW-001'
+                     AND temp_customerTel='0000000000';")" || rc=1
+
+  if grep -qiE "name=[\"'][^\"']*csrf|csrf_test_name" "$SAFE_PREVIEW_BODY"; then
+    echo "FAIL N3 preview form unexpectedly contains a CSRF token"
+    rc=1
+  else
+    csrf_form_token=absent
+    echo "PASS N3 CSRF token absent from preview form"
+  fi
+
+  got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 30 \
+    -b "$SAFE_PREVIEW_JAR" -c "$SAFE_PREVIEW_JAR" \
+    --data 'count_ex=1' "$WEB_BASE/ExcelNewOrderConfirm")
+  ck "N3 operator A confirms operator B batch HTTP" "200" "$got" || rc=1
+  operator_a_b_rows=$(sqldb -e "SELECT COUNT(*) FROM request_order
+                                  WHERE orderIDShow='SYN/NEW-B01'
+                                    AND customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                                    AND customerTel='0000000000';")
+  operator_a_a_rows=$(sqldb -e "SELECT COUNT(*) FROM request_order
+                                  WHERE orderIDShow='SYN/NEW-001'
+                                    AND customerTel='0000000000';")
+  ck "N3 operator A created operator B row" "1" \
+    "$operator_a_b_rows" || rc=1
+  ck "N3 operator A row was not created" "0" \
+    "$operator_a_a_rows" || rc=1
+  if [ "$operator_a_b_rows" = 1 ] && [ "$operator_a_a_rows" = 0 ]; then
+    isolation_reproduced=yes
+    echo "PASS N3 two-user overlapping-session isolation defect reproduced"
+  else
+    echo "FAIL N3 two-user overlapping-session isolation result changed"
+    rc=1
+  fi
+
+  got=$(curl --disable --noproxy '*' -sS -L -o "$SAFE_PREVIEW_BODY" \
+    -w '%{http_code}' --max-time 30 \
+    -b "$SAFE_PREVIEW_JAR_B" -c "$SAFE_PREVIEW_JAR_B" \
+    --data 'count_ex=1' "$WEB_BASE/ExcelNewOrderConfirm")
+  ck "N3 operator B replays shared batch HTTP" "200" "$got" || rc=1
+  ck "N3 cross-session replay creates duplicate orders" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE orderIDShow='SYN/NEW-B01'
+                     AND customerFullname='SYNTHETIC CUSTOMER - NOT REAL'
+                     AND customerTel='0000000000';")" || rc=1
+  ck "N3 cross-session replay creates duplicate logs" "2" \
+    "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                   WHERE order_id IN
+                     (SELECT trackID FROM request_order
+                       WHERE orderIDShow='SYN/NEW-B01'
+                         AND customerTel='0000000000')
+                     AND action_id=2;")" || rc=1
+
+  logs=$(dc logs --since "$started_at" web 2>&1)
+  for route in ExcelConfirm ExcelPriceConfirm ExcelNewOrderConfirm; do
+    attempts=$(printf '%s\n' "$logs" | grep -c "POST /$route " || true)
+    ck "N4 $route replay requests observed" "2" "$attempts" || rc=1
+  done
+  ck "N4 operator B preview request observed" "1" \
+    "$(printf '%s\n' "$logs" | grep -c 'POST /ExcelNewOrderDataAdd ' || true)" || rc=1
+  if printf '%s\n' "$logs" \
+       | grep -qiE 'PHPMailer|SMTP|send_?sms|mail\(\).*disabled|curl_exec.*disabled'; then
+    echo "FAIL N4 email/SMS attempt found in web log"
+    rc=1
+  else
+    echo "PASS N4 outbound attempts=0"
+  fi
+  outbound_attempts=$(printf '%s\n' "$logs" \
+    | grep -ciE 'PHPMailer|SMTP|send_?sms|mail\(\).*disabled|curl_exec.*disabled' || true)
+  if printf '%s\n' "$logs" | grep -qiE 'PHP Fatal|Uncaught|A Database Error Occurred'; then
+    echo "FAIL N4 fatal/database error found in web log"
+    rc=1
+  else
+    echo "PASS N4 no fatal/database error"
+  fi
+  ck "N4 request-order recipients are synthetic only" "0" \
+    "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                   WHERE customerFullname<>'SYNTHETIC CUSTOMER - NOT REAL'
+                      OR customerTel<>'0000000000'
+                      OR customerTel IS NULL
+                      OR customerEmail IS NOT NULL;")" || rc=1
+  ck "N4 operator identities are synthetic only" "0" \
+    "$(sqldb -e "SELECT COUNT(*) FROM tbl_users
+                   WHERE username NOT IN ('synthetic-preview','synthetic-preview-b')
+                      OR email NOT LIKE 'synthetic-preview%@example.invalid'
+                      OR mobile<>'0000000000';")" || rc=1
+  assert_outbound_messaging_denied || rc=1
+  backup_files=$(dc exec -T db sh -c 'find /backup -type f -print | wc -l' | tr -d '[:space:]')
+  ck "N4 backup volume remains empty" "0" "$backup_files" || rc=1
+
+  {
+    printf 'check\tobserved\n'
+    printf 'status_confirm_requests\t%s\n' \
+      "$(printf '%s\n' "$logs" | grep -c 'POST /ExcelConfirm ' || true)"
+    printf 'status_upload_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM uploadstaus WHERE Telephone='0000000000';")"
+    printf 'status_log_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                     WHERE order_id='SYNTHETIC-TRACK-001' AND update_id=9001;")"
+    printf 'price_confirm_requests\t%s\n' \
+      "$(printf '%s\n' "$logs" | grep -c 'POST /ExcelPriceConfirm ' || true)"
+    printf 'price_final_value\t%s\n' \
+      "$(sqldb -e "SELECT RepairPrice FROM request_order
+                     WHERE trackID='SYNTHETIC-TRACK-001';")"
+    printf 'new_order_confirm_requests\t%s\n' \
+      "$(printf '%s\n' "$logs" | grep -c 'POST /ExcelNewOrderConfirm ' || true)"
+    printf 'new_order_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM request_order
+                     WHERE orderIDShow='SYN/NEW-B01'
+                       AND customerTel='0000000000';")"
+    printf 'new_order_log_rows\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM status_log
+                     WHERE order_id IN
+                       (SELECT trackID FROM request_order
+                         WHERE orderIDShow='SYN/NEW-B01'
+                           AND customerTel='0000000000')
+                       AND action_id=2;")"
+    printf 'new_order_batch_owner_columns\t%s\n' \
+      "$(sqldb -e "SELECT COUNT(*) FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA='$DB'
+                       AND TABLE_NAME='temp_updatestatus_neworder'
+                       AND COLUMN_NAME IN ('batch_id','owner_id','user_id');")"
+    printf 'operator_a_confirmed_operator_b_batch\t%s\n' "$isolation_reproduced"
+    printf 'operator_a_pending_rows_after_b_preview\t%s\n' "$operator_a_a_rows"
+    printf 'csrf_form_token\t%s\n' "$csrf_form_token"
+    printf 'csrf_tokenless_confirm_routes\taccepted_3_of_3\n'
+    printf 'outbound_attempts\t%s\n' "$outbound_attempts"
+  } > "$BASE/safe-confirm-negative-observed.tsv"
+
+  [ "$rc" = 0 ] \
+    && note "SAFE SYNTHETIC CONFIRM NEGATIVE/ISOLATION CHARACTERIZATION PASSED WITH KNOWN CI3 DEFECTS" \
+    || note "SAFE SYNTHETIC CONFIRM NEGATIVE/ISOLATION CHARACTERIZATION FAILED"
   return "$rc"
 }
 
@@ -1091,7 +1699,13 @@ case "${1:-}" in
   rehearsal) rehearsal ;;
   web-build) web_build ;;
   web-up)    web_up ;;
+  wp00c-fixture-validate) wp00c_fixture_validate ;;
+  wp00c-fixture-seed) wp00c_fixture_seed ;;
+  wp00c-fixture-verify) wp00c_fixture_verify ;;
+  wp00c-fixture-clean) wp00c_fixture_clean ;;
   safe-preview-smoke) safe_preview_smoke ;;
+  safe-confirm-smoke) safe_confirm_smoke ;;
+  safe-confirm-negative-smoke) safe_confirm_negative_smoke ;;
   smoke)     smoke ;;
   # Backward-compatible name from WP-00C. Route through the stricter empty-DB,
   # zero-backup, loopback-only gate so this command cannot preserve real PII.
@@ -1099,5 +1713,5 @@ case "${1:-}" in
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|safe-preview-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|wp00c-fixture-validate|wp00c-fixture-seed|wp00c-fixture-verify|wp00c-fixture-clean|safe-preview-smoke|safe-confirm-smoke|safe-confirm-negative-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
 esac

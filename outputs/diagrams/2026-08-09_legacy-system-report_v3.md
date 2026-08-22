@@ -1,5 +1,7 @@
 # Samsonite Tracking — รายงานการทำงานของระบบเดิม
 
+> Update 2026-08-21: รายงานนี้ยังเป็น historical baseline. Active CI3 pin เปลี่ยนเป็น `ee1c95e` หลัง PR #3; ใช้ `../reference/2026-08-21_ci3-source-repin-pr3_v1.md` เป็น change overlay.
+
 > Source: source code ใน working tree ปัจจุบัน โดยยึด `application/config/routes.php`, controllers, models, views และ helpers
 > Scope: public website, back office, งานซ่อม, tracking, rating, Excel import, report, master data และ integration
 > Generated: 2026-08-09

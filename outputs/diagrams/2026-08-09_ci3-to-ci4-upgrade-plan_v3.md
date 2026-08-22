@@ -2203,6 +2203,12 @@ Function body identity ต้องมี source blob/file SHA-256, start/end li
 
 **อัปเดต 2026-08-17 — baseline ย้ายไป CI3 pin**: ตัวเลขในตารางด้านล่างเป็น discovery รอบแรกจาก working tree ที่ยังไม่ commit และไม่สามารถ reproduce ได้อีก (commit ที่อ้างไม่มีในคลังของ repo CI3) baseline ที่เป็นทางการตอนนี้คือ CI3 pin `8dad4e331a90f5c6765954454910b451eb0ff8e5` ตาม `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md`
 
+**อัปเดต 2026-08-21 — source repin หลัง PR #3**: CI3 active pin เปลี่ยนเป็น `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6`. PR เพิ่ม shared status parser, เปลี่ยน report filter เป็น Query Builder `where_in` และเพิ่ม regression test. ตาราง v2 ด้านล่างยังเป็น historical baseline ของ `8dad4e3`; ต้อง regenerate function disposition และ rerun WP-00C บน pin ใหม่ก่อนปิด Gate 1D. รายละเอียดอยู่ `outputs/reference/2026-08-21_ci3-source-repin-pr3_v1.md`.
+
+**Business decision 2026-08-22 — Report Tracking consolidation**: CI4 ต้องมี `Report Tracking` route/page เดียว. Preserve corrected status-filter behavior จาก PR #3 ใน production page; ไม่สร้างหรือ expose `ReportTrackingListingTest` route/page/menu. CI3 Test route ยังอยู่ใน characterization suite เพื่อพิสูจน์ source behavior เท่านั้น แล้วปิด disposition เป็น `CONSOLIDATED_RETIRED` เมื่อ CI4 parity และ route-absence checks ผ่าน QA.
+
+**อัปเดต 2026-08-22 — Function Disposition v3**: regenerate บน active pin สำเร็จที่ `outputs/diagrams/2026-08-22_function-disposition-evidence_v3.md`; live `1165/1165`, retired `247`, missing/duplicate/hash/ID mismatch `0`. `Order::ReportTrackingListingTest` เปลี่ยน disposition เป็น `REPLACE` ไปหน้าเดียวตาม Business/QA decision; route retirement ยังรอ CI4 absence/parity verification. WP-00C ยังเปิดตาม `outputs/reference/2026-08-22_wp00c-remaining-assessment_v1.md`.
+
 | Layer | discovery รอบแรก (v1) | ที่ CI3 pin (v2) |
 |---|---:|---:|
 | PHP named function | 631 | 514 |

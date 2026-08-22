@@ -47,7 +47,9 @@ const CUSTOM_JAVASCRIPT_FILES = [
     'assets/js/browse/script.js',
 ];
 
-const PIN_REFERENCE = 'outputs/reference/2026-08-17_ci3-reference-baseline_v1.md';
+const PIN_REFERENCE = 'outputs/reference/2026-08-21_ci3-source-repin-pr3_v1.md';
+
+selfCheckCitationReferenceReplacement();
 
 $reportRoot = dirname(__DIR__);
 $options = parseArguments($argv, $reportRoot);
@@ -625,6 +627,7 @@ function generateReport(
     }
 
     $carry = [];
+    $carryByStableKey = [];
     $identityFailures = 0;
     foreach ($carryLines as $line) {
         if (preg_match('/^\| `F-(PHP|JS)-([A-F0-9]{12})` \| `([^`]+)` `([^`]+)`/', $line, $match) !== 1) {
@@ -652,6 +655,7 @@ function generateReport(
             'acceptance' => $columns[8],
             'impact' => rtrim($columns[9], ' |'),
         ];
+        $carryByStableKey[stablePointKey($language, $citation, $symbol)][] = $citation;
     }
 
     if ($identityFailures !== 0) {
@@ -667,21 +671,75 @@ function generateReport(
         $liveCitations[$citation] = 'JS';
     }
 
-    $unresolved = array_diff_key($liveCitations, $carry);
+    $live = [];
+    $consumedCarry = [];
+    $citationRemap = [];
+    $unresolved = [];
+    foreach ($liveCitations as $citation => $language) {
+        $symbol = $language === 'PHP' ? ($functions[$citation] ?? '') : '';
+        $exactStableMatch = $language !== 'PHP'
+            || (isset($carry[$citation])
+                && stablePointKey($language, $citation, $symbol) === stablePointKey($language, $citation, $carry[$citation]['symbol']));
+        if (isset($carry[$citation]) && $exactStableMatch) {
+            $live[$citation] = $carry[$citation];
+            $consumedCarry[$citation] = true;
+            continue;
+        }
+
+        $candidates = $symbol === '' ? [] : ($carryByStableKey[stablePointKey($language, $citation, $symbol)] ?? []);
+        $candidates = array_values(array_filter(
+            $candidates,
+            static fn(string $candidate): bool => !isset($consumedCarry[$candidate])
+        ));
+        if (count($candidates) === 1) {
+            $oldCitation = $candidates[0];
+            $live[$citation] = remapCarryRow($carry[$oldCitation], $oldCitation, $citation);
+            $consumedCarry[$oldCitation] = true;
+            $citationRemap[$oldCitation] = $citation;
+            continue;
+        }
+
+        $manual = manualNewPoint($language, $citation, $symbol);
+        if ($manual !== null) {
+            $live[$citation] = $manual;
+            continue;
+        }
+
+        $unresolved[] = $citation . ($candidates === [] ? '' : ' (ambiguous stable match)');
+    }
+
     if ($unresolved !== []) {
-        foreach (array_keys($unresolved) as $citation) {
+        foreach ($unresolved as $citation) {
             fwrite(STDERR, "NEW POINT WITHOUT CARRY {$citation}\n");
         }
         fwrite(STDERR, "New source points need a manual symbol/disposition decision before generation.\n");
         exit(1);
     }
 
-    $retiredCitations = array_diff_key($carry, $liveCitations);
-
-    $live = [];
-    foreach ($liveCitations as $citation => $language) {
-        $live[$citation] = $carry[$citation];
+    if ($citationRemap !== []) {
+        foreach ($live as &$row) {
+            foreach ($row as $field => $value) {
+                if (is_string($value)) {
+                    $row[$field] = replaceCitationReferences($value, $citationRemap);
+                }
+            }
+        }
+        unset($row);
     }
+
+    foreach ($live as &$row) {
+        if ($row['symbol'] !== 'Order::ReportTrackingListingTest') {
+            continue;
+        }
+        $row['destination'] = '`app/Controllers/Order.php::ReportTrackingListing`; `PLANNED_NOT_IMPLEMENTED`';
+        $row['disposition'] = '`REPLACE`';
+        $row['retirement'] = 'Business/QA approved consolidation 2026-08-22; CI4 Test route/page/menu absence และ main-page parity ยังต้อง verify';
+        $row['acceptance'] = sprintf('`AC-FUNC-%1$s`; `FT-FUNC-%1$s`; BEFORE_SOURCE_CAPTURED/CONSOLIDATION_APPROVED/AFTER_MISSING', $row['identity']);
+        $row['impact'] = 'route consolidation; CI3 characterization retained; CI4 Test route forbidden; source HIGH, caller STATIC_ONLY, target PLANNED';
+    }
+    unset($row);
+
+    $retiredCitations = array_diff_key($carry, $consumedCarry);
 
     $document = renderReport($sourceRoot, $pin, $functions, $javascript, $live, $retiredCitations);
     if (file_put_contents($outputPath, $document) === false) {
@@ -694,6 +752,68 @@ function generateReport(
     printf("Retired points: %d\n", count($retiredCitations));
     printf("Carry rows read: %d\n", count($carry));
     printf("ID formula self-check: %d/%d\n", count($carry), count($carry));
+}
+
+function stablePointKey(string $language, string $citation, string $symbol): string
+{
+    $path = substr($citation, 0, (int) strrpos($citation, ':'));
+    $bareSymbol = str_contains($symbol, '::') ? substr($symbol, (int) strrpos($symbol, '::') + 2) : $symbol;
+    return $language . '|' . $path . '|' . $bareSymbol;
+}
+
+/** @param array<string,string> $citationRemap */
+function replaceCitationReferences(string $value, array $citationRemap): string
+{
+    $oldCitations = array_map(static fn(string $citation): string => '`' . $citation . '`', array_keys($citationRemap));
+    $newCitations = array_map(static fn(string $citation): string => '`' . $citation . '`', array_values($citationRemap));
+    return str_replace($oldCitations, $newCitations, $value);
+}
+
+function selfCheckCitationReferenceReplacement(): void
+{
+    $actual = replaceCitationReferences('`Order.php:17`; `Order.php:170`', ['Order.php:17' => 'Order.php:32']);
+    if ($actual !== '`Order.php:32`; `Order.php:170`') {
+        fwrite(STDERR, "Citation remap self-check failed.\n");
+        exit(1);
+    }
+}
+
+/** @param array<string,string> $row */
+function remapCarryRow(array $row, string $oldCitation, string $newCitation): array
+{
+    $oldIdentity = $row['identity'];
+    $newIdentity = mintIdentity($row['language'], $newCitation, $row['symbol']);
+    foreach ($row as $field => $value) {
+        $row[$field] = str_replace($oldIdentity, $newIdentity, replaceCitationReferences($value, [$oldCitation => $newCitation]));
+    }
+    $row['identity'] = $newIdentity;
+    return $row;
+}
+
+/** @return array<string,string>|null */
+function manualNewPoint(string $language, string $citation, string $symbol): ?array
+{
+    if ($language !== 'PHP'
+        || $citation !== 'application/controllers/Order.php:14'
+        || $symbol !== 'parseReportTrackingStatusIds') {
+        return null;
+    }
+
+    $qualifiedSymbol = 'Order::parseReportTrackingStatusIds';
+    $identity = mintIdentity($language, $citation, $qualifiedSymbol);
+    return [
+        'language' => $language,
+        'identity' => $identity,
+        'symbol' => $qualifiedSymbol,
+        'type' => 'method private; APPLICATION_OWNED_OR_LOCAL_ADAPTED',
+        'caller' => 'static call `application/controllers/Order.php:488`; static call `application/controllers/Order.php:567`',
+        'behavior' => 'ตรวจและ normalize status filter เป็น integer list; malformed/non-string/empty คืน empty list; ป้องกัน raw SQL status condition',
+        'destination' => '`app/Controllers/Order.php::parseReportTrackingStatusIds`; `PLANNED_NOT_IMPLEMENTED`',
+        'disposition' => '`MIGRATE`',
+        'retirement' => 'N/A; shared validation ของ Report Tracking',
+        'acceptance' => sprintf('`AC-FUNC-%1$s`; `FT-FUNC-%1$s`; BEFORE_REGRESSION_TEST_PASS/AFTER_MISSING', $identity),
+        'impact' => 'input validation/SQL safety; corrected Report Tracking contract; source HIGH, caller STATIC_ONLY, target PLANNED; provenance APPLICATION_OWNED_OR_LOCAL_ADAPTED',
+    ];
 }
 
 /**
@@ -736,11 +856,11 @@ function renderReport(
     ksort($retiredByOrigin);
 
     $out = [];
-    $out[] = '# หลักฐาน Function Disposition และ Acceptance Criteria รายฟังก์ชัน v2';
+    $out[] = '# หลักฐาน Function Disposition และ Acceptance Criteria รายฟังก์ชัน v3';
     $out[] = '';
     $out[] = 'เอกสารนี้ inventory ฟังก์ชัน PHP และ frontend JavaScript จาก CI3 ที่ pin ไว้ เพื่อกำหนดว่าจะ MIGRATE, REPLACE, RETAIN_TEMP, RETIRE_PROPOSED หรือ UNKNOWN_BLOCKED ไปที่ใด พร้อม Acceptance Criteria รายจุด. สถานะเป็น baseline ก่อนย้าย ไม่ใช่หลักฐานว่าการย้ายสำเร็จ.';
     $out[] = '';
-    $out[] = 'ไฟล์นี้ generate ด้วย `php scripts/check-function-disposition.php --generate=<out> --carry-from=<v1>` ห้ามแก้มือ — แก้ pin หรือแก้ carry source แล้ว generate ใหม่';
+    $out[] = 'ไฟล์นี้ generate ด้วย `php scripts/check-function-disposition.php --generate=<out> --carry-from=<v1>` ห้ามแก้มือ — แก้ pin, manual new-point disposition หรือ carry source แล้ว generate ใหม่';
     $out[] = '';
     $out[] = '## Verdict และ denominator';
     $out[] = '';
@@ -752,7 +872,7 @@ function renderReport(
     $out[] = sprintf('| JavaScript candidate token | %d | REGISTERED จาก %d files | MISSING | 0/%d |', count($javascript), count($jsByFile), count($javascript));
     $out[] = sprintf('| **รวม live acceptance points** | **%d** | **REGISTERED_AT_PIN** | **MISSING** | **0/%d** |', count($live), count($live));
     $out[] = '';
-    $out[] = sprintf('Retired points %d จุด อยู่หัวข้อ Retired points ไม่นับใน denominator. Audit trail: v1 มี 1411 points, ไฟล์ต้นทาง %d ไฟล์หายจาก pin จึงเหลือ live %d — `1411 − %d = %d`.', count($retired), countRetiredFiles($retired), count($live), count($retired), count($live));
+    $out[] = sprintf('Retired points %d จุด อยู่หัวข้อ Retired points ไม่นับใน denominator. Current inventory %d points: live %d และ retired %d จาก %d ไฟล์. v3 เพิ่ม shared Report Tracking parser 1 จุดจาก source pin ใหม่.', count($retired), count($live) + count($retired), count($live), count($retired), countRetiredFiles($retired));
     $out[] = '';
     $out[] = '### Disposition summary (live)';
     $out[] = '';
@@ -779,7 +899,7 @@ function renderReport(
     $out[] = '|---|---|';
     $out[] = sprintf('| CI3 pin | `%s` |', $pin ?? 'UNPINNED');
     $out[] = '| Worktree | `CLEAN` (checker บังคับก่อน generate) |';
-    $out[] = '| Reference contract | `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md` |';
+    $out[] = '| Reference contract | `outputs/reference/2026-08-21_ci3-source-repin-pr3_v1.md` |';
     $out[] = '| CI4 target tree | `app/` และ `spark` ยังไม่มี |';
     $out[] = '| Execution state ทุก row | `PLANNED_NOT_IMPLEMENTED` |';
     $out[] = '| Static caller limitation | dynamic call, reflection, string route, external consumer, scheduler และ production traffic ยังพิสูจน์ไม่ได้ |';

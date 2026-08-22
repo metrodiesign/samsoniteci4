@@ -1,5 +1,7 @@
 # CI3 smoke rehearsal บน MariaDB 11.4 (ปิด WP-00K ส่วน CI3 suite)
 
+> Historical evidence: ผลนี้มาจาก CI3 pin `8dad4e3`. Active pin เปลี่ยนเป็น `ee1c95e` หลัง PR #3; ต้อง rerun ตาม `2026-08-21_ci3-source-repin-pr3_v1.md` ก่อนใช้ปิด Gate 1D.
+
 > วันที่: 2026-08-17
 > ทำซ้ำได้ด้วย: `./db/dbctl.sh web-build && ./db/dbctl.sh web-up && ./db/dbctl.sh smoke`
 > สถานะ: **ผ่านครบ**

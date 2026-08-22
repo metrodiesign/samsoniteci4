@@ -10,3 +10,7 @@
 # evidence และ lock เก็บ local เท่านั้น
 evidence/
 .dbctl.lock/
+
+# Local Python validation artifacts
+__pycache__/
+*.py[cod]
