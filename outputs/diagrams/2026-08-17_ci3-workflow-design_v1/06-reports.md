@@ -4,6 +4,8 @@
 > Scope: รายงานหลังบ้านและ export (UC-10) + dashboard พร้อม mapping ไป CI4
 > Generated: 2026-08-17
 
+> Update 2026-08-21: เนื้อหาด้านล่างเป็น historical baseline ของ CI3 pin `8dad4e3`. ข้อสรุป empty-status defect/retirement ของ `ReportTrackingListingTest` ถูก supersede โดย PR #3 ที่ pin `ee1c95e`. ใช้ `../../reference/2026-08-21_ci3-source-repin-pr3_v1.md` เป็น change overlay.
+
 รายงานทั้งหมดเป็น read-only ใช้ filter pattern เดียวกัน (branch + ช่วงวันที่) — ความเสี่ยงหลักคือ raw SQL, การดึงทั้งตารางเข้า memory (`ini_set 8048M`) และ export ที่เป็น HTML table ให้เบราว์เซอร์ตีความเป็น Excel
 
 | § | Diagram | Source UC |

@@ -1,5 +1,7 @@
 # Handoff: DB Foundation ของ Samsonite CI4 migration
 
+> Superseded runtime note 2026-08-21: image/source pin `8dad4e3` ในเอกสารนี้เป็นประวัติ. Active pin คือ `ee1c95e`; ดู `2026-08-21_ci3-source-repin-pr3_v1.md` ก่อนรัน.
+
 สรุปสถานะงาน Phase 0D ณ 2026-08-17 สำหรับคนที่มารับงานต่อ ครอบคลุมว่าอะไรรันอยู่
 อะไรปิดไปแล้ว อะไรยังขวาง และอะไรที่ตัดสินใจไปแล้วห้ามรื้อ
 

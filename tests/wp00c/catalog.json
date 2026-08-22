@@ -1,0 +1,422 @@
+{
+  "schema_version": 1,
+  "catalog_version": "WP00C-CATALOG-2026-08-21-v2",
+  "status": "PREPARED_AWAITING_SEAM_CONFIRMATION",
+  "ci3_source": {
+    "commit": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+    "routes": 178,
+    "controllers": 23,
+    "use_cases": 12
+  },
+  "seams": [
+    {"id": "HTTP_UI", "description": "CI3 HTTP route, session, redirect, rendered DOM and user-visible response", "confirmation": "PROPOSED"},
+    {"id": "DB_SIDE_EFFECT", "description": "Database state reconciled after a real HTTP request", "confirmation": "PROPOSED"},
+    {"id": "FILE_DOWNLOAD", "description": "Uploaded/generated/downloaded file bytes, headers, rows and cells", "confirmation": "PROPOSED"},
+    {"id": "OUTBOUND_STUB", "description": "Email/SMS request captured by loopback stub; production transport remains blocked", "confirmation": "PROPOSED"},
+    {"id": "PERFORMANCE_OBSERVATION", "description": "Same fixture and request profile with latency, memory and query-plan evidence", "confirmation": "PROPOSED"},
+    {"id": "RECOVERY", "description": "Fixture cleanup, database restore and source/runtime integrity", "confirmation": "PROPOSED"}
+  ],
+  "explicit_route_rules": [
+    {"target_glob": "order/reporttrackinglistingtest*", "case_ids": ["RPT-TRACKING-TEST-001"]},
+    {"target_glob": "user/report*", "case_ids": ["RPT-MATRIX-001", "RPT-EDGE-001"]},
+    {"target_glob": "user/excel_*", "case_ids": ["RPT-EXPORT-001"]},
+    {"target_glob": "order/reporttrackinglisting*", "case_ids": ["RPT-TRACKING-001"]},
+    {"target_glob": "order/reportsummary*", "case_ids": ["RPT-SUMMARY-001"]},
+    {"target_glob": "order/excel_report*", "case_ids": ["RPT-EXPORT-001"]},
+    {"target_glob": "user/contactlisting*", "case_ids": ["CONTACT-LIST-001"]},
+    {"target_glob": "user/logout*", "case_ids": ["AUTH-SESSION-001"]},
+    {"target_glob": "login*", "case_ids": ["AUTH-LOGIN-001", "AUTH-RESET-001"]},
+    {"target_glob": "user*", "case_ids": ["USER-CRUD-001", "AUTHZ-BRANCH-001"]},
+    {"target_glob": "order*", "case_ids": ["ORDER-LIST-001", "ORDER-LIFECYCLE-001"]},
+    {"target_glob": "upload_excel*", "case_ids": ["XLS-PREVIEW-001", "XLS-CONFIRM-001", "XLS-NEGATIVE-001"]},
+    {"target_glob": "track*", "case_ids": ["TRACK-PUBLIC-001", "TRACK-NEGATIVE-001"]},
+    {"target_glob": "contact*", "case_ids": ["CONTACT-PUBLIC-001", "CONTACT-FAILURE-001"]},
+    {"target_glob": "rating*", "case_ids": ["RATING-SUBMIT-001", "RATING-NEGATIVE-001"]},
+    {"target_glob": "branch/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "branchtype/*", "case_ids": ["MASTER-CRUD-001", "MASTER-UPLOAD-001"]},
+    {"target_glob": "brand/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "condition/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "producttype/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "provider/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "statustype/*", "case_ids": ["MASTER-CRUD-001", "MASTER-REFERENCE-001"]},
+    {"target_glob": "estimateprice/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "fixed/*", "case_ids": ["MASTER-CRUD-001"]},
+    {"target_glob": "book/*", "case_ids": ["MASTER-CRUD-001", "ROUTE-DEFECT-001"]},
+    {"target_glob": "menu/*", "case_ids": ["MASTER-MENU-001"]},
+    {"target_glob": "background_web/*", "case_ids": ["MASTER-BACKGROUND-001"]},
+    {"target_glob": "error", "case_ids": ["ROUTE-404-001"]}
+  ],
+  "cases": [
+    {
+      "id": "ROUTE-EXPLICIT-001", "domain": "routing", "title": "Reconcile all 178 explicit routes", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master"], "source_trace": ["application/config/routes.php:41-266"],
+      "given": "Pinned CI3 source and synthetic users", "when": "Enumerate every configured route pattern with representative parameters",
+      "expected_ci3": "Every route classified as reachable, redirect, validation response or approved legacy defect; unclassified=0", "ci4_disposition": "Explicit route or approved retirement; Auto Routing Legacy remains disabled",
+      "comparator": "route pattern, target, method, HTTP status, redirect and DOM signature", "approval_roles": ["Engineering", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ROUTE-IMPLICIT-001", "domain": "routing", "title": "Discover implicit/default-route entry points", "seam": "HTTP_UI", "path": "security",
+      "fixture_sets": ["auth_users", "core_master"], "source_trace": ["application/config/routes.php", "application/controllers"],
+      "given": "Public methods from 23 controllers and three synthetic roles", "when": "Probe controller/method URLs absent from explicit routes",
+      "expected_ci3": "Reachable and unreachable implicit entries recorded with role and branch effects; unknown=0", "ci4_disposition": "Create explicit route only for approved live entry; retire or deny remaining entries",
+      "comparator": "HTTP status, redirect, handler identity and side-effect delta", "approval_roles": ["Engineering", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ROUTE-404-001", "domain": "routing", "title": "Missing URL reproduces broken CI3 404", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/config/routes.php:42", "application/controllers/Error.php"],
+      "given": "Unknown synthetic URL", "when": "GET missing route as anonymous and authenticated user",
+      "expected_ci3": "HTTP 200 with Error-controller collision warning", "ci4_disposition": "CORRECT_AND_REBASELINE to real HTTP 404 without warning or login form",
+      "comparator": "status, warning signature, body layout and redirect", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ROUTE-DEFECT-001", "domain": "routing", "title": "Known broken route aliases", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/config/routes.php:116", "application/config/routes.php:151", "application/config/routes.php:218-222", "application/config/routes.php:258"],
+      "given": "Representative route parameters", "when": "Open rackstatus, book page 2 and two-parameter report aliases",
+      "expected_ci3": "Broken target or repeated $1 behavior captured exactly", "ci4_disposition": "Correct or retire only with Business/QA route decision",
+      "comparator": "resolved target, status, redirect and rendered result", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-TRACKING-TEST-001", "domain": "report", "title": "Legacy Report Tracking Test consolidation", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users", "report_matrix"], "source_trace": ["application/config/routes.php:264-266", "application/controllers/Order.php"],
+      "given": "Authenticated central user", "when": "Open ReportTrackingListingTest with empty, single, multiple and malformed status filters",
+      "expected_ci3": "HTTP 200; empty or malformed input omits the status filter; valid integer IDs filter through Query Builder without raw IN SQL", "ci4_disposition": "CONSOLIDATE into the single ReportTrackingListing page; preserve corrected filter behavior; do not create or expose a Test route/page/menu in CI4",
+      "comparator": "HTTP result, rendered rows, SQL error absence, corrected filter parity and absence of a CI4 Test route/page/menu", "approval_roles": ["Business", "Engineering", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTH-LOGIN-001", "domain": "auth", "title": "Valid login establishes CI3 session contract", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/controllers/Login.php:50-104", "application/models/Login_model.php:11-35"],
+      "given": "Active central user with runtime-only test password", "when": "POST /loginMe",
+      "expected_ci3": "Redirect /dashboard; eight session keys set; one tbl_last_login row added", "ci4_disposition": "PRESERVE visible contract; add session regeneration as approved security correction",
+      "comparator": "redirect, session keys and login-history row", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTH-LOGIN-002", "domain": "auth", "title": "Invalid and deleted users cannot login", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/controllers/Login.php:50-104"],
+      "given": "Wrong password, unknown username and deleted user", "when": "POST /loginMe for each input",
+      "expected_ci3": "Return or redirect to login with mismatch message; no session and no login-history row", "ci4_disposition": "PRESERVE semantic result with generic error and throttling",
+      "comparator": "redirect, message class, session absence and DB no-change", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTH-SESSION-001", "domain": "auth", "title": "Protected route, timeout and logout behavior", "seam": "HTTP_UI", "path": "security",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/libraries/BaseController.php:36-56", "application/controllers/User.php"],
+      "given": "Anonymous, active and expired sessions", "when": "Open /dashboard then GET /logout",
+      "expected_ci3": "Anonymous/expired returns login; logout destroys session and redirects login", "ci4_disposition": "PRESERVE result; use explicit POST logout and secure session policy after approval",
+      "comparator": "status, redirect, cookie/session state", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTH-RESET-001", "domain": "auth", "title": "Password-reset request contract", "seam": "OUTBOUND_STUB", "path": "happy",
+      "fixture_sets": ["auth_users", "password_reset", "provider_stub"], "source_trace": ["application/controllers/Login.php:111-287", "application/models/Login_model.php:38-108"],
+      "given": "Known synthetic email and accepting email stub", "when": "POST /resetPasswordUser",
+      "expected_ci3": "Activation row inserted and one reset email attempted; redirect with visible result", "ci4_disposition": "PRESERVE workflow; remove hardcoded CC and use secure token",
+      "comparator": "DB row, redacted recipient, subject/body semantic fields and redirect", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTH-RESET-002", "domain": "auth", "title": "Unknown, invalid, old and reused reset tokens", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["auth_users", "password_reset", "provider_stub"], "source_trace": ["application/controllers/Login.php:111-287"],
+      "given": "Unknown email, invalid token, old token and previously used token", "when": "Run request, confirm and password-create paths",
+      "expected_ci3": "Unknown/invalid denied; old token remains accepted because CI3 has no TTL; successful reset deletes all email tokens", "ci4_disposition": "CORRECT_AND_REBASELINE old/reused token to deny with TTL and single use",
+      "comparator": "redirect, user password delta, reset-token rows and outbound attempt count", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "USER-CRUD-001", "domain": "user", "title": "User list/add/edit/delete matrix", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["auth_users", "branch_pair"], "source_trace": ["application/controllers/User.php", "application/models/User_model.php"],
+      "given": "Central and branch-scoped users", "when": "List, add valid user, edit fields and soft-delete created user through HTTP routes",
+      "expected_ci3": "Listing scope and validation messages captured; insert/update succeeds; delete sets isDeleted=1", "ci4_disposition": "PRESERVE business result and soft-delete semantic",
+      "comparator": "DOM rows, validation, DB before/after and redirect/JSON", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "USER-CRUD-002", "domain": "user", "title": "User validation and duplicate email", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users", "branch_pair"], "source_trace": ["application/controllers/User.php", "assets/js/addUser.js"],
+      "given": "Missing fields, duplicate email, short mobile and mismatched passwords", "when": "Submit add/edit forms and checkEmailExists",
+      "expected_ci3": "Field errors and true/false email-existence response; no unintended DB write", "ci4_disposition": "PRESERVE semantic validation; JSON contract may replace raw echo with paired UI change",
+      "comparator": "field errors, endpoint payload and DB no-change", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "USER-PASSWORD-001", "domain": "user", "title": "Change-password outcomes", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["auth_users"], "source_trace": ["application/controllers/User.php", "application/models/User_model.php"],
+      "given": "Correct old password, wrong old password and same replacement password", "when": "POST /changePassword",
+      "expected_ci3": "Correct changes hash; wrong denied; same password reports fail because affected_rows=0", "ci4_disposition": "Business/QA decide whether same-password result is preserved or corrected",
+      "comparator": "message, password hash delta and session state", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "USER-HISTORY-001", "domain": "user", "title": "Login history and AJAX branch/book lists", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master"], "source_trace": ["application/controllers/User.php", "application/models/User_model.php"],
+      "given": "Authenticated central and branch users", "when": "Open login history and call branch/book cascade endpoints",
+      "expected_ci3": "Paginated history plus raw select/input HTML matching branch fixture", "ci4_disposition": "PRESERVE visible values; escape output and formalize endpoint contract",
+      "comparator": "DOM values, pagination and HTML fragment semantic equality", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTHZ-ROUTE-001", "domain": "authorization", "title": "Anonymous and role direct-route matrix", "seam": "HTTP_UI", "path": "security",
+      "fixture_sets": ["auth_users", "branch_pair"], "source_trace": ["application/libraries/BaseController.php:36-79", "application/config/routes.php"],
+      "given": "Anonymous and role 1/2/3 sessions", "when": "Open every back-office route directly",
+      "expected_ci3": "Anonymous denied; all positive roles commonly pass because isAdmin gate is inert", "ci4_disposition": "Security/Business-approved route policy replaces inert gate; no accidental privilege loss or gain",
+      "comparator": "route × role allow/deny matrix and side-effect absence", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "AUTHZ-BRANCH-001", "domain": "authorization", "title": "Branch listing and direct-object isolation", "seam": "DB_SIDE_EFFECT", "path": "security",
+      "fixture_sets": ["auth_users", "branch_pair", "orders_all_statuses"], "source_trace": ["application/models/User_model.php", "application/models/Request_order_model.php"],
+      "given": "Operator A in branch 1 and Operator B in branch 2", "when": "List, view, edit and delete own/cross-branch objects",
+      "expected_ci3": "Per-query scope and known IDOR gaps recorded without using real data", "ci4_disposition": "CORRECT_AND_REBASELINE cross-branch access to deny; Security sign-off required",
+      "comparator": "DOM visibility, HTTP result and DB delta per branch", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-LIST-001", "domain": "order", "title": "Order listings for statuses 1 through 8", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "orders_all_statuses"], "source_trace": ["application/controllers/Order.php:30-511", "application/models/Request_order_model.php:28-457"],
+      "given": "One or more synthetic orders for every legacy status", "when": "Open all queue/listing routes as central and branch users",
+      "expected_ci3": "Rows, counts, search, pagination and status-6 visibility match literal fixture matrix", "ci4_disposition": "PRESERVE approved queue and branch behavior",
+      "comparator": "ordered row IDs, counts, pagination and branch scope", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-CREATE-001", "domain": "order", "title": "Create valid repair order", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "provider_stub", "generated_files"], "source_trace": ["application/controllers/Order.php:624-744", "application/models/Request_order_model.php:903-940"],
+      "given": "Operator A, valid masters, accepting SMS stub and generated safe image", "when": "POST /addNewOrders",
+      "expected_ci3": "One status-1 order, one action-1 status log and one SMS attempt; visible redirect/result captured", "ci4_disposition": "PRESERVE result; make tracking ID allocation atomic and uploads safe",
+      "comparator": "order/log rows, generated ID format, file effect, outbound payload and redirect", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-CREATE-002", "domain": "order", "title": "Create-order validation and upload rejection", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["auth_users", "core_master", "generated_files"], "source_trace": ["application/controllers/Order.php:624-744", "application/controllers/Order.php:1150-1170"],
+      "given": "Missing masters/required fields, malformed upload and duplicate input", "when": "Submit create order variants",
+      "expected_ci3": "Validation/error behavior captured; no partial order/log write for rejected input", "ci4_disposition": "PRESERVE accepted business rules; strengthen upload validation",
+      "comparator": "field errors, DB/file no-change and outbound attempts=0", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-LIFECYCLE-001", "domain": "order", "title": "Normal status lifecycle 1 to 5", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "orders_all_statuses", "provider_stub"], "source_trace": ["application/controllers/Order.php:747-930", "application/models/Request_order_model.php:903-1028"],
+      "given": "Orders at statuses 1,2,3,4", "when": "Run sendorderUpdate, sendorderUpdateStatus and sendorder_deliver",
+      "expected_ci3": "Status, provider, date fields and status_log rows match transition table", "ci4_disposition": "PRESERVE approved transitions and make each mutation transactional",
+      "comparator": "exact status/date/provider/log delta and visible result", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-LIFECYCLE-002", "domain": "order", "title": "Direct invalid transition and partial batch failure", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["auth_users", "orders_all_statuses"], "source_trace": ["application/controllers/Order.php:747-930"],
+      "given": "Direct POST status outside UI choices and mixed valid/invalid batch IDs", "when": "Submit transition endpoints",
+      "expected_ci3": "Backend accepts arbitrary status and may partially write batch; exact rows captured", "ci4_disposition": "Business/Security decide server-side state machine; partial write must be corrected transactionally",
+      "comparator": "per-row state/log delta and failure position", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-EDIT-001", "domain": "order", "title": "Edit, print and soft-delete order", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "orders_all_statuses"], "source_trace": ["application/controllers/Order.php:938-1147"],
+      "given": "Existing branch-1 order", "when": "Open print, edit non-status fields and delete",
+      "expected_ci3": "Print renders; edit preserves status/log; delete sets action_status=8 without new log", "ci4_disposition": "PRESERVE approved semantic while closing cross-branch IDOR",
+      "comparator": "print DOM, order field diff and status_log no-change", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "ORDER-CONCURRENCY-001", "domain": "order", "title": "Concurrent tracking-ID allocation", "seam": "DB_SIDE_EFFECT", "path": "concurrency",
+      "fixture_sets": ["auth_users", "core_master", "provider_stub"], "source_trace": ["application/models/Request_order_model.php:1343-1369"],
+      "given": "Two simultaneous synthetic create requests", "when": "Release both requests at same barrier",
+      "expected_ci3": "Observe whether select_max+1 creates duplicate/collision; no hypothesis counted as result", "ci4_disposition": "CORRECT_AND_REBASELINE with DB uniqueness and atomic allocation",
+      "comparator": "request outcomes, unique track IDs, order/log counts and SMS attempts", "approval_roles": ["Business", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "TRACK-PUBLIC-001", "domain": "tracking", "title": "Known tracking ID in English and Thai", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["orders_all_statuses", "core_master", "cms_background"], "source_trace": ["application/controllers/Track.php:25-74", "application/controllers/Track_th.php:25-60"],
+      "given": "WP00C-TRACK-005 with four status-log rows", "when": "Open EN and TH tracking form/result routes",
+      "expected_ci3": "Language-specific headings and timeline of four rows render without customer PII", "ci4_disposition": "PRESERVE content/order/date contract and remove global temp table",
+      "comparator": "status, normalized DOM, language strings and ordered timeline", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "TRACK-NEGATIVE-001", "domain": "tracking", "title": "Unknown and malformed tracking IDs", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["orders_all_statuses"], "source_trace": ["application/controllers/Track.php", "application/controllers/Track_th.php"],
+      "given": "Unknown, empty, wildcard-like and oversized identifiers", "when": "Submit EN/TH tracking searches",
+      "expected_ci3": "Validation/not-found behavior and partial LIKE matching captured", "ci4_disposition": "Preserve approved lookup semantic; bind query input",
+      "comparator": "validation, not-found DOM and returned tracking IDs", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "TRACK-CONCURRENCY-001", "domain": "tracking", "title": "Parallel public tracking isolation", "seam": "DB_SIDE_EFFECT", "path": "concurrency",
+      "fixture_sets": ["orders_all_statuses"], "source_trace": ["application/models/Request_order_model.php:1420-1484"],
+      "given": "Two different synthetic tracking IDs", "when": "Send parallel tracking requests repeatedly",
+      "expected_ci3": "Measure cross-request contamination caused by shared temp_status_log", "ci4_disposition": "CORRECT_AND_REBASELINE to per-request query with zero contamination",
+      "comparator": "each response timeline and temp-table/interleaving evidence", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "CONTACT-PUBLIC-001", "domain": "contact", "title": "Valid English and Thai contact submission", "seam": "OUTBOUND_STUB", "path": "happy",
+      "fixture_sets": ["contact_message", "provider_stub"], "source_trace": ["application/controllers/Contact.php:71-282", "application/controllers/Contact_th.php:71-225"],
+      "given": "Synthetic contact values and accepting email stub", "when": "POST /addContact and /addContact_th",
+      "expected_ci3": "One contact row and one email attempt per submission; language result captured", "ci4_disposition": "PRESERVE business result; config from environment and redacted audit",
+      "comparator": "contact row, outbound payload semantic fields and DOM result", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "CONTACT-FAILURE-001", "domain": "contact", "title": "Contact validation, SMTP failure and duplicate submit", "seam": "OUTBOUND_STUB", "path": "negative",
+      "fixture_sets": ["contact_message", "provider_stub"], "source_trace": ["application/controllers/Contact.php", "application/controllers/Contact_th.php"],
+      "given": "Invalid form, rejecting/timeout stub and replayed valid request", "when": "Submit each variant",
+      "expected_ci3": "Validation and DB/email partial-side-effect behavior captured exactly", "ci4_disposition": "Define idempotency and recoverable delivery-intent contract; no duplicate send",
+      "comparator": "DB rows, attempt count, stub request IDs and user-visible result", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "CONTACT-LIST-001", "domain": "contact", "title": "Back-office contact listing", "seam": "HTTP_UI", "path": "security",
+      "fixture_sets": ["auth_users", "contact_message", "branch_pair"], "source_trace": ["application/controllers/User.php", "application/models/User_model.php"],
+      "given": "Central and two branch users", "when": "Open contactListing and search synthetic detail",
+      "expected_ci3": "All authenticated users can see global contact list; branch scope absent", "ci4_disposition": "Business/Security decide approved visibility and re-baseline",
+      "comparator": "route × role/branch visibility, search and pagination", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RATING-PAGE-001", "domain": "rating", "title": "Rating page redirect defect", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["orders_all_statuses"], "source_trace": ["application/controllers/Rating.php:24-40"],
+      "given": "Valid synthetic tracking ID", "when": "GET /rating/:trackID",
+      "expected_ci3": "Redirect occurs before rating view renders", "ci4_disposition": "Business/QA decide corrected public rating-page contract",
+      "comparator": "status, location and DOM absence", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RATING-SUBMIT-001", "domain": "rating", "title": "First valid rating closes status-5 order", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["orders_all_statuses", "rating_complete"], "source_trace": ["application/controllers/Rating.php:43-116", "application/models/Rating_model.php:5-61"],
+      "given": "Unrated status-5 synthetic order and eight scores", "when": "POST /addRating",
+      "expected_ci3": "Eight rating rows, one comment and order status 5 to 7 with completion dates; no status log", "ci4_disposition": "PRESERVE approved side effects in one transaction",
+      "comparator": "rating/comment rows and exact order/log delta", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RATING-NEGATIVE-001", "domain": "rating", "title": "Duplicate, invalid and unknown rating", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["orders_all_statuses", "rating_complete"], "source_trace": ["application/controllers/Rating.php:43-116"],
+      "given": "Already-rated order, invalid score set and unknown track ID", "when": "POST /addRating variants",
+      "expected_ci3": "Duplicate/invalid/unknown outcomes captured with no extra accepted side effects", "ci4_disposition": "PRESERVE rule and validate score range server-side",
+      "comparator": "messages, rating/comment/order/log row deltas", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-PREVIEW-001", "domain": "import", "title": "Status, Price and New Order preview", "seam": "FILE_DOWNLOAD", "path": "happy",
+      "fixture_sets": ["excel_import_base", "generated_files"], "source_trace": ["application/controllers/Upload_excel.php:43-579"],
+      "given": "Three generated synthetic XLSX fixtures", "when": "POST each preview route",
+      "expected_ci3": "Approved rendered preview, valid/reject rows and temp-table deltas; confirm/message attempts=0", "ci4_disposition": "PRESERVE approved output without PHPExcel warnings",
+      "comparator": "HTTP/DOM, workbook fixture hash and temp-table rows", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-CONFIRM-001", "domain": "import", "title": "Status, Price and New Order confirm success", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["excel_import_base", "generated_files"], "source_trace": ["application/controllers/Upload_excel.php:122-570"],
+      "given": "Approved previews on isolated synthetic DB", "when": "POST each Confirm route once",
+      "expected_ci3": "Approved order/status/price/log deltas including known New Order redirect warning", "ci4_disposition": "PRESERVE data result; correct warning and redirect failure",
+      "comparator": "HTTP/DOM plus exact accepted/rejected/order/log rows", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-NEGATIVE-001", "domain": "import", "title": "Malformed, mixed-validity and empty import files", "seam": "FILE_DOWNLOAD", "path": "negative",
+      "fixture_sets": ["excel_import_base", "generated_files"], "source_trace": ["application/controllers/Upload_excel.php:43-579"],
+      "given": "Wrong extension, malformed workbook, invalid headers, mixed rows and empty workbook", "when": "POST all preview/confirm variants",
+      "expected_ci3": "Validation/reject behavior and any partial temp/final writes captured", "ci4_disposition": "Reject unsafe/malformed input before business write; preserve approved row mapping",
+      "comparator": "validation DOM, accepted/rejected counts, temp/final rows and file cleanup", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-REPLAY-001", "domain": "import", "title": "Confirm replay and idempotency baseline", "seam": "DB_SIDE_EFFECT", "path": "replay",
+      "fixture_sets": ["excel_import_base", "generated_files"], "source_trace": ["application/controllers/Upload_excel.php", "application/models/Request_order_model.php"],
+      "given": "One approved batch", "when": "POST each Confirm route twice",
+      "expected_ci3": "Status/New Order duplicate writes and stable Price assignment reproduced", "ci4_disposition": "CORRECT_AND_REBASELINE to idempotent success with no additional writes",
+      "comparator": "request count, response and per-table row/value deltas", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-ISOLATION-001", "domain": "import", "title": "Parallel import users and batch isolation", "seam": "DB_SIDE_EFFECT", "path": "concurrency",
+      "fixture_sets": ["excel_import_base", "branch_pair", "generated_files"], "source_trace": ["application/controllers/Upload_excel.php:60", "application/models/Request_order_model.php:1552-1633"],
+      "given": "Operator A/B sessions with distinct batches", "when": "Overlap and then simultaneously release preview/confirm requests",
+      "expected_ci3": "Controlled overwrite defect plus simultaneous-request result captured without speculation", "ci4_disposition": "CORRECT_AND_REBASELINE with batch ID, owner and atomic confirm",
+      "comparator": "batch ownership, temp/final rows and cross-user contamination", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "XLS-CSRF-001", "domain": "import", "title": "Tokenless Confirm baseline", "seam": "HTTP_UI", "path": "security",
+      "fixture_sets": ["excel_import_base", "generated_files"], "source_trace": ["application/config/config.php:302", "application/controllers/Upload_excel.php"],
+      "given": "Valid batch with and without CSRF token", "when": "POST all Confirm routes",
+      "expected_ci3": "Token absent and tokenless POST accepted", "ci4_disposition": "CORRECT_AND_REBASELINE to reject before DB write",
+      "comparator": "form token, HTTP result and DB delta", "approval_roles": ["QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "MASTER-CRUD-001", "domain": "master", "title": "Parameterized CRUD matrix for ten master controllers", "seam": "DB_SIDE_EFFECT", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master"], "source_trace": ["application/controllers/Branch.php", "application/controllers/Branchtype.php", "application/controllers/Brand.php", "application/controllers/Condition.php", "application/controllers/Producttype.php", "application/controllers/Provider.php", "application/controllers/Statustype.php", "application/controllers/Estimateprice.php", "application/controllers/Fixed.php", "application/controllers/Book.php"],
+      "given": "Central and branch users plus two rows per master", "when": "Run list/add/edit/delete and invalid-form variants for every controller",
+      "expected_ci3": "Route-specific validation, redirect, pagination and hard-delete effects captured", "ci4_disposition": "PRESERVE approved business values; correct unsafe authorization/CSRF separately",
+      "comparator": "DOM/JSON, row values, counts, cdate/udate and referenced-object effects", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "MASTER-REFERENCE-001", "domain": "master", "title": "Referenced master deletion and duplicate values", "seam": "DB_SIDE_EFFECT", "path": "negative",
+      "fixture_sets": ["core_master", "orders_all_statuses", "auth_users"], "source_trace": ["application/models/Statustype_model.php", "application/models/Request_order_model.php"],
+      "given": "Master values referenced by synthetic orders/import mapping", "when": "Submit duplicates and delete referenced rows",
+      "expected_ci3": "Hard delete/orphan and duplicate acceptance behavior captured", "ci4_disposition": "Business/DBA decision required before adding constraints or soft delete",
+      "comparator": "master/order/report/import before-after and orphan counts", "approval_roles": ["Business", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "MASTER-UPLOAD-001", "domain": "master", "title": "Branch-type image upload validation", "seam": "FILE_DOWNLOAD", "path": "security",
+      "fixture_sets": ["auth_users", "core_master", "generated_files"], "source_trace": ["application/controllers/Branchtype.php"],
+      "given": "Valid PNG and disguised invalid file", "when": "Submit add/edit Branchtype uploads",
+      "expected_ci3": "Legacy extension/path/file behavior captured without executing uploaded content", "ci4_disposition": "CORRECT_AND_REBASELINE to validated non-executable storage",
+      "comparator": "HTTP result, DB filename, file bytes/location and execution-deny check", "approval_roles": ["QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "MASTER-MENU-001", "domain": "master", "title": "Menu group listing/add/edit and sidebar effect", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master"], "source_trace": ["application/controllers/Menu.php", "application/views/includes/header.php"],
+      "given": "Central/branch menu groups and four synthetic menu entries", "when": "List/add/edit group and reopen sidebar under each GroupID",
+      "expected_ci3": "CSV group_type drives visible menus; pagination miscount and no-menu selection captured", "ci4_disposition": "Preserve approved visibility; fix count bug through explicit decision",
+      "comparator": "group row, sidebar link set and pagination", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "MASTER-BACKGROUND-001", "domain": "master", "title": "Background CMS DB/file behavior", "seam": "FILE_DOWNLOAD", "path": "negative",
+      "fixture_sets": ["auth_users", "cms_background", "generated_files"], "source_trace": ["application/controllers/Background_web.php", "application/views/en"],
+      "given": "Synthetic background record, valid PNG and alternate extension", "when": "List/add/edit/delete then open public pages",
+      "expected_ci3": "DB writes and fixed filenames occur while public views ignore DB; extension mismatch captured", "ci4_disposition": "Business decides DB-driven correction or retained fixed-file contract",
+      "comparator": "DB row, file set, public DOM/style references and delete residue", "approval_roles": ["Business", "QA", "Security"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-DASHBOARD-001", "domain": "report", "title": "Dashboard totals and branch background", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "report_matrix"], "source_trace": ["application/controllers/User.php:71-434"],
+      "given": "Literal order/status/branch matrix", "when": "Open dashboard as central and branch users",
+      "expected_ci3": "Counts and branch/default background match fixture literals", "ci4_disposition": "PRESERVE approved totals and scope",
+      "comparator": "labels, exact counts, links and background reference", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-MATRIX-001", "domain": "report", "title": "All HTML reports with filter matrix", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "report_matrix"], "source_trace": ["application/controllers/User.php", "application/models/Request_order_model.php", "application/models/Rating_model.php"],
+      "given": "Two branches, statuses 1-8, two brand/type pairs and rating literals", "when": "Run every report for all/branch/date/status filters",
+      "expected_ci3": "Rows, percentages, totals and branch scope equal approved fixture literals", "ci4_disposition": "PRESERVE exact business totals while replacing raw SQL with binding",
+      "comparator": "exact ordered rows, totals, percentages and hidden branch values", "approval_roles": ["Business", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-TRACKING-001", "domain": "report", "title": "Tracking-detail report", "seam": "HTTP_UI", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "report_matrix"], "source_trace": ["application/controllers/Order.php:426-511", "application/models/Request_order_model.php:462-749"],
+      "given": "Literal order/status/date matrix", "when": "Filter ReportTrackingListing by date/status/search/branch",
+      "expected_ci3": "All matching rows and TotalDay/CMGTotalDay values captured; no real pagination", "ci4_disposition": "Business decides visible pagination; exact result set remains approved baseline",
+      "comparator": "ordered IDs, calculated day values, total count and route parameter behavior", "approval_roles": ["Business", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-SUMMARY-001", "domain": "report", "title": "Tracking summary and missing-master join", "seam": "HTTP_UI", "path": "negative",
+      "fixture_sets": ["auth_users", "core_master", "report_matrix"], "source_trace": ["application/controllers/Order.php:1332-1409", "application/models/Request_order_model.php"],
+      "given": "Eight normal orders and one order referencing missing brand/type", "when": "Open reportsummary under all filters",
+      "expected_ci3": "Missing-master order is omitted by INNER JOIN; exact summary totals recorded", "ci4_disposition": "Business/DBA approve preserve or correction before changing join",
+      "comparator": "row IDs, omissions, totals and pagination", "approval_roles": ["Business", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-EXPORT-001", "domain": "report", "title": "All report exports", "seam": "FILE_DOWNLOAD", "path": "happy",
+      "fixture_sets": ["auth_users", "core_master", "report_matrix"], "source_trace": ["application/controllers/User.php", "application/controllers/Order.php"],
+      "given": "Same approved report filters and fixture version", "when": "Download rating, in-progress and tracking exports",
+      "expected_ci3": "Headers, filename, row order, cell strings and totals captured from HTML-as-XLS output", "ci4_disposition": "Preserve approved file contract until separate format modernization",
+      "comparator": "HTTP headers, filename, byte-normalized table, ordered cells and totals", "approval_roles": ["Business", "QA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RPT-EDGE-001", "domain": "report", "title": "Empty, invalid-date, unauthorized and large report inputs", "seam": "PERFORMANCE_OBSERVATION", "path": "performance",
+      "fixture_sets": ["auth_users", "branch_pair", "report_matrix"], "source_trace": ["application/controllers/User.php", "application/controllers/Order.php", "application/models/Request_order_model.php"],
+      "given": "Empty range, malformed date, cross-branch filter and generated volume profile", "when": "Run HTML/export report variants",
+      "expected_ci3": "Legacy empty/date/scope behavior plus p50/p95, memory, query count and plan captured", "ci4_disposition": "No data leak; totals exact; performance no worse than approved budget",
+      "comparator": "HTTP/result totals, unauthorized rows=0, latency/memory/query-plan profile", "approval_roles": ["Business", "QA", "Security", "DBA"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "INTEGRATION-EMAIL-001", "domain": "integration", "title": "Email payload/failure contract", "seam": "OUTBOUND_STUB", "path": "replay",
+      "fixture_sets": ["auth_users", "contact_message", "provider_stub"], "source_trace": ["application/controllers/Login.php", "application/controllers/Contact.php", "application/controllers/Contact_th.php", "application/libraries/Email.php"],
+      "given": "Loopback stub success/reject/timeout/duplicate states", "when": "Run password-reset and contact email-producing flows",
+      "expected_ci3": "Redacted payload, attempt count, DB effect and visible failure mapping captured", "ci4_disposition": "Environment credentials, idempotent delivery intent, retry/manual recovery and redacted audit",
+      "comparator": "recipient class, subject/body semantic fields, request ID, attempts and DB/HTTP effects", "approval_roles": ["Business", "QA", "Security", "Operations"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "INTEGRATION-SMS-001", "domain": "integration", "title": "SMS payload/failure contract", "seam": "OUTBOUND_STUB", "path": "replay",
+      "fixture_sets": ["orders_all_statuses", "provider_stub"], "source_trace": ["application/helpers/cias_helper.php", "application/controllers/Order.php"],
+      "given": "Loopback stub success/reject/timeout/duplicate states", "when": "Run order-create/status flows that request SMS",
+      "expected_ci3": "Message variants, attempt count and user/DB behavior captured without real send", "ci4_disposition": "Environment credentials, duplicate prevention, timeout mapping and redacted audit",
+      "comparator": "message semantic text, request ID, attempts and order/log effects", "approval_roles": ["Business", "QA", "Security", "Operations"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "PERF-CI3-001", "domain": "performance", "title": "CI3 production-like NFR baseline", "seam": "PERFORMANCE_OBSERVATION", "path": "performance",
+      "fixture_sets": ["auth_users", "report_matrix"], "source_trace": ["outputs/diagrams/2026-08-09_ci3-to-ci4-upgrade-plan_v3.md:1163-1183"],
+      "given": "Approved sanitized volume profile and fixed request mix", "when": "Run public/login/list/mutation/report/export profiles",
+      "expected_ci3": "p50/p95, throughput, memory, 5xx, query count/plan and restore timing recorded", "ci4_disposition": "Freeze final budget before DB/CI4 comparison; no unapproved regression",
+      "comparator": "same profile, dataset, environment identity and metric formulas", "approval_roles": ["Business", "Engineering", "QA", "DBA", "Operations"], "state": "PREPARED_NOT_RUN"
+    },
+    {
+      "id": "RECOVERY-FIXTURE-001", "domain": "recovery", "title": "Fixture cleanup and isolated restore", "seam": "RECOVERY", "path": "recovery",
+      "fixture_sets": ["core_master", "auth_users", "orders_all_statuses", "contact_message", "rating_complete", "password_reset", "cms_background"], "source_trace": ["db/dbctl.sh", "scripts/wp00c-kit.py"],
+      "given": "Isolated empty database, seeded kit and completed test run", "when": "Run cleanup/restore and full schema verification",
+      "expected_ci3": "Database returns to zero rows or sealed restore point; generated files removed; CI3 source SHA/worktree unchanged", "ci4_disposition": "Same deterministic setup/teardown contract retained for all comparisons",
+      "comparator": "row counts, file manifest, source SHA/dirty count, backup ID and verification result", "approval_roles": ["Engineering", "QA", "DBA"], "state": "PREPARED_NOT_RUN"
+    }
+  ]
+}

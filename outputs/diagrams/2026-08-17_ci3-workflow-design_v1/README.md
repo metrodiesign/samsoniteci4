@@ -1,6 +1,8 @@
 # Samsonite Tracking — Workflow Design สำหรับ CI4 (สกัดจาก CI3)
 
 > Source: `samsoniteci3/application/` ทั้งระบบ — controllers 23 ตัว + models + views + routes ที่ CI3 pin `8dad4e331a90f5c6765954454910b451eb0ff8e5` (สกัดจาก working tree 2026-08-16 ตรวจแล้วว่าไม่อ้าง path ที่ถูกลบเลย); สัญญาของ pin อยู่ `outputs/reference/2026-08-17_ci3-reference-baseline_v1.md`
+
+> Update 2026-08-21: เอกสารชุดนี้ยังเป็น historical baseline ของ `8dad4e3`. Active CI3 pin เปลี่ยนเป็น `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6` หลัง PR #3; defect `ReportTrackingListingTest` เรื่อง empty status ถูกแก้แล้ว. ใช้ `outputs/reference/2026-08-21_ci3-source-repin-pr3_v1.md` เป็น change overlay จนกว่าจะ regenerate workflow/function evidence.
 > Scope: workflow ของระบบครบทุก module ระดับ design พร้อม mapping ไป CI4 ต่อ workflow — ใช้คู่กับแผน migration `2026-08-09_ci3-to-ci4-upgrade-plan_v3.md`
 > Generated: 2026-08-17
 

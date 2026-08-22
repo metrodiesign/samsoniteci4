@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "fixture_version": "WP00C-FIXTURE-2026-08-21-v1",
+  "purpose": "Synthetic-only deterministic fixture pack for CI3 behavior characterization",
+  "safety": {
+    "production_pii": false,
+    "production_credentials": false,
+    "email_domain": "example.invalid",
+    "telephone_placeholder": "0000000000",
+    "requires_empty_database": true,
+    "outbound_transport": "local stub or disabled only"
+  },
+  "fixture_sets": {
+    "core_master": ["branch_type", "branch", "book", "brand", "type", "condition", "estimateprice", "fixed", "provider", "statusaction", "tracking_status"],
+    "auth_users": ["tbl_roles", "tbl_users", "group_type", "tbl_menu", "group_menu"],
+    "branch_pair": ["branch:1", "branch:2", "tbl_users:9002", "tbl_users:9003"],
+    "orders_all_statuses": ["request_order:91001-91009", "status_log:92001-92010"],
+    "contact_message": ["contact:93001"],
+    "rating_complete": ["rating:94001-94008", "rating_comment:95001", "request_order:91007"],
+    "password_reset": ["tbl_reset_password:96001-96002", "tbl_users:9001"],
+    "cms_background": ["tbl_background_web:97001"],
+    "excel_import_base": ["tbl_users:9002", "request_order:91002", "tracking_status:9001-9002"],
+    "report_matrix": ["request_order:91001-91009", "rating:94001-94008", "rating_comment:95001"],
+    "provider_stub": ["stub:email", "stub:sms"],
+    "generated_files": ["file:excel-status", "file:excel-price", "file:excel-new-order", "file:image-valid", "file:image-invalid"]
+  },
+  "generated_files": {
+    "excel-status": {
+      "format": "xlsx",
+      "rows": 2,
+      "generator": "db/dbctl.sh make_synthetic_preview_fixture",
+      "contains_pii": false
+    },
+    "excel-price": {
+      "format": "xlsx",
+      "rows": 2,
+      "generator": "db/dbctl.sh make_synthetic_preview_fixture",
+      "contains_pii": false
+    },
+    "excel-new-order": {
+      "format": "xlsx",
+      "rows": 2,
+      "generator": "db/dbctl.sh make_synthetic_preview_fixture",
+      "contains_pii": false
+    },
+    "image-valid": {
+      "format": "png",
+      "dimensions": "1x1",
+      "generator": "runtime standard-library fixture generator",
+      "contains_pii": false
+    },
+    "image-invalid": {
+      "format": "text disguised as image",
+      "generator": "runtime standard-library fixture generator",
+      "contains_pii": false
+    }
+  },
+  "provider_stub_states": {
+    "success": {"status": 202, "request_id": "SYNTHETIC-PROVIDER-ACCEPTED"},
+    "reject": {"status": 422, "request_id": "SYNTHETIC-PROVIDER-REJECTED"},
+    "timeout": {"status": 504, "request_id": "SYNTHETIC-PROVIDER-TIMEOUT"},
+    "duplicate": {"status": 200, "request_id": "SYNTHETIC-PROVIDER-DUPLICATE"}
+  },
+  "tables": {
+    "branch_type": [
+      {"branch_type_id": 1, "branch_type_details": "SYNTHETIC RETAIL", "branch_type_image": "synthetic-retail.png"},
+      {"branch_type_id": 2, "branch_type_details": "SYNTHETIC SERVICE", "branch_type_image": "synthetic-service.png"}
+    ],
+    "branch": [
+      {"branch_id": 1, "branch_type": 1, "branch_user_name": "wp00c-a", "branch_name": "SYNTHETIC BRANCH A", "branch_details": "SYNTHETIC ONLY", "default_suffix": "WPA", "book_order": "WPA", "customer_ref": "WPA", "cdate": "2026-08-01 00:00:00"},
+      {"branch_id": 2, "branch_type": 2, "branch_user_name": "wp00c-b", "branch_name": "SYNTHETIC BRANCH B", "branch_details": "SYNTHETIC ONLY", "default_suffix": "WPB", "book_order": "WPB", "customer_ref": "WPB", "cdate": "2026-08-01 00:00:00"}
+    ],
+    "book": [
+      {"book_id": 1, "branch_id": 1, "book_detail": "WPA", "status": 1, "bunber_limit": 999, "cdate": "2026-08-01 00:00:00"},
+      {"book_id": 2, "branch_id": 2, "book_detail": "WPB", "status": 1, "bunber_limit": 999, "cdate": "2026-08-01 00:00:00"}
+    ],
+    "brand": [
+      {"brand_id": 1, "brand_details": "SYNTHETIC BRAND A", "cdate": "2026-08-01 00:00:00"},
+      {"brand_id": 2, "brand_details": "SYNTHETIC BRAND B", "cdate": "2026-08-01 00:00:00"}
+    ],
+    "type": [
+      {"type_id": 1, "type_details": "SYNTHETIC TYPE A"},
+      {"type_id": 2, "type_details": "SYNTHETIC TYPE B"}
+    ],
+    "condition": [
+      {"condition_id": 1, "condition_details": "SYNTHETIC CONDITION A"},
+      {"condition_id": 2, "condition_details": "SYNTHETIC CONDITION B"}
+    ],
+    "estimateprice": [
+      {"estimateprice_id": 1, "estimateprice_details": "SYNTHETIC ESTIMATE LOW"},
+      {"estimateprice_id": 2, "estimateprice_details": "SYNTHETIC ESTIMATE HIGH"}
+    ],
+    "fixed": [
+      {"fixed_id": 1, "fixed_details": "SYNTHETIC FIX A"},
+      {"fixed_id": 2, "fixed_details": "SYNTHETIC FIX B"}
+    ],
+    "provider": [
+      {"provider_id": 1, "provider_name": "SYNTHETIC PROVIDER A", "provider_tel": "0000000000", "provider_datail": "SYNTHETIC ONLY"},
+      {"provider_id": 2, "provider_name": "SYNTHETIC PROVIDER B", "provider_tel": "0000000000", "provider_datail": "SYNTHETIC ONLY"}
+    ],
+    "statusaction": [
+      {"status_id": 1, "status_name": "SYNTHETIC NEW", "status_name_th": "สถานะทดสอบ 1"},
+      {"status_id": 2, "status_name": "SYNTHETIC REQUEST", "status_name_th": "สถานะทดสอบ 2"},
+      {"status_id": 3, "status_name": "SYNTHETIC REPAIR", "status_name_th": "สถานะทดสอบ 3"},
+      {"status_id": 4, "status_name": "SYNTHETIC REPAIR COMPLETE", "status_name_th": "สถานะทดสอบ 4"},
+      {"status_id": 5, "status_name": "SYNTHETIC RETURN", "status_name_th": "สถานะทดสอบ 5"},
+      {"status_id": 6, "status_name": "SYNTHETIC HIDDEN", "status_name_th": "สถานะทดสอบ 6"},
+      {"status_id": 7, "status_name": "SYNTHETIC COMPLETED", "status_name_th": "สถานะทดสอบ 7"},
+      {"status_id": 8, "status_name": "SYNTHETIC DELETED", "status_name_th": "สถานะทดสอบ 8"}
+    ],
+    "tracking_status": [
+      {"status_id": 9001, "description_th": "สถานะนำเข้าทดสอบสำเร็จ", "description_en": "SYNTHETIC IMPORT SUCCESS", "success": 1},
+      {"status_id": 9002, "description_th": "สถานะนำเข้าทดสอบไม่สำเร็จ", "description_en": "SYNTHETIC IMPORT REJECT", "success": 0}
+    ],
+    "group_type": [
+      {"group_type_id": 1, "group_type_name": "DASHBOARD", "icon_menu": "fa fa-dashboard"},
+      {"group_type_id": 2, "group_type_name": "MASTER ADMIN", "icon_menu": "fa fa-user"},
+      {"group_type_id": 3, "group_type_name": "ORDER", "icon_menu": "fa fa-shopping-cart"},
+      {"group_type_id": 4, "group_type_name": "REPORT TRACKING", "icon_menu": "fa fa-file-text"},
+      {"group_type_id": 5, "group_type_name": "REPORT SUMMARY", "icon_menu": "fa fa-bar-chart"},
+      {"group_type_id": 6, "group_type_name": "UPLOAD STATUS", "icon_menu": "fa fa-upload"},
+      {"group_type_id": 7, "group_type_name": "UPLOAD PRICE", "icon_menu": "fa fa-upload"},
+      {"group_type_id": 8, "group_type_name": "UPLOAD NEW REQUEST", "icon_menu": "fa fa-upload"},
+      {"group_type_id": 9, "group_type_name": "USER ADMIN", "icon_menu": "fa fa-users"},
+      {"group_type_id": 10, "group_type_name": "WEBSITE ADMIN", "icon_menu": "fa fa-cogs"}
+    ],
+    "tbl_menu": [
+      {"id": 1, "menu_name": "DASHBOARD", "menu_link": "dashboard", "group_type": 1},
+      {"id": 2, "menu_name": "RATING", "menu_link": "user/report", "group_type": 1},
+      {"id": 3, "menu_name": "COMPLETED JOB", "menu_link": "TrackingCompletedListing", "group_type": 1},
+      {"id": 4, "menu_name": "PENDING JOB (DAY)", "menu_link": "user/report_job_byday", "group_type": 1},
+      {"id": 5, "menu_name": "PENDING JOB", "menu_link": "user/report_job_pending", "group_type": 1},
+      {"id": 6, "menu_name": "IN PROGRESS JOB (DAY)", "menu_link": "user/report_in_progress_average", "group_type": 1},
+      {"id": 7, "menu_name": "IN PROGRESS JOB", "menu_link": "user/report_in_progress_job", "group_type": 1},
+      {"id": 8, "menu_name": "BRANCH", "menu_link": "branchListing", "group_type": 2},
+      {"id": 9, "menu_name": "BRANCH TYPE", "menu_link": "branchtypeListing", "group_type": 2},
+      {"id": 10, "menu_name": "BOOK", "menu_link": "bookListing", "group_type": 2},
+      {"id": 11, "menu_name": "PRODUCT TYPE", "menu_link": "producttypeListing", "group_type": 2},
+      {"id": 12, "menu_name": "BRAND", "menu_link": "brandListing", "group_type": 2},
+      {"id": 13, "menu_name": "CONDITION", "menu_link": "conditionListing", "group_type": 2},
+      {"id": 14, "menu_name": "ESTIMATEPRICE", "menu_link": "estimatepriceListing", "group_type": 2},
+      {"id": 15, "menu_name": "FIXED", "menu_link": "fixedListing", "group_type": 2},
+      {"id": 16, "menu_name": "LOGISTICS", "menu_link": "providerListing", "group_type": 2},
+      {"id": 17, "menu_name": "STATUS UPDATE", "menu_link": "statustypeListing", "group_type": 2},
+      {"id": 18, "menu_name": "NEW REQUEST REPAIR", "menu_link": "ordersListing", "group_type": 3},
+      {"id": 19, "menu_name": "LOGISTICS", "menu_link": "sendorderListing", "group_type": 3},
+      {"id": 20, "menu_name": "TRANSPORTING", "menu_link": "TrackingListing", "group_type": 3},
+      {"id": 21, "menu_name": "STATUS REPAIR", "menu_link": "TrackingcloseListing", "group_type": 3},
+      {"id": 22, "menu_name": "DELIVER TO CUSTOMER", "menu_link": "TrackingreturnListing", "group_type": 3},
+      {"id": 23, "menu_name": "COMPLETE FEEDBACK", "menu_link": "TrackingcompleteListing", "group_type": 3},
+      {"id": 24, "menu_name": "COMPLETED JOB", "menu_link": "TrackingCompletedListing", "group_type": 3},
+      {"id": 25, "menu_name": "REPORT TRACKING", "menu_link": "ReportTrackingListing", "group_type": 4},
+      {"id": 26, "menu_name": "REPORT TRACKING TEST", "menu_link": "ReportTrackingListingTest", "group_type": 4},
+      {"id": 27, "menu_name": "REPORT SUMMARY", "menu_link": "reportsummary", "group_type": 5},
+      {"id": 28, "menu_name": "UPLOAD STATUS", "menu_link": "UploadexcelListing", "group_type": 6},
+      {"id": 29, "menu_name": "UPLOAD PRICE", "menu_link": "UploadexcelpriceListing", "group_type": 7},
+      {"id": 30, "menu_name": "UPLOAD NEW REQUEST", "menu_link": "UploadneworderexcelListing", "group_type": 8},
+      {"id": 31, "menu_name": "USERS", "menu_link": "userListing", "group_type": 9},
+      {"id": 32, "menu_name": "LOGIN HISTORY", "menu_link": "login-history", "group_type": 9},
+      {"id": 33, "menu_name": "CONTACT", "menu_link": "contactListing", "group_type": 10},
+      {"id": 34, "menu_name": "BACKGROUND", "menu_link": "BackgroundListing", "group_type": 10},
+      {"id": 35, "menu_name": "MENU GROUP", "menu_link": "menuListing", "group_type": 10}
+    ],
+    "group_menu": [
+      {"id": 1, "group_type": "1,2,3,4,5,6,7,8,9,10", "name": "SYNTHETIC CENTRAL"},
+      {"id": 2, "group_type": "1,3,4,5,6,7,8", "name": "SYNTHETIC OPERATIONS"},
+      {"id": 3, "group_type": "1,4,5", "name": "SYNTHETIC REPORTING"},
+      {"id": 4, "group_type": "1,3,4,5,6,7,8", "name": "SYNTHETIC BRANCH"}
+    ],
+    "tbl_roles": [
+      {"roleId": 1, "role": "SYNTHETIC ADMIN"},
+      {"roleId": 2, "role": "SYNTHETIC OPERATOR"},
+      {"roleId": 3, "role": "SYNTHETIC VIEWER"}
+    ],
+    "tbl_users": [
+      {"userId": 9001, "email": "wp00c-admin@example.invalid", "username": "wp00c-admin", "password": {"wp00c_password_hash": true}, "name": "SYNTHETIC ADMIN", "mobile": "0000000000", "group_id": 1, "roleId": 1, "branch_id": null, "branch_type_id": null, "isDeleted": 0, "createdBy": 0, "createdDtm": "2026-08-01 00:00:00"},
+      {"userId": 9002, "email": "wp00c-a@example.invalid", "username": "wp00c-a", "password": {"wp00c_password_hash": true}, "name": "SYNTHETIC OPERATOR A", "mobile": "0000000000", "group_id": 4, "roleId": 2, "branch_id": 1, "branch_type_id": 1, "isDeleted": 0, "createdBy": 9001, "createdDtm": "2026-08-01 00:00:00"},
+      {"userId": 9003, "email": "wp00c-b@example.invalid", "username": "wp00c-b", "password": {"wp00c_password_hash": true}, "name": "SYNTHETIC OPERATOR B", "mobile": "0000000000", "group_id": 4, "roleId": 2, "branch_id": 2, "branch_type_id": 2, "isDeleted": 0, "createdBy": 9001, "createdDtm": "2026-08-01 00:00:00"},
+      {"userId": 9004, "email": "wp00c-deleted@example.invalid", "username": "wp00c-deleted", "password": {"wp00c_password_hash": true}, "name": "SYNTHETIC DELETED USER", "mobile": "0000000000", "group_id": 4, "roleId": 3, "branch_id": 1, "branch_type_id": 1, "isDeleted": 1, "createdBy": 9001, "createdDtm": "2026-08-01 00:00:00"}
+    ],
+    "request_order": [
+      {"request_id": 91001, "requestDate": "2026-08-01 00:00:00", "trackID": "WP00C-TRACK-001", "numberID": "WP00C-NUM-001", "orderID": "WP00C-ORDER-001", "orderIDShow": "WPC/001", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER ONE", "customerTel": "0000000000", "customerEmail": "wp00c-customer-1@example.invalid", "detailTypeId": 1, "detailBrandId": 1, "detailCondition": "1", "detailEstimatePrice": "1", "detailFixed": "1", "branchID": 1, "branch_type_id": 1, "UserID": 9002, "date_create": "2026-08-01 00:00:00", "action_status": 1, "RepairPrice": "100.00", "number_cmg": "WP00C-CMG-001", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91002, "requestDate": "2026-08-02 00:00:00", "trackID": "WP00C-TRACK-002", "numberID": "WP00C-NUM-002", "orderID": "WP00C-ORDER-002", "orderIDShow": "WPC/002", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER TWO", "customerTel": "0000000000", "customerEmail": "wp00c-customer-2@example.invalid", "detailTypeId": 1, "detailBrandId": 1, "branchID": 1, "branch_type_id": 1, "UserID": 9002, "provider_id": 1, "date_create": "2026-08-02 00:00:00", "date_update_status": "2026-08-03 00:00:00", "action_status": 2, "RepairPrice": "200.00", "number_cmg": "WP00C-CMG-002", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91003, "requestDate": "2026-08-03 00:00:00", "trackID": "WP00C-TRACK-003", "numberID": "WP00C-NUM-003", "orderID": "WP00C-ORDER-003", "orderIDShow": "WPC/003", "warantyType": 2, "waranty_cmg": "OUT", "customerFullname": "SYNTHETIC CUSTOMER THREE", "customerTel": "0000000000", "customerEmail": "wp00c-customer-3@example.invalid", "detailTypeId": 2, "detailBrandId": 1, "branchID": 1, "branch_type_id": 1, "UserID": 9002, "provider_id": 1, "date_create": "2026-08-03 00:00:00", "date_repair": "2026-08-04 00:00:00", "date_update_status": "2026-08-04 00:00:00", "action_status": 3, "RepairPrice": "300.00", "number_cmg": "WP00C-CMG-003", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91004, "requestDate": "2026-08-04 00:00:00", "trackID": "WP00C-TRACK-004", "numberID": "WP00C-NUM-004", "orderID": "WP00C-ORDER-004", "orderIDShow": "WPC/004", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER FOUR", "customerTel": "0000000000", "customerEmail": "wp00c-customer-4@example.invalid", "detailTypeId": 1, "detailBrandId": 2, "branchID": 1, "branch_type_id": 1, "UserID": 9002, "provider_id": 2, "date_create": "2026-08-04 00:00:00", "date_repair_complete": "2026-08-05 00:00:00", "date_update_status": "2026-08-05 00:00:00", "action_status": 4, "RepairPrice": "400.00", "number_cmg": "WP00C-CMG-004", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91005, "requestDate": "2026-08-05 00:00:00", "trackID": "WP00C-TRACK-005", "numberID": "WP00C-NUM-005", "orderID": "WP00C-ORDER-005", "orderIDShow": "WPC/005", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER FIVE", "customerTel": "0000000000", "customerEmail": "wp00c-customer-5@example.invalid", "detailTypeId": 2, "detailBrandId": 2, "branchID": 1, "branch_type_id": 1, "UserID": 9002, "provider_id": 2, "date_create": "2026-08-05 00:00:00", "date_repair_complete": "2026-08-06 00:00:00", "date_deliver": "2026-08-07 00:00:00", "date_update_status": "2026-08-07 00:00:00", "action_status": 5, "RepairPrice": "500.00", "number_cmg": "WP00C-CMG-005", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91006, "requestDate": "2026-08-06 00:00:00", "trackID": "WP00C-TRACK-006", "numberID": "WP00C-NUM-006", "orderID": "WP00C-ORDER-006", "orderIDShow": "WPC/006", "warantyType": 2, "waranty_cmg": "OUT", "customerFullname": "SYNTHETIC CUSTOMER SIX", "customerTel": "0000000000", "customerEmail": "wp00c-customer-6@example.invalid", "detailTypeId": 1, "detailBrandId": 1, "branchID": 1, "branch_type_id": 1, "UserID": 9002, "action_status": 6, "RepairPrice": "600.00", "number_cmg": "WP00C-CMG-006", "create_by_user": "SYNTHETIC OPERATOR A"},
+      {"request_id": 91007, "requestDate": "2026-08-07 00:00:00", "trackID": "WP00C-TRACK-007", "numberID": "WP00C-NUM-007", "orderID": "WP00C-ORDER-007", "orderIDShow": "WPC/007", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER SEVEN", "customerTel": "0000000000", "customerEmail": "wp00c-customer-7@example.invalid", "detailTypeId": 2, "detailBrandId": 2, "branchID": 2, "branch_type_id": 2, "UserID": 9003, "date_complete": "2026-08-08 00:00:00", "date_update_status": "2026-08-08 00:00:00", "action_status": 7, "RepairPrice": "700.00", "number_cmg": "WP00C-CMG-007", "create_by_user": "SYNTHETIC OPERATOR B"},
+      {"request_id": 91008, "requestDate": "2026-08-08 00:00:00", "trackID": "WP00C-TRACK-008", "numberID": "WP00C-NUM-008", "orderID": "WP00C-ORDER-008", "orderIDShow": "WPC/008", "warantyType": 1, "waranty_cmg": "IN", "customerFullname": "SYNTHETIC CUSTOMER EIGHT", "customerTel": "0000000000", "customerEmail": "wp00c-customer-8@example.invalid", "detailTypeId": 1, "detailBrandId": 1, "branchID": 2, "branch_type_id": 2, "UserID": 9003, "action_status": 8, "RepairPrice": "800.00", "number_cmg": "WP00C-CMG-008", "create_by_user": "SYNTHETIC OPERATOR B"},
+      {"request_id": 91009, "requestDate": "2026-08-09 00:00:00", "trackID": "WP00C-TRACK-009", "numberID": "WP00C-NUM-009", "orderID": "WP00C-ORDER-009", "orderIDShow": "WPC/009", "warantyType": 2, "waranty_cmg": "OUT", "customerFullname": "SYNTHETIC CUSTOMER NINE", "customerTel": "0000000000", "customerEmail": "wp00c-customer-9@example.invalid", "detailTypeId": 9999, "detailBrandId": 9999, "branchID": 2, "branch_type_id": 2, "UserID": 9003, "action_status": 2, "RepairPrice": "900.00", "number_cmg": "WP00C-CMG-009", "create_by_user": "SYNTHETIC OPERATOR B"}
+    ],
+    "status_log": [
+      {"id": 92001, "order_id": "WP00C-TRACK-001", "action_id": 1, "update_id": null, "cdate": "2026-08-01 00:00:00"},
+      {"id": 92002, "order_id": "WP00C-TRACK-002", "action_id": 1, "update_id": null, "cdate": "2026-08-02 00:00:00"},
+      {"id": 92003, "order_id": "WP00C-TRACK-002", "action_id": 2, "update_id": null, "cdate": "2026-08-03 00:00:00"},
+      {"id": 92004, "order_id": "WP00C-TRACK-003", "action_id": 1, "update_id": null, "cdate": "2026-08-03 00:00:00"},
+      {"id": 92005, "order_id": "WP00C-TRACK-003", "action_id": 2, "update_id": null, "cdate": "2026-08-04 00:00:00"},
+      {"id": 92006, "order_id": "WP00C-TRACK-003", "action_id": 3, "update_id": null, "cdate": "2026-08-05 00:00:00"},
+      {"id": 92007, "order_id": "WP00C-TRACK-005", "action_id": 1, "update_id": null, "cdate": "2026-08-05 00:00:00"},
+      {"id": 92008, "order_id": "WP00C-TRACK-005", "action_id": 2, "update_id": null, "cdate": "2026-08-06 00:00:00"},
+      {"id": 92009, "order_id": "WP00C-TRACK-005", "action_id": 4, "update_id": null, "cdate": "2026-08-07 00:00:00"},
+      {"id": 92010, "order_id": "WP00C-TRACK-005", "action_id": 5, "update_id": null, "cdate": "2026-08-08 00:00:00"}
+    ],
+    "contact": [
+      {"id": 93001, "fullname": "SYNTHETIC CONTACT", "email": "wp00c-contact@example.invalid", "samsoniteid": "WP00C-TRACK-001", "phone": "0000000000", "detail": "SYNTHETIC CONTACT MESSAGE", "cdate": "2026-08-10 00:00:00"}
+    ],
+    "rating": [
+      {"rating_id": 94001, "add_id": 1, "rating": 5, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94002, "add_id": 2, "rating": 4, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94003, "add_id": 3, "rating": 3, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94004, "add_id": 4, "rating": 2, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94005, "add_id": 5, "rating": 1, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94006, "add_id": 6, "rating": 5, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94007, "add_id": 7, "rating": 4, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"},
+      {"rating_id": 94008, "add_id": 8, "rating": 3, "order_id": "WP00C-TRACK-007", "branchID": 2, "cdate": "2026-08-10 00:00:00"}
+    ],
+    "rating_comment": [
+      {"id": 95001, "track_id": "WP00C-TRACK-007", "branch_id": 2, "comment": "SYNTHETIC RATING COMMENT", "created_at": "2026-08-10 00:00:00"}
+    ],
+    "tbl_reset_password": [
+      {"id": 96001, "email": "wp00c-admin@example.invalid", "activation_id": "SYNVALIDTOKEN01", "agent": "SYNTHETIC AGENT", "client_ip": "127.0.0.1", "isDeleted": 0, "createdBy": 9001, "createdDtm": "2026-08-20 00:00:00"},
+      {"id": 96002, "email": "wp00c-admin@example.invalid", "activation_id": "SYNOLDTOKEN0001", "agent": "SYNTHETIC AGENT", "client_ip": "127.0.0.1", "isDeleted": 0, "createdBy": 9001, "createdDtm": "2025-01-01 00:00:00"}
+    ],
+    "tbl_background_web": [
+      {"id": 97001, "image_track_laptop": "synthetic-track-laptop.png", "image_track_mobile": "synthetic-track-mobile.png", "image_trackstatus_laptop": "synthetic-trackstatus-laptop.png", "image_trackstatus_mobile": "synthetic-trackstatus-mobile.png", "image_contact_laptop": "synthetic-contact-laptop.png", "image_contact_mobile": "synthetic-contact-mobile.png", "image_track_laptop_th": "synthetic-track-laptop-th.png", "image_track_mobile_th": "synthetic-track-mobile-th.png", "image_trackstatus_laptop_th": "synthetic-trackstatus-laptop-th.png", "image_trackstatus_mobile_th": "synthetic-trackstatus-mobile-th.png", "image_contact_laptop_th": "synthetic-contact-laptop-th.png", "image_contact_mobile_th": "synthetic-contact-mobile-th.png", "status": 1, "date": "2026-08-01 00:00:00"}
+    ]
+  },
+  "expected_literals": {
+    "table_rows": {
+      "branch_type": 2,
+      "branch": 2,
+      "book": 2,
+      "brand": 2,
+      "type": 2,
+      "condition": 2,
+      "estimateprice": 2,
+      "fixed": 2,
+      "provider": 2,
+      "statusaction": 8,
+      "tracking_status": 2,
+      "group_type": 10,
+      "tbl_menu": 35,
+      "group_menu": 4,
+      "tbl_roles": 3,
+      "tbl_users": 4,
+      "request_order": 9,
+      "status_log": 10,
+      "contact": 1,
+      "rating": 8,
+      "rating_comment": 1,
+      "tbl_reset_password": 2,
+      "tbl_background_web": 1
+    },
+    "users": {"active": 3, "deleted": 1, "central": 1, "branch_scoped": 2},
+    "orders_by_status": {"1": 1, "2": 2, "3": 1, "4": 1, "5": 1, "6": 1, "7": 1, "8": 1},
+    "orders_by_branch": {"1": 6, "2": 3},
+    "tracking": {"WP00C-TRACK-005_status_log_rows": 4, "unknown_track_rows": 0},
+    "rating": {"rows": 8, "score_sum": 27, "comment_rows": 1},
+    "imports_before_test": {"uploadstaus": 0, "temp_updatestatus_order": 0, "temp_updatestatus_neworder": 0, "temp_updatestatus_price_order": 0},
+    "outbound_attempts_before_test": {"email": 0, "sms": 0}
+  }
+}
