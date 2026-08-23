@@ -31,6 +31,28 @@ final class PasswordReset extends BaseController
             ]);
     }
 
+    public function forgotForm(): string
+    {
+        return view('layout', [
+            'title'   => 'Forgot password',
+            'content' => view('forgot_password'),
+        ]);
+    }
+
+    public function resetForm(): string
+    {
+        $token = (string) $this->request->getGet('token');
+
+        if (preg_match('/^[0-9a-f]{64}$/D', $token) !== 1) {
+            $token = '';
+        }
+
+        return view('layout', [
+            'title'   => 'Reset password',
+            'content' => view('reset_password', ['token' => $token]),
+        ]);
+    }
+
     public function requestReset(): ResponseInterface
     {
         if (! str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'application/json')) {

@@ -126,6 +126,8 @@ foreach (['ReportTrackingListing', 'Order/ReportTrackingListing'] as $reportRout
     );
 }
 
+$routes->get('forgot-password', 'PasswordReset::forgotForm');
+$routes->get('reset-password', 'PasswordReset::resetForm');
 $routes->get('password-reset/csrf', 'PasswordReset::csrf');
 $routes->post('password-reset/request', 'PasswordReset::requestReset', ['filter' => 'api-csrf']);
 $routes->post('password-reset/complete', 'PasswordReset::completeReset', ['filter' => 'api-csrf']);
