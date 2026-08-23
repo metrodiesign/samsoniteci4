@@ -33,9 +33,32 @@ $action = '/master/' . rawurlencode($type) . ($row === null ? '' : '/' . (int) $
         <?php endif ?>
         <button type="submit"><?= $row === null ? 'Create' : 'Update' ?></button>
     </form>
-    <ul>
-        <?php foreach ($rows as $item): ?>
-            <li><a href="/master/<?= esc($type) ?>/<?= (int) $item[$definition['pk']] ?>"><?= esc($item[$definition['label']]) ?></a></li>
-        <?php endforeach ?>
-    </ul>
+    <table>
+        <thead>
+            <tr>
+                <th><?= esc($definition['pk']) ?></th>
+                <?php foreach ($definition['fields'] as $field => $rule): ?>
+                    <th><?= esc($field) ?></th>
+                <?php endforeach ?>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($rows as $item): ?>
+                <tr>
+                    <td><?= (int) $item[$definition['pk']] ?></td>
+                    <?php foreach ($definition['fields'] as $field => $rule): ?>
+                        <td><?= esc((string) ($item[$field] ?? '')) ?></td>
+                    <?php endforeach ?>
+                    <td>
+                        <a href="/master/<?= esc($type) ?>/<?= (int) $item[$definition['pk']] ?>">Edit</a>
+                        <form method="post" action="/master/<?= esc($type) ?>/<?= (int) $item[$definition['pk']] ?>/delete" onsubmit="return confirm('Delete this record?')">
+                            <?= csrf_field() ?>
+                            <button type="submit">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach ?>
+        </tbody>
+    </table>
 </section>

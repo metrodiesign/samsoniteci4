@@ -145,6 +145,61 @@ final class MasterDataHttpTest extends CIUnitTestCase
         service('superglobals')->setFilesArray([]);
     }
 
+    public function testBookStatusZeroIsSavedAndReadBack(): void
+    {
+        $payload = $this->payload('book', 'ZER');
+        $payload['status'] = '0';
+        $this->postAsAdmin('/master/book', $payload)->assertRedirectTo('/master/book');
+
+        $row = $this->db->table('book')->where('book_detail', 'ZER')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame(0, (int) $row['status']);
+
+        $edit = $this->getAsAdmin('/master/book/' . (int) $row['book_id']);
+        $edit->assertStatus(200);
+        $edit->assertSee('value="0"');
+    }
+
+    public function testStatusTypeSuccessZeroIsSaved(): void
+    {
+        $payload = $this->payload('statustype', 'ZEROSUCCESS');
+        $payload['success'] = '0';
+        $this->postAsAdmin('/master/statustype', $payload)->assertRedirectTo('/master/statustype');
+
+        $row = $this->db->table('tracking_status')->where('description_en', 'ZEROSUCCESS')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame(0, (int) $row['success']);
+    }
+
+    public function testListingRendersEveryDefinitionFieldAsColumn(): void
+    {
+        $seed = $this->payload('book', 'COL');
+        unset($seed['csrf_test_name']);
+        $seed['status'] = 0;
+        $seed['cdate'] = '2026-08-22 09:00:00';
+        $this->db->table('book')->insert($seed);
+
+        $listing = $this->getAsAdmin('/master/book');
+        $listing->assertStatus(200);
+        $listing->assertSee('book_id');
+        $listing->assertSee('branch_id');
+        $listing->assertSee('bunber_limit');
+        $listing->assertSee('status');
+    }
+
+    public function testListingRendersDeleteControlPerRow(): void
+    {
+        $seed = $this->payload('brand', 'DELCTRL');
+        unset($seed['csrf_test_name']);
+        $seed['cdate'] = '2026-08-22 09:00:00';
+        $this->db->table('brand')->insert($seed);
+        $brandId = (int) $this->db->insertID();
+
+        $listing = $this->getAsAdmin('/master/brand');
+        $listing->assertStatus(200);
+        $listing->assertSee('/master/brand/' . $brandId . '/delete');
+    }
+
     private function getAsAdmin(string $path)
     {
         return $this->withSession($this->session())->get($path);

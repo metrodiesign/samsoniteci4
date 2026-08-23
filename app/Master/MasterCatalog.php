@@ -52,7 +52,7 @@ final class MasterCatalog
         ],
     ];
 
-    /** @var array<string, array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool}>}> */
+    /** @var array<string, array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}>}> */
     private const DEFINITIONS = [
         'branch' => [
             'table' => 'branch', 'pk' => 'branch_id', 'label' => 'branch_name',
@@ -75,7 +75,7 @@ final class MasterCatalog
             'fields' => [
                 'description_th' => ['kind' => 'string', 'max' => 250, 'required' => true],
                 'description_en' => ['kind' => 'string', 'max' => 250, 'required' => true],
-                'success' => ['kind' => 'int', 'required' => true],
+                'success' => ['kind' => 'int', 'required' => true, 'allowZero' => true],
             ],
         ],
         'producttype' => [
@@ -87,7 +87,7 @@ final class MasterCatalog
             'fields' => [
                 'branch_id' => ['kind' => 'int', 'required' => true],
                 'book_detail' => ['kind' => 'string', 'max' => 3, 'required' => true],
-                'status' => ['kind' => 'int', 'required' => true],
+                'status' => ['kind' => 'int', 'required' => true, 'allowZero' => true],
                 'bunber_limit' => ['kind' => 'int', 'required' => true],
             ],
         ],
@@ -117,7 +117,7 @@ final class MasterCatalog
         ],
     ];
 
-    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool}>}|null */
+    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}>}|null */
     public static function definition(string $type): ?array
     {
         return self::DEFINITIONS[$type] ?? null;

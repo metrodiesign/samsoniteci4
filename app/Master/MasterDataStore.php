@@ -120,7 +120,7 @@ final class MasterDataStore
     }
 
     /**
-     * @param array<string, array{kind: string, max?: int, required?: bool}> $fields
+     * @param array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}> $fields
      * @param array<string, mixed> $input
      * @return array<string, int|string|null>|null
      */
@@ -130,10 +130,11 @@ final class MasterDataStore
         foreach ($fields as $name => $rule) {
             $raw = $input[$name] ?? null;
             if ($rule['kind'] === 'int') {
-                if (is_string($raw) && preg_match('/^[1-9][0-9]*$/D', $raw) === 1) {
-                    $raw = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                $min = ($rule['allowZero'] ?? false) ? 0 : 1;
+                if (is_string($raw) && preg_match('/^(0|[1-9][0-9]*)$/D', $raw) === 1) {
+                    $raw = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => $min]]);
                 }
-                if (! is_int($raw) || $raw < 1) {
+                if (! is_int($raw) || $raw < $min) {
                     return null;
                 }
                 $values[$name] = $raw;
