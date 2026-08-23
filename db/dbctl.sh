@@ -670,6 +670,28 @@ wp00c_fixture_verify() {
   return "$rc"
 }
 
+ci4_port_preflight() {
+  # WP-01J: pick the CI4 web port before any `up`. Read-only - prints the candidate and
+  # never rewrites .env; the caller passes it as CI4_HTTP_PORT/CI4_HOST_PORT explicitly.
+  local mine="" p
+  mine=$(dc port ci4 8080 2>/dev/null | sed 's/.*://') || true
+  if [ -n "$mine" ]; then
+    note "ci4 service already publishes port $mine, keeping it" >&2
+    echo "$mine"
+    return
+  fi
+  for p in $(seq 18405 18419); do
+    if port_busy "$p"; then
+      note "port $p busy, skipping (owner untouched)" >&2
+    else
+      note "selected CI4 candidate port $p" >&2
+      echo "$p"
+      return
+    fi
+  done
+  die "every CI4 candidate port in 18405-18419 is taken; stop and pick a new pool"
+}
+
 ci4_db_bootstrap() {
   lock
   local target=${CI4_DATABASE:-samsonite_ci4} target_tables missing_tables
@@ -1752,6 +1774,7 @@ case "${1:-}" in
   wp00c-fixture-verify) wp00c_fixture_verify ;;
   wp00c-fixture-clean) wp00c_fixture_clean ;;
   ci4-db-bootstrap) ci4_db_bootstrap ;;
+  ci4-port-preflight) ci4_port_preflight ;;
   safe-preview-smoke) safe_preview_smoke ;;
   safe-confirm-smoke) safe_confirm_smoke ;;
   safe-confirm-negative-smoke) safe_confirm_negative_smoke ;;
@@ -1762,5 +1785,5 @@ case "${1:-}" in
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|wp00c-fixture-validate|wp00c-fixture-seed|wp00c-fixture-verify|wp00c-fixture-clean|ci4-db-bootstrap|safe-preview-smoke|safe-confirm-smoke|safe-confirm-negative-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|wp00c-fixture-validate|wp00c-fixture-seed|wp00c-fixture-verify|wp00c-fixture-clean|ci4-db-bootstrap|ci4-port-preflight|safe-preview-smoke|safe-confirm-smoke|safe-confirm-negative-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
 esac
