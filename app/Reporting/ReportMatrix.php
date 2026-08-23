@@ -71,17 +71,7 @@ final class ReportMatrix
             return $this->inProgressAverage($start, $end, $branchId);
         }
         if ($kind === 'in-progress') {
-            $query = $this->db->table('request_order')
-                ->select('request_id AS id, trackID AS label, requestDate, date_update_status, action_status')
-                ->whereIn('action_status', [2, 3]);
-            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
-            $rows = $query->orderBy('request_id', 'ASC')->get()->getResultArray();
-            foreach ($rows as &$row) {
-                $row['total'] = $this->days($row['requestDate'], $row['date_update_status']);
-            }
-            unset($row);
-
-            return $rows;
+            return $this->inProgress($start, $end, $branchId, $rawStatusIds);
         }
         throw new InvalidArgumentException('Unknown report.');
     }
@@ -216,6 +206,44 @@ final class ReportMatrix
         return $rows;
     }
 
+    /** @return list<array<string, int|string|null>> */
+    private function inProgress(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId, mixed $rawStatusIds): array
+    {
+        $query = $this->db->table('request_order orders')
+            ->select('orders.request_id, orders.trackID, orders.orderIDShow, orders.customerFullname, orders.customerTel, orders.requestDate, statuses.status_name_th, branches.branch_name', false)
+            ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'inner')
+            ->join('branch branches', 'branches.branch_id = orders.branchID', 'left')
+            ->where('orders.date_complete', null)
+            ->orderBy('orders.requestDate', 'ASC')->orderBy('orders.request_id', 'ASC');
+        $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
+        $statusIds = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
+        if ($statusIds !== []) {
+            $query->whereIn('orders.action_status', $statusIds);
+        }
+
+        $today = new DateTimeImmutable('today');
+        $rows = [];
+        $no = 1;
+        foreach ($query->get()->getResultArray() as $record) {
+            $requestDate = (string) $record['requestDate'];
+            $day = $this->dateDiff($today, $requestDate);
+            $rows[] = [
+                'No' => $no,
+                'Status' => $record['status_name_th'],
+                'Track Id' => $record['trackID'],
+                'Order Id' => $record['orderIDShow'],
+                'Branch Name' => $record['branch_name'],
+                'Full Name' => $record['customerFullname'],
+                'Tel' => $record['customerTel'],
+                'Request Date' => $requestDate === '' ? '' : (new DateTimeImmutable($requestDate))->format('d/m/Y'),
+                'Day' => number_format($day ?? 0, 0),
+            ];
+            $no++;
+        }
+
+        return $rows;
+    }
+
     /** @return list<array<string, int|float|string|null>> */
     public function summary(
         mixed $searchText,
@@ -324,16 +352,6 @@ final class ReportMatrix
         if ($branchId !== null) {
             $query->where($branchColumn, $branchId);
         }
-    }
-
-    private function days(mixed $start, mixed $end): ?int
-    {
-        if (! is_string($start) || ! is_string($end) || $start === '' || $end === '') {
-            return null;
-        }
-        $interval = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end));
-
-        return is_int($interval->days) ? ($interval->invert ? -$interval->days : $interval->days) : null;
     }
 
     private function dateDiff(mixed $to, mixed $from): ?int

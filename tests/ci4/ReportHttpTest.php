@@ -292,6 +292,50 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('100.00%', $body);
     }
 
+    public function testInProgressStatusFilterAcceptsArrayAndCsvIdentically(): void
+    {
+        // status 2 -> order id 2, status 4 -> order id 4 (both branch 1, date_complete NULL).
+        $array = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
+        ]);
+        $csv = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => '2,4',
+        ]);
+
+        foreach ([$array, $csv] as $response) {
+            $response->assertStatus(200);
+            $response->assertSee('WP00C-REPORT-002');
+            $response->assertSee('WP00C-REPORT-004');
+            $response->assertDontSee('WP00C-REPORT-001');
+            $response->assertDontSee('WP00C-REPORT-003');
+            $response->assertDontSee('WP00C-REPORT-005');
+        }
+    }
+
+    public function testInProgressExportLinkCarriesStatusIdAndExportMatchesScreen(): void
+    {
+        $page = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
+        ]);
+        $page->assertStatus(200);
+        // Export link carries the active status filter (comma percent-encoded by http_build_query).
+        self::assertStringContainsString('/reports/in-progress/export', $page->getBody());
+        self::assertStringContainsString('status_id=2%2C4', $page->getBody());
+
+        // Export returns the same filtered rows as the screen, with screen column names as XLS headers.
+        $export = $this->withSession($this->session(1, 1, null))
+            ->get('/reports/in-progress/export?start_date=01/08/2026&end_date=31/08/2026&status_id=2,4');
+        $export->assertStatus(200);
+        $export->assertSee('WP00C-REPORT-002');
+        $export->assertSee('WP00C-REPORT-004');
+        $export->assertDontSee('WP00C-REPORT-001');
+        $export->assertDontSee('WP00C-REPORT-003');
+        self::assertStringContainsString('Request Date', $export->getBody());
+    }
+
     /** @return array<string, int|string|null> */
     private function order(int $id, int $branch, int $status, int $brand, int $type): array
     {

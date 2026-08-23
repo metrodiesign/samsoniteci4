@@ -17,16 +17,23 @@ final class ReportMatrixTest extends CIUnitTestCase
         parent::setUp();
         $name = $this->db->escapeIdentifiers($this->db->prefixTable('request_order'));
         $this->db->query("DROP TABLE IF EXISTS {$name}");
-        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderIDShow VARCHAR(100), customerTel VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100))");
+        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100))");
         $status = $this->db->escapeIdentifiers($this->db->prefixTable('statusaction'));
         $this->db->query("DROP TABLE IF EXISTS {$status}");
         $this->db->query("CREATE TABLE {$status} (status_id INTEGER PRIMARY KEY, status_name VARCHAR(250), status_name_th VARCHAR(250))");
+        $branch = $this->db->escapeIdentifiers($this->db->prefixTable('branch'));
+        $this->db->query("DROP TABLE IF EXISTS {$branch}");
+        $this->db->query("CREATE TABLE {$branch} (branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250))");
         $this->db->resetDataCache();
         for ($id = 1; $id <= 8; $id++) {
             $this->db->table('statusaction')->insert([
                 'status_id' => $id, 'status_name' => 'STATUS ' . $id, 'status_name_th' => 'สถานะ ' . $id,
             ]);
         }
+        $this->db->table('branch')->insertBatch([
+            ['branch_id' => 1, 'branch_name' => 'BRANCH A'],
+            ['branch_id' => 2, 'branch_name' => 'BRANCH B'],
+        ]);
     }
 
     public function testPendingTotalReturnsThreeBucketsAndTotalRow(): void
@@ -239,6 +246,86 @@ final class ReportMatrixTest extends CIUnitTestCase
         $rows = (new ReportMatrix($this->db))->matrix('pending', $start, $end, null);
 
         self::assertSame(5, $rows[0]['Day']);
+    }
+
+    public function testInProgressMultiStatusFilterHonoursCsvAndIgnoresGarbage(): void
+    {
+        $today = new \DateTimeImmutable('today');
+        $start = $today->modify('-30 days')->format('d/m/Y');
+        $end = $today->format('d/m/Y');
+        foreach ([1, 2, 3, 4, 5] as $status) {
+            $this->insertInProgressOrder($status, $status, $today->modify('-5 days')->format('Y-m-d H:i:s'));
+        }
+        $matrix = new ReportMatrix($this->db);
+
+        // '' -> no status filter at all (all five statuses land, not a default of 1-5).
+        $none = $matrix->matrix('in-progress', $start, $end, null, '');
+        self::assertSame(['สถานะ 1', 'สถานะ 2', 'สถานะ 3', 'สถานะ 4', 'สถานะ 5'], array_column($none, 'Status'));
+
+        // '2,4' CSV -> only statuses 2 and 4 (this assertion is the AC-8 mutation gate for whereIn).
+        $csv = $matrix->matrix('in-progress', $start, $end, null, '2,4');
+        self::assertSame(['สถานะ 2', 'สถานะ 4'], array_column($csv, 'Status'));
+
+        // 'abc' -> parseStatusIds rejects it and falls back to no filter.
+        $garbage = $matrix->matrix('in-progress', $start, $end, null, 'abc');
+        self::assertSame(['สถานะ 1', 'สถานะ 2', 'สถานะ 3', 'สถานะ 4', 'สถานะ 5'], array_column($garbage, 'Status'));
+    }
+
+    public function testInProgressDropsOrdersWhoseStatusIsMissingFromStatusaction(): void
+    {
+        $today = new \DateTimeImmutable('today');
+        $start = $today->modify('-30 days')->format('d/m/Y');
+        $end = $today->format('d/m/Y');
+        $this->insertInProgressOrder(1, 2, $today->modify('-5 days')->format('Y-m-d H:i:s'));
+        // action_status 0 has no statusaction row: INNER JOIN drops it.
+        $this->insertInProgressOrder(2, 0, $today->modify('-5 days')->format('Y-m-d H:i:s'));
+
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress', $start, $end, null, '');
+
+        self::assertCount(1, $rows);
+        self::assertSame('WPC-1', $rows[0]['Track Id']);
+    }
+
+    public function testInProgressRowShapeHasNumberFormatDayAndNoTotalRow(): void
+    {
+        $today = new \DateTimeImmutable('today');
+        $start = $today->modify('-30 days')->format('d/m/Y');
+        $end = $today->format('d/m/Y');
+        // requestDate 21 days ago at 14:00: dropping the time keeps Day at 21 as a number_format string.
+        $request = $today->modify('-21 days')->setTime(14, 0);
+        $this->insertInProgressOrder(1, 2, $request->format('Y-m-d H:i:s'));
+
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress', $start, $end, null, '');
+
+        // Exactly one row (no TOTAL), Day is the number_format string '21', keys in CI3 order.
+        self::assertSame([
+            ['No' => 1, 'Status' => 'สถานะ 2', 'Track Id' => 'WPC-1', 'Order Id' => 'WPC/1',
+                'Branch Name' => 'BRANCH A', 'Full Name' => 'CUSTOMER 1', 'Tel' => '0000000000',
+                'Request Date' => $request->format('d/m/Y'), 'Day' => '21'],
+        ], $rows);
+    }
+
+    public function testInProgressReturnsEmptyListWhenNoRowsInScope(): void
+    {
+        // No open orders: empty list with no TOTAL row (the generic view then renders an empty table).
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress', '01/08/2026', '31/08/2026', null, '');
+
+        self::assertSame([], $rows);
+    }
+
+    private function insertInProgressOrder(int $id, int $status, string $requestDate, ?string $dateComplete = null, int $branch = 1): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => $id,
+            'requestDate' => $requestDate,
+            'trackID' => 'WPC-' . $id,
+            'orderIDShow' => 'WPC/' . $id,
+            'customerFullname' => 'CUSTOMER ' . $id,
+            'customerTel' => '0000000000',
+            'branchID' => $branch,
+            'action_status' => $status,
+            'date_complete' => $dateComplete,
+        ]);
     }
 
     private function insertPendingOrder(
