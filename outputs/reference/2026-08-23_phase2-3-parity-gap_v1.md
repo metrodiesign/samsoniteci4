@@ -6,7 +6,7 @@
 
 | WP | สถานะ parity | gap ที่เหลือ | ขนาดงาน |
 |---|---|---|---|
-| WP-02A Public tracking | backend แก้ defect shared temp table แล้ว (stateless `TrackingLookup`) | แปลงปี พ.ศ./ค.ศ. ตาม AC-PUB-003 ยังไม่ทำ + ขาด concurrency test | small |
+| WP-02A Public tracking | backend แก้ defect shared temp table แล้ว (stateless `TrackingLookup`) | แปลงปี พ.ศ./ค.ศ. ตาม AC-PUB-003 ยังไม่ทำ (ปิดแล้วใน PR role3+calendar) | small |
 | WP-02B Contact/email | CSRF + idempotency แก้ครบมี test | validation-error UX หาย (AC-PUB-005): ผู้ใช้กรอกผิดเห็น raw JSON ไม่คงค่าฟอร์ม | medium |
 | WP-03A Session | behavior ครบ cookie flags ดีกว่า CI3 | test gap 3 จุด: session regeneration, Set-Cookie assertion, expiry จำลองเวลา | small |
 | WP-03B Authorization | IDOR cross-branch 3 จุดแก้ครบมี regression test | decision item: role 3 เคยเขียนได้เพราะ dead-code bypass ใน CI3 — CI4 ปิดถูกต้องแต่ต้อง Business sign-off | small |
@@ -22,7 +22,9 @@
 4. **WP-03D audit log** — deliverable ใน charter ระบุ "audit" แต่ repo ไม่มีกลไก log security event เลย; คำว่า "no-token logs ผ่าน" กำกวม ต้องถามผู้เขียน charter
 5. **Decision: role 3 write restriction** (WP-03B/03C) — CI4 ปิด hole ที่ CI3 เปิดโดย dead code; เป็น behavior change ต้อง Business approve พร้อม `CORRECT_AND_REBASELINE` record
 6. **WP-02A ปฏิทิน พ.ศ./ค.ศ.** — CI3 ทำผิดทั้ง EN/TH (บวก 543 ทั้งคู่) ไม่มี baseline ถูกให้ลอก ต้อง decision format
-7. **Test gap เล็ก** — WP-03A 3 จุด, WP-02A concurrency, WP-03C role matrix
+7. **Test gap เล็ก** — WP-03A 3 จุด (ปิดแล้วใน PR session tests), WP-03C role matrix
+
+แก้ไข v1 (2026-08-23 รอบหลัง): ตัด "WP-02A ขาด concurrency test" ออก — ตรวจซ้ำพบว่า `scripts/ci4-concurrency-check.sh` มี probe public tracking คู่ขนาน 2 ตัว (20 รอบ/ตัว พร้อม cross-contamination check `TRACK-A-ONLY`/`TRACK-B-ONLY`) รันอยู่ใน gate ทุกครั้ง — gap เดิมเป็นความคลาดของการสำรวจที่มองเฉพาะ phpunit
 
 ## ข้อยืนยันฝั่งดี (มีผลรันจริง)
 
