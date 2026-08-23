@@ -38,11 +38,7 @@ trap cleanup EXIT
 
 mkdir -p "$DOCKER_CONFIG"
 if ! docker image inspect "$CI4_IMAGE" >/dev/null 2>&1; then
-  (
-    cd "$ROOT"
-    COPYFILE_DISABLE=1 tar --format ustar -s ',^Dockerfile.ci4$,Dockerfile,' -cf - \
-      Dockerfile.ci4 composer.json composer.lock app public tests/ci4 writable spark phpunit.xml.dist
-  ) | docker build --tag "$CI4_IMAGE" - >/dev/null
+  docker build -f "$ROOT/Dockerfile.ci4" --tag "$CI4_IMAGE" "$ROOT" >/dev/null
 fi
 docker network create "$network" >/dev/null
 docker run --detach --rm \

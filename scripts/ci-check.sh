@@ -20,6 +20,8 @@ else
   ci4_docker_config=${DOCKER_CONFIG:-/tmp/samsonite-ci4-docker-config}
   mkdir -p "$ci4_docker_config"
   ci4_image=samsonitetracking-ci4:4.7.4-php8.5.7
+  DOCKER_CONFIG="$ci4_docker_config" docker image inspect "$ci4_image" >/dev/null 2>&1 \
+    || DOCKER_CONFIG="$ci4_docker_config" docker build -f Dockerfile.ci4 -t "$ci4_image" "$ROOT" >/dev/null
   ci4_mounts=(
     -v "$ROOT/app:/app/app:ro"
     -v "$ROOT/public:/app/public:ro"
