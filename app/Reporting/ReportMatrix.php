@@ -65,14 +65,7 @@ final class ReportMatrix
             return $query->groupBy('DATE(requestDate)', false)->orderBy('label', 'ASC')->get()->getResultArray();
         }
         if ($kind === 'pending') {
-            $query = $this->db->table('request_order orders')
-                ->select('orders.action_status AS id, statuses.status_name AS label, COUNT(*) AS total', false)
-                ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
-                ->whereIn('orders.action_status', [1, 2, 3, 4]);
-            $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
-
-            return $query->groupBy(['orders.action_status', 'statuses.status_name'])
-                ->orderBy('orders.action_status', 'ASC')->get()->getResultArray();
+            return $this->pending($start, $end, $branchId);
         }
         if ($kind === 'in-progress-average') {
             return $this->inProgressAverage($start, $end, $branchId);
@@ -176,6 +169,48 @@ final class ReportMatrix
             'Detail' => '',
             'Job' => number_format($total, 0),
             'Average (Percent)' => number_format($sumPercent, 2) . '%',
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    private function pending(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $query = $this->db->table('request_order orders')
+            ->select('orders.request_id, orders.trackID, orders.orderIDShow, orders.customerTel, orders.date_repair, statuses.status_name_th', false)
+            ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'inner')
+            ->where('orders.date_complete', null)
+            ->orderBy('orders.date_repair', 'ASC')->orderBy('orders.request_id', 'ASC');
+        $this->scope($query, 'orders.date_repair', 'orders.branchID', $start, $end, $branchId);
+
+        $today = new DateTimeImmutable('today');
+        $rows = [];
+        $sumDay = 0;
+        $no = 1;
+        foreach ($query->get()->getResultArray() as $record) {
+            $repair = (string) $record['date_repair'];
+            $day = $this->dateDiff($today, $repair);
+            $sumDay += $day ?? 0;
+            $rows[] = [
+                'No' => $no,
+                'trackID' => $record['trackID'],
+                'Status' => $record['status_name_th'],
+                'เล่มที่/เลขที่' => $record['orderIDShow'],
+                'เบอร์มือถือลูกค้า' => $record['customerTel'],
+                'วันที่ส่งซ่อม' => $repair === '' ? '' : (new DateTimeImmutable($repair))->format('d/m/Y'),
+                'Day' => $day,
+            ];
+            $no++;
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'trackID' => number_format($sumDay, 0),
+            'Status' => '',
+            'เล่มที่/เลขที่' => '',
+            'เบอร์มือถือลูกค้า' => '',
+            'วันที่ส่งซ่อม' => '',
+            'Day' => '',
         ];
 
         return $rows;
@@ -299,5 +334,32 @@ final class ReportMatrix
         $interval = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end));
 
         return is_int($interval->days) ? ($interval->invert ? -$interval->days : $interval->days) : null;
+    }
+
+    private function dateDiff(mixed $to, mixed $from): ?int
+    {
+        $to = $this->toDate($to);
+        $from = $this->toDate($from);
+        if ($to === null || $from === null) {
+            return null;
+        }
+        $interval = $from->setTime(0, 0)->diff($to->setTime(0, 0));
+
+        return $interval->invert === 1 ? -$interval->days : $interval->days;
+    }
+
+    private function toDate(mixed $value): ?DateTimeImmutable
+    {
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+        try {
+            return new DateTimeImmutable($value);
+        } catch (\Exception) {
+            return null;
+        }
     }
 }
