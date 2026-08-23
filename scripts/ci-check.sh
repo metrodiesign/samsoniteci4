@@ -49,6 +49,8 @@ printf '%s\n' "$routes" | grep -Eq 'GET.*health.*Health::index' \
   || fail "CI4 explicit health route is missing"
 grep -Fq 'public bool $autoRoute = false;' app/Config/Routing.php \
   || fail "CI4 Auto Routing Legacy is enabled"
+grep -Eq "'DBDebug'[[:space:]]*=> ENVIRONMENT !== 'production'," app/Config/Database.php \
+  || fail "CI4 default DBDebug must be disabled in production"
 pass "CI4 dependency, route and health smoke gates"
 pass "PHP mysqli/mysqlnd and composer platform requirements"
 
