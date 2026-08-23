@@ -82,15 +82,23 @@ final class Contact extends BaseController
             return $this->response->setStatusCode(503)->setJSON(['error' => 'contact_unavailable']);
         }
 
+        $errors = [];
         try {
-            (new ContactSubmissionWorkflow(db_connect(), service('encrypter'), $recipient))
-                ->submit($submissionId, $fields);
+            $workflow = new ContactSubmissionWorkflow(db_connect(), service('encrypter'), $recipient);
+            $errors   = $workflow->validate($fields);
+            if ($errors === []) {
+                $workflow->submit($submissionId, $fields);
+            }
         } catch (InvalidArgumentException) {
             return $this->invalidResponse();
         } catch (Throwable $exception) {
             log_message('error', 'Contact workflow unavailable: {exception}', ['exception' => $exception::class]);
 
             return $this->response->setStatusCode(503)->setJSON(['error' => 'contact_unavailable']);
+        }
+
+        if ($errors !== []) {
+            return $this->renderInvalid($language, $fields, $submissionId, $errors);
         }
 
         return redirect()->to($language === 'th' ? '/contact-th?submitted=1' : '/contact?submitted=1');
@@ -104,8 +112,30 @@ final class Contact extends BaseController
                 'language'     => $language,
                 'submissionId' => bin2hex(random_bytes(16)),
                 'submitted'    => $this->request->getGet('submitted') === '1',
+                'values'       => [],
+                'errors'       => [],
             ]),
         ]);
+    }
+
+    /**
+     * @param array<string, string> $fields
+     * @param array<string, string> $errors
+     */
+    private function renderInvalid(string $language, array $fields, string $submissionId, array $errors): ResponseInterface
+    {
+        $html = view('layout', [
+            'title'   => $language === 'th' ? 'ติดต่อเรา' : 'Contact us',
+            'content' => view('contact', [
+                'language'     => $language,
+                'submissionId' => $submissionId,
+                'submitted'    => false,
+                'values'       => $fields,
+                'errors'       => $errors,
+            ]),
+        ]);
+
+        return $this->response->setStatusCode(422)->setBody($html);
     }
 
     private function invalidResponse(): ResponseInterface
