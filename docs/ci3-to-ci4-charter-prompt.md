@@ -39,7 +39,9 @@ Repo หลัก (worktree ที่ใช้ทำงาน): `/Users/king_dev
 - **Phase 1**: scaffold ทั้งชุด commit แล้วบน PR #9 (`feature/ci4-scaffold-wp00c-closure` -> `develop`) — CI `repository-safety` เขียวบน HEAD; pin `CodeIgniter 4.7.4`, `PHP 8.5.7`, `PHPUnit 11.5.56`
   - มี Report Tracking vertical slice, authorization filter, CI4-owned authentication แล้ว; **business parity ยังไม่ครบ**
   - ปิดบางส่วนแล้ว (2026-08-23): WP-01A assertion mysqli/mysqlnd + `composer check-platform-reqs`; WP-01F `DBDebug => ENVIRONMENT !== 'production'` + guard; WP-01G replacement-coverage test 174 mapped routes; WP-01I ledger ผูกเข้า `ci-check.sh` (skip เมื่อไม่มี CI3 checkout); WP-01D `scripts/ci4-web-boundary-check.sh` + evidence (`outputs/reference/2026-08-23_wp01d-web-boundary-evidence_v1.md`, production topology รอ BLK-008); WP-01J `db/dbctl.sh ci4-port-preflight` (read-only allocator 18405-18419)
-  - ค้างรอ input: WP-01E (branch protection required check + เพิ่ม `phpstan` — ทั้งคู่ถูก permission บล็อกฝั่ง agent), WP-01H (รอ WP-00N registry ลงนาม), timestamp contract (CI3 เก็บ `Asia/Bangkok` local, CI4 ใช้ `gmdate` UTC — ต้องมี decision ก่อนแก้)
+  - WP-01E ปิดแล้ว (user อนุมัติ 2026-08-23): branch protection `develop`/`main` required check `repository-safety` + `enforce_admins`, เพิ่ม `phpstan` level 5 + baseline เข้า gate ทั้งสอง branch, image freshness guard เทียบ `composer.lock` (`outputs/reference/2026-08-23_wp01e-quality-gate-evidence_v1.md`)
+  - Timestamp contract ตัดสินแล้ว (user เลือก parity): CI4 เก็บ `Asia/Bangkok` เหมือน CI3 — `appTimezone` เป็นแหล่งเดียว, `gmdate`/`DateTimeZone('UTC')` ถูกแทนหมด, ตรึงด้วย `TimezoneContractTest` + audit PASS (`outputs/reference/2026-08-23_timezone-parity-evidence_v1.md`); follow-up LOW: ตั้ง `default-time-zone='+07:00'` ที่ MariaDB target ใน Gate 1D
+  - ค้างรอ input: WP-01H (รอ WP-00N registry ลงนาม), WP-00C 2 cases (user แจ้งจะเตรียม volume profile + budget ให้)
 - **Phase 2-7**: ยังไม่เริ่ม
 - CI3 source อยู่คนละ repo: `metrodiesign/samsoniteci3` pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6`, image `samsonitetracking-ci3:ee1c95e` — หลักฐานที่ผลิตบน pin เก่า `8dad4e3` ต้อง rerun
 
