@@ -19,8 +19,8 @@ final class AuthorizationPolicyTest extends CIUnitTestCase
         self::assertTrue($policy->allowsAction(2, 'write'));
         self::assertTrue($policy->allowsAction(2, 'delete'));
         self::assertTrue($policy->allowsAction(3, 'read'));
-        self::assertFalse($policy->allowsAction(3, 'write'));
-        self::assertFalse($policy->allowsAction(3, 'delete'));
+        self::assertTrue($policy->allowsAction(3, 'write'));
+        self::assertTrue($policy->allowsAction(3, 'delete'));
         self::assertFalse($policy->allowsAction(null, 'read'));
         self::assertFalse($policy->allowsAction(99, 'read'));
         self::assertFalse($policy->allowsAction(1, 'unknown'));

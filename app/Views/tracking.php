@@ -28,7 +28,15 @@
                 <?php foreach ($timeline as $entry): ?>
                     <li data-status-id="<?= $entry['status_id'] ?>">
                         <strong><?= esc($language === 'th' ? $entry['status_name_th'] : $entry['status_name']) ?></strong>
-                        <time datetime="<?= esc($entry['occurred_at']) ?>"><?= esc($entry['occurred_at']) ?></time>
+                        <?php
+                            // CI3 parity (business decision 2026-08-23): both languages
+                            // render d/m/Y with the Buddhist-era year, as legacy did.
+                            $occurredTimestamp = strtotime($entry['occurred_at']);
+                            $occurredDisplay   = $occurredTimestamp === false
+                                ? $entry['occurred_at']
+                                : date('d/m/', $occurredTimestamp) . (date('Y', $occurredTimestamp) + 543);
+                        ?>
+                        <time datetime="<?= esc($entry['occurred_at']) ?>"><?= esc($occurredDisplay) ?></time>
                     </li>
                 <?php endforeach ?>
             </ol>
