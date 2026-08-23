@@ -105,6 +105,53 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # CI4 migration runtime. Independent from CI3 `web`; waits for its isolated DB service.
+  ci4:
+    image: samsonitetracking-ci4:4.7.4-php8.5.7
+    build:
+      context: .
+      dockerfile: Dockerfile.ci4
+    environment:
+      CI_ENVIRONMENT: development
+      app_baseURL: "http://127.0.0.1:${CI4_HOST_PORT:-18405}/"
+      database_default_hostname: db
+      database_default_port: "3306"
+      database_default_database: "${CI4_DATABASE:-samsonite_ci4}"
+      database_default_username: "${MARIADB_USER:?MARIADB_USER is required}"
+      database_default_password: "${MARIADB_PASSWORD:?MARIADB_PASSWORD is required}"
+      database_default_DBDriver: MySQLi
+      encryption_driver: Sodium
+      encryption_key: "${CI4_RESET_ENCRYPTION_KEY:-}"
+    ports:
+      - name: ci4-http
+        target: 8080
+        host_ip: 127.0.0.1
+        published: "${CI4_HOST_PORT:-18405}"
+        protocol: tcp
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - php
+        - -r
+        - 'exit(json_decode(file_get_contents("http://127.0.0.1:8080/health"), true)["status"] === "ok" ? 0 : 1);'
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   # DEV-DB-PORT-001: `internal: true` is incompatible with a published port, so it is
   # deliberately absent. Still project-scoped, not external, no explicit name, no fixed

@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+FROM composer:2.8.11@sha256:68e926a477000f12e8645e82a020b84904d49071c895c4951551fe80eed5d103 AS composer
+
+FROM php:8.5.7-cli-bookworm@sha256:1ff2cdf2754bcac61128bfda455d418639c0f45a8b1583b4b90f9873a2ba1368
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends libicu-dev libonig-dev libzip-dev; \
+    docker-php-ext-install -j"$(nproc)" intl mbstring mysqli zip; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer /usr/bin/composer /usr/local/bin/composer
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --no-progress --prefer-dist
+
+COPY --chown=www-data:www-data app app
+COPY --chown=www-data:www-data public public
+COPY --chown=www-data:www-data tests/ci4 tests/ci4
+COPY --chown=www-data:www-data writable writable
+COPY --chown=www-data:www-data spark spark
+COPY --chown=www-data:www-data phpunit.xml.dist phpunit.xml.dist
+
+USER www-data
+
+EXPOSE 8080
+
+CMD ["php", "spark", "serve", "--host", "0.0.0.0", "--port", "8080"]
