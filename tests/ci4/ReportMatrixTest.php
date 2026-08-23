@@ -24,6 +24,12 @@ final class ReportMatrixTest extends CIUnitTestCase
         $branch = $this->db->escapeIdentifiers($this->db->prefixTable('branch'));
         $this->db->query("DROP TABLE IF EXISTS {$branch}");
         $this->db->query("CREATE TABLE {$branch} (branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250))");
+        $brand = $this->db->escapeIdentifiers($this->db->prefixTable('brand'));
+        $this->db->query("DROP TABLE IF EXISTS {$brand}");
+        $this->db->query("CREATE TABLE {$brand} (brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250))");
+        $type = $this->db->escapeIdentifiers($this->db->prefixTable('type'));
+        $this->db->query("DROP TABLE IF EXISTS {$type}");
+        $this->db->query("CREATE TABLE {$type} (type_id INTEGER PRIMARY KEY, type_details VARCHAR(250))");
         $this->db->resetDataCache();
         for ($id = 1; $id <= 8; $id++) {
             $this->db->table('statusaction')->insert([
@@ -33,6 +39,14 @@ final class ReportMatrixTest extends CIUnitTestCase
         $this->db->table('branch')->insertBatch([
             ['branch_id' => 1, 'branch_name' => 'BRANCH A'],
             ['branch_id' => 2, 'branch_name' => 'BRANCH B'],
+        ]);
+        $this->db->table('brand')->insertBatch([
+            ['brand_id' => 1, 'brand_details' => 'BRAND A'],
+            ['brand_id' => 2, 'brand_details' => 'BRAND B'],
+        ]);
+        $this->db->table('type')->insertBatch([
+            ['type_id' => 1, 'type_details' => 'TYPE A'],
+            ['type_id' => 2, 'type_details' => 'TYPE B'],
         ]);
     }
 
@@ -311,6 +325,170 @@ final class ReportMatrixTest extends CIUnitTestCase
         $rows = (new ReportMatrix($this->db))->matrix('in-progress', '01/08/2026', '31/08/2026', null, '');
 
         self::assertSame([], $rows);
+    }
+
+    public function testJobsByDayBoundaryDiffsLandInExpectedColumns(): void
+    {
+        // Seven diffs 0,7,8,30,31,45,46 in brand1 x type1 -> columns 0,1-7,8-30,8-30,31-45,31-45,> 45.
+        foreach ([
+            [1, '2026-08-01 00:00:00'], // diff 0
+            [2, '2026-08-08 00:00:00'], // diff 7
+            [3, '2026-08-09 00:00:00'], // diff 8
+            [4, '2026-08-31 00:00:00'], // diff 30
+            [5, '2026-09-01 00:00:00'], // diff 31
+            [6, '2026-09-15 00:00:00'], // diff 45
+            [7, '2026-09-16 00:00:00'], // diff 46
+        ] as [$id, $complete]) {
+            $this->insertJobOrder($id, 1, 1, 'UNW', '2026-08-01 00:00:00', null, $complete);
+        }
+
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        // brand1 x type1 aggregates: 0->1, 1-7->1, 8-30->2 (diff 8,30), 31-45->2 (diff 31,45), > 45->1 (diff 46).
+        self::assertSame(
+            ['Brand' => 'BRAND A', 'Product Type' => 'TYPE A', '0' => 1, '1-7' => 1, '8-30' => 2, '31-45' => 2, '> 45' => 1],
+            $rows[0],
+        );
+    }
+
+    public function testJobsByDayPlacesDiff31InThirtyOneToFortyFiveWithAndWithoutBranch(): void
+    {
+        // diff 31 (UNW uses date_repair): normalized bucket is > 30, so it lands in 31-45 in both scopes.
+        $this->insertJobOrder(1, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-09-01 00:00:00');
+
+        $withoutBranch = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+        $withBranch = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', 1);
+
+        // brand1 x type1 is the first data row in both cases; diff 31 must sit in 31-45, not 8-30.
+        self::assertSame(1, $withoutBranch[0]['31-45']);
+        self::assertSame(0, $withoutBranch[0]['8-30']);
+        self::assertSame(1, $withBranch[0]['31-45']);
+        self::assertSame(0, $withBranch[0]['8-30']);
+    }
+
+    public function testJobsByDayHonoursWarantyCaseAndPicksCorrectRepairDate(): void
+    {
+        // 'IN' is excluded entirely (would be a same-day diff otherwise).
+        $this->insertJobOrder(1, 1, 1, 'IN', '2026-08-01 00:00:00', '2026-08-01 00:00:00', '2026-08-02 00:00:00');
+        // 'out' lowercase counted via date_repair_waranty: diff 2 -> 1-7. date_repair is far to prove it is unused.
+        $this->insertJobOrder(2, 1, 1, 'out', '2026-01-01 00:00:00', '2026-08-05 00:00:00', '2026-08-07 00:00:00');
+        // 'UNW' uses date_repair: diff 5 -> 1-7.
+        $this->insertJobOrder(3, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-08-06 00:00:00');
+        // '' uses date_repair: diff 10 -> 8-30.
+        $this->insertJobOrder(4, 1, 1, '', '2026-08-01 00:00:00', null, '2026-08-11 00:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        // brand1 x type1: 'out'(diff2)->1-7, 'UNW'(diff5)->1-7, ''(diff10)->8-30; 'IN' excluded.
+        self::assertSame(
+            ['Brand' => 'BRAND A', 'Product Type' => 'TYPE A', '0' => 0, '1-7' => 2, '8-30' => 1, '31-45' => 0, '> 45' => 0],
+            $rows[0],
+        );
+    }
+
+    public function testJobsByDayEmitsEveryBrandTypePairEvenWhenZero(): void
+    {
+        // Only brand1 x type1 has data; the other three pairs must still appear as all-zero rows.
+        $this->insertJobOrder(1, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-08-02 00:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        // 2 brands x 2 types = 4 data rows ordered by brand_id then type_id.
+        self::assertSame([
+            ['Brand' => 'BRAND A', 'Product Type' => 'TYPE A', '0' => 0, '1-7' => 1, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            ['Brand' => 'BRAND A', 'Product Type' => 'TYPE B', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            ['Brand' => 'BRAND B', 'Product Type' => 'TYPE A', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            ['Brand' => 'BRAND B', 'Product Type' => 'TYPE B', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+        ], array_slice($rows, 0, 4));
+        // 4 data rows + TOTAL + 4 percent rows.
+        self::assertCount(9, $rows);
+    }
+
+    public function testJobsByDayTotalRowIsRawIntAndPercentRowsUseSpacedFormat(): void
+    {
+        // brand1 x type1: two diff-0, one diff-3 (1-7), one diff-31 (31-45). Grand total 4.
+        $this->insertJobOrder(1, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-08-01 00:00:00');
+        $this->insertJobOrder(2, 1, 1, 'UNW', '2026-08-02 00:00:00', null, '2026-08-02 00:00:00');
+        $this->insertJobOrder(3, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-08-04 00:00:00');
+        $this->insertJobOrder(4, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-09-01 00:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        // TOTAL row (index 4, after 4 data rows) is raw ints across the 5 bucket columns.
+        self::assertSame(
+            ['Brand' => 'TOTAL', 'Product Type' => '', '0' => 2, '1-7' => 1, '8-30' => 0, '31-45' => 1, '> 45' => 0],
+            $rows[4],
+        );
+        // Percent rows: exact labels, value round(p,2) . ' %' with a leading space; 3/4 -> 75, 1/4 -> 25.
+        self::assertSame([
+            ['Brand' => 'Over all repair time 0-7 Days', 'Product Type' => '75 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time 8-30 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time 31-45 Days', 'Product Type' => '25 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time >45 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+        ], array_slice($rows, 5, 4));
+    }
+
+    public function testJobsByDayPercentRowsAreZeroPercentWhenGrandTotalIsZero(): void
+    {
+        // No counted orders: grand total 0 -> each percent row is '0 %' with no divide-by-zero.
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        self::assertSame(
+            ['Brand' => 'TOTAL', 'Product Type' => '', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            $rows[4],
+        );
+        self::assertSame([
+            ['Brand' => 'Over all repair time 0-7 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time 8-30 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time 31-45 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+            ['Brand' => 'Over all repair time >45 Days', 'Product Type' => '0 %', '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => ''],
+        ], array_slice($rows, 5, 4));
+    }
+
+    public function testJobsByDayIgnoresNullAndNegativeDiffs(): void
+    {
+        // 'OUT' with a null date_repair_waranty -> diff null -> counted nowhere.
+        $this->insertJobOrder(1, 1, 1, 'OUT', '2026-08-01 00:00:00', null, '2026-08-05 00:00:00');
+        // date_complete before date_repair -> negative diff -> counted nowhere.
+        $this->insertJobOrder(2, 1, 1, 'UNW', '2026-08-10 00:00:00', null, '2026-08-05 00:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
+
+        // Both rows were fetched (date_complete set, waranty in set) but neither bucketed.
+        self::assertSame(
+            ['Brand' => 'BRAND A', 'Product Type' => 'TYPE A', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            $rows[0],
+        );
+        self::assertSame(
+            ['Brand' => 'TOTAL', 'Product Type' => '', '0' => 0, '1-7' => 0, '8-30' => 0, '31-45' => 0, '> 45' => 0],
+            $rows[4],
+        );
+    }
+
+    private function insertJobOrder(
+        int $id,
+        int $brand,
+        int $type,
+        string $waranty,
+        ?string $dateRepair,
+        ?string $dateRepairWaranty,
+        ?string $dateComplete,
+        string $requestDate = '2026-08-15 10:00:00',
+        int $branch = 1,
+    ): void {
+        $this->db->table('request_order')->insert([
+            'request_id' => $id,
+            'requestDate' => $requestDate,
+            'trackID' => 'WP06A-' . $id,
+            'branchID' => $branch,
+            'action_status' => 1,
+            'detailBrandId' => $brand,
+            'detailTypeId' => $type,
+            'waranty_cmg' => $waranty,
+            'date_repair' => $dateRepair,
+            'date_repair_waranty' => $dateRepairWaranty,
+            'date_complete' => $dateComplete,
+        ]);
     }
 
     private function insertInProgressOrder(int $id, int $status, string $requestDate, ?string $dateComplete = null, int $branch = 1): void

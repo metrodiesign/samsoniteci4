@@ -57,12 +57,7 @@ final class ReportMatrix
             return $this->pendingTotal($start, $end, $branchId);
         }
         if ($kind === 'jobs-by-day') {
-            $query = $this->db->table('request_order')
-                ->select('DATE(requestDate) AS label, COUNT(*) AS total', false)
-                ->where('action_status >', 0);
-            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
-
-            return $query->groupBy('DATE(requestDate)', false)->orderBy('label', 'ASC')->get()->getResultArray();
+            return $this->jobsByDay($start, $end, $branchId);
         }
         if ($kind === 'pending') {
             return $this->pending($start, $end, $branchId);
@@ -242,6 +237,80 @@ final class ReportMatrix
         }
 
         return $rows;
+    }
+
+    /** @return list<array<array-key, int|string>> */
+    private function jobsByDay(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $query = $this->db->table('request_order')
+            ->select('detailBrandId, detailTypeId, waranty_cmg, date_repair, date_repair_waranty, date_complete')
+            ->where('date_complete IS NOT NULL', null, false)
+            ->where("UPPER(TRIM(waranty_cmg)) IN ('OUT', 'UNW', '')", null, false);
+        $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
+
+        $tallies = [];
+        foreach ($query->get()->getResultArray() as $record) {
+            $diff = match (strtoupper(trim((string) $record['waranty_cmg']))) {
+                'OUT'   => $this->dateDiff($record['date_complete'], $record['date_repair_waranty']),
+                default => $this->dateDiff($record['date_complete'], $record['date_repair']),
+            };
+            $column = $this->jobsByDayColumn($diff);
+            if ($column === null) {
+                continue;
+            }
+            $key = (int) $record['detailBrandId'] . '|' . (int) $record['detailTypeId'];
+            $tallies[$key][$column] = ($tallies[$key][$column] ?? 0) + 1;
+        }
+
+        $columns = ['0', '1-7', '8-30', '31-45', '> 45'];
+        $brands = $this->db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id', 'ASC')->get()->getResultArray();
+        $types = $this->db->table('type')->select('type_id, type_details')->orderBy('type_id', 'ASC')->get()->getResultArray();
+
+        $rows = [];
+        $totals = array_fill_keys($columns, 0);
+        foreach ($brands as $brand) {
+            foreach ($types as $type) {
+                $key = (int) $brand['brand_id'] . '|' . (int) $type['type_id'];
+                $row = ['Brand' => (string) $brand['brand_details'], 'Product Type' => (string) $type['type_details']];
+                foreach ($columns as $column) {
+                    $count = $tallies[$key][$column] ?? 0;
+                    $row[$column] = $count;
+                    $totals[$column] += $count;
+                }
+                $rows[] = $row;
+            }
+        }
+        $rows[] = ['Brand' => 'TOTAL', 'Product Type' => ''] + $totals;
+
+        $grandTotal = array_sum($totals);
+        foreach ([
+            ['Over all repair time 0-7 Days', $totals['0'] + $totals['1-7']],
+            ['Over all repair time 8-30 Days', $totals['8-30']],
+            ['Over all repair time 31-45 Days', $totals['31-45']],
+            ['Over all repair time >45 Days', $totals['> 45']],
+        ] as [$label, $numerator]) {
+            $percent = $grandTotal > 0 ? round($numerator * 100 / $grandTotal, 2) : 0;
+            $rows[] = [
+                'Brand' => $label,
+                'Product Type' => $percent . ' %',
+                '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function jobsByDayColumn(?int $diff): ?string
+    {
+        return match (true) {
+            $diff === null => null,
+            $diff === 0 => '0',
+            $diff > 0 && $diff < 8 => '1-7',
+            $diff > 7 && $diff < 31 => '8-30',
+            $diff > 30 && $diff < 46 => '31-45',
+            $diff > 45 => '> 45',
+            default => null,
+        };
     }
 
     /** @return list<array<string, int|float|string|null>> */

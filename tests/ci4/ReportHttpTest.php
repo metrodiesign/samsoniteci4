@@ -336,6 +336,30 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('Request Date', $export->getBody());
     }
 
+    public function testJobsByDayRouteRendersGridWithScopedBucketColumns(): void
+    {
+        // Base fixture is all waranty_cmg 'IN' (excluded); add one completed UNW job in branch 1,
+        // brand 1 x type 1, diff 31 days (date_repair -> date_complete) -> the 31-45 column.
+        $job = $this->order(300, 1, 1, 1, 1);
+        $job['trackID'] = 'WP06A-BYDAY';
+        $job['requestDate'] = '2026-08-10 10:00:00';
+        $job['waranty_cmg'] = 'UNW';
+        $job['date_repair'] = '2026-08-01 00:00:00';
+        $job['date_repair_waranty'] = null;
+        $job['date_complete'] = '2026-09-01 00:00:00';
+        $this->db->table('request_order')->insert($job);
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $response->assertStatus(200);
+        // Generic view emits the CI3 bucket columns as data-col cells; the single job counts in 31-45.
+        self::assertStringContainsString('data-col="31-45"', $response->getBody());
+        self::assertStringContainsString('<td data-col="31-45">1</td>', $response->getBody());
+        $response->assertDontSee('WP00C-REPORT-005');
+    }
+
     /** @return array<string, int|string|null> */
     private function order(int $id, int $branch, int $status, int $brand, int $type): array
     {
