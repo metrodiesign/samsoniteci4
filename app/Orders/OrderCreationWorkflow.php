@@ -53,19 +53,11 @@ final class OrderCreationWorkflow
             ])) {
                 throw new RuntimeException('Unable to insert order status.');
             }
-            $payload = json_encode([
-                'order_id' => $orderId,
-                'track_id' => $trackId,
-                'telephone' => $values['customerTel'],
-                'message' => 'Track repair: /tracking/' . $trackId,
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-            if (! $this->db->table('ci4_delivery_intents')->insert([
-                'idempotency_key' => hash('sha256', "sms\0" . $submissionId),
-                'kind' => 'sms', 'user_id' => $orderId, 'request_id' => $submissionId,
-                'payload_ciphertext' => base64_encode($this->encrypter->encrypt($payload)),
-                'status' => 'pending', 'attempt_count' => 0, 'available_at' => $timestamp,
-                'created_at' => $timestamp, 'updated_at' => $timestamp,
-            ]) || ! $this->db->transStatus() || ! $this->db->transCommit()) {
+            (new SmsDeliveryIntentStore($this->db, $this->encrypter))->enqueue(
+                $orderId, $trackId, (string) $values['customerTel'],
+                OrderSmsMessages::created($trackId), $submissionId, $now,
+            );
+            if (! $this->db->transStatus() || ! $this->db->transCommit()) {
                 throw new RuntimeException('Unable to store SMS intent.');
             }
 
