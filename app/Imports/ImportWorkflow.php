@@ -19,12 +19,12 @@ final class ImportWorkflow
     }
 
     /** @return array{batch_id: string, accepted: int, rejected: int, rows: list<array{row: int, accepted: bool, error: string|null}>} */
-    public function preview(string $kind, int $ownerId, ?int $ownerBranch, string $path): array
+    public function preview(string $kind, int $ownerId, ?int $ownerBranch, string $path, string $extension): array
     {
         if (! in_array($kind, ['status', 'price', 'new-order'], true) || $ownerId < 1 || $ownerBranch === null) {
             throw new InvalidArgumentException('Invalid import owner.');
         }
-        $rows = (new XlsxReader())->rows($path);
+        $rows = ($extension === 'xls' ? new XlsReader() : new XlsxReader())->rows($path);
         $headers = array_map(static fn (string $value): string => strtolower(trim($value)), array_shift($rows));
         if ($headers !== self::HEADERS || $rows === []) {
             throw new InvalidArgumentException('Invalid import headers or empty workbook.');
@@ -68,7 +68,7 @@ final class ImportWorkflow
             $this->db->transRollback();
             throw $exception;
         }
-        $this->storeSourceFile($path, $fileSha);
+        $this->storeSourceFile($path, $fileSha, $extension);
 
         return ['batch_id' => $batchId, 'accepted' => $accepted, 'rejected' => count($rows) - $accepted, 'rows' => $preview];
     }
@@ -128,10 +128,10 @@ final class ImportWorkflow
         return 'confirmed';
     }
 
-    private function storeSourceFile(string $path, string $sha): void
+    private function storeSourceFile(string $path, string $sha, string $extension): void
     {
         $directory = WRITEPATH . 'uploads/imports';
-        $target = $directory . '/' . $sha . '.xlsx';
+        $target = $directory . '/' . $sha . '.' . $extension;
         if (is_file($target)) {
             return;
         }

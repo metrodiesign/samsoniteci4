@@ -22,8 +22,13 @@ final class Imports extends BaseController
         $file = $this->request->getFile('file');
         $path = $file?->getTempName() ?? '';
         $mime = is_file($path) ? (new \finfo(FILEINFO_MIME_TYPE))->file($path) : false;
-        if ($file === null || $file->getError() !== UPLOAD_ERR_OK || strtolower($file->getClientExtension()) !== 'xlsx'
-            || ! in_array($mime, ['application/zip', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'], true)) {
+        $extension = $file !== null ? strtolower($file->getClientExtension()) : '';
+        $allowed = match ($extension) {
+            'xlsx' => ['application/zip', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+            'xls' => ['application/vnd.ms-excel'],
+            default => [],
+        };
+        if ($file === null || $file->getError() !== UPLOAD_ERR_OK || ! in_array($mime, $allowed, true)) {
             return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_xlsx']);
         }
         $session = service('session');
@@ -33,6 +38,7 @@ final class Imports extends BaseController
                 (int) $session->get('userId'),
                 $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
                 $path,
+                $extension,
             );
         } catch (InvalidArgumentException) {
             return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_import']);
@@ -76,12 +82,14 @@ final class Imports extends BaseController
     public function download(string $name): ResponseInterface
     {
         $path = WRITEPATH . 'uploads/imports/' . $name;
-        if (preg_match('/\A[a-f0-9]{64}\.xlsx\z/D', $name) !== 1 || ! is_file($path)) {
+        if (preg_match('/\A[a-f0-9]{64}\.(xlsx|xls)\z/D', $name) !== 1 || ! is_file($path)) {
             return $this->response->setStatusCode(404)->setJSON(['error' => 'import_file_not_found']);
         }
 
         return $this->response
-            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Type', str_ends_with($name, '.xls')
+                ? 'application/vnd.ms-excel'
+                : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')
             ->setBody((string) file_get_contents($path));
     }

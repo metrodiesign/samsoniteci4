@@ -5,8 +5,9 @@ FROM php:8.5.7-cli-bookworm@sha256:1ff2cdf2754bcac61128bfda455d418639c0f45a8b158
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libicu-dev libonig-dev libzip-dev; \
-    docker-php-ext-install -j"$(nproc)" intl mbstring mysqli zip; \
+    apt-get install -y --no-install-recommends libicu-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev; \
+    docker-php-ext-configure gd --with-jpeg; \
+    docker-php-ext-install -j"$(nproc)" intl mbstring mysqli zip gd; \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
