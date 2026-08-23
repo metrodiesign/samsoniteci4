@@ -16,26 +16,53 @@ use Throwable;
 
 final class Order extends BaseController
 {
+    /**
+     * Listing profile per status (design §2.2). Fields beyond `title` are consumed by later
+     * tasks whose file scope cannot reach this controller: `bulk_endpoint`/`statuses` (T4 bulk
+     * form, view-only), `row_action` (T5 rating modal, view-only). status 1 bulk provider
+     * (T7 bulk form, view-only); status 6/8 stay generic.
+     *
+     * @var array<int, array{title: string, bulk_endpoint: ?string, statuses: list<int>, row_action: ?string}>
+     */
+    public const PROFILES = [
+        1 => ['title' => 'NEW ORDER', 'bulk_endpoint' => '/sendorderUpdate', 'statuses' => [], 'row_action' => null],
+        2 => ['title' => 'TRANSPORTING', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [3, 4], 'row_action' => null],
+        3 => ['title' => 'STATUS REPAIR', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [4], 'row_action' => null],
+        4 => ['title' => 'DELIVER TO CUSTOMER', 'bulk_endpoint' => '/sendorder_deliver', 'statuses' => [5], 'row_action' => null],
+        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => 'rate'],
+        7 => ['title' => 'COMPLETED', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null],
+    ];
+
     public function listing(?string $fixedStatus = null): string
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
         $rawPage = $this->request->getGet('page');
         $rawSearch = $this->request->getGet('search');
+        $rawSdate = $this->request->getGet('sdate');
         $status = is_string($rawStatus) && preg_match('/\A[1-8]\z/D', $rawStatus) === 1 ? (int) $rawStatus : null;
         $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+        $sdate = is_string($rawSdate) ? $rawSdate : '';
         if ($status === null || $page < 1) {
             throw PageNotFoundException::forPageNotFound();
         }
         $session = service('session');
         $branchId = (int) $session->get('role') === 1 ? null : (int) $session->get('BranchID');
         $db = db_connect();
+        $store = new OrderStore($db);
+        $rows = $store->listing($status, $branchId, $search, $page, $sdate);
+        $statusUpdates = $store->latestStatusUpdates(array_map(
+            static fn (array $row): array => ['orderID' => (string) $row['orderID'], 'customerTel' => (string) $row['customerTel']],
+            $rows,
+        ));
 
         return view('layout', [
-            'title' => 'Orders status ' . $status,
+            'title' => (self::PROFILES[$status]['title'] ?? ('Orders status ' . $status)),
             'content' => view('orders', [
-                'rows' => (new OrderStore($db))->listing($status, $branchId, $search, $page),
+                'rows' => $rows,
                 'status' => $status, 'page' => $page, 'search' => $search,
+                'profile' => self::PROFILES[$status] ?? null,
+                'statusUpdates' => $statusUpdates,
                 'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
                 'providers' => $db->table('provider')
                     ->select('provider_id, provider_name')

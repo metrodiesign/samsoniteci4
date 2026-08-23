@@ -4,6 +4,7 @@ namespace Tests\Ci4;
 
 use App\Authentication\ShadowUserStore;
 use App\Orders\OrderSequence;
+use CodeIgniter\Events\Events;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
@@ -34,6 +35,10 @@ final class OrderHttpTest extends CIUnitTestCase
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250) NOT NULL',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250) NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER NOT NULL, branch_user_name VARCHAR(100), branch_name VARCHAR(250) NOT NULL, default_suffix VARCHAR(10), book_order VARCHAR(10), customer_ref VARCHAR(50)',
+            'tracking_status' => 'status_id INTEGER PRIMARY KEY, description_th VARCHAR(250)',
+            'uploadstaus' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, tracking_id VARCHAR(100), Telephone VARCHAR(100), tracking_status INTEGER, cdate DATETIME',
+            'rating' => 'rating_id INTEGER PRIMARY KEY AUTOINCREMENT, add_id INTEGER NOT NULL, rating INTEGER NOT NULL, order_id VARCHAR(100) NOT NULL, branchID INTEGER NOT NULL, cdate DATETIME NOT NULL',
+            'rating_comment' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, track_id VARCHAR(100) NOT NULL, branch_id INTEGER NOT NULL, comment TEXT NOT NULL, created_at DATETIME NOT NULL',
         ] as $table => $definition) {
             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
             $this->db->query("DROP TABLE IF EXISTS {$name}");
@@ -95,19 +100,194 @@ final class OrderHttpTest extends CIUnitTestCase
     public function testLifecycleQueuesExposeBrowserFormsForNormalTransitions(): void
     {
         $session = $this->session(2, 2, 1);
+
+        // status 1 is a bulk provider form (T7): one form over the table, provider dropdown in the
+        // footer, no per-row provider form left.
+        $listing = $this->withSession($session)->get('/ordersListing');
+        $listing->assertStatus(200);
+        $listingBody = $listing->getBody();
+        self::assertStringContainsString('action="/sendorderUpdate"', $listingBody);
+        self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $listingBody);
+        self::assertStringContainsString('id="selectall_tracking"', $listingBody);
+        self::assertStringContainsString('name="provider_id"', $listingBody);
+        $listing->assertSee('Send');
+        self::assertStringNotContainsString('Send to provider', $listingBody);
+
         foreach ([
-            '/ordersListing' => ['/sendorderUpdate', 'provider_id', 'Send to provider'],
-            '/TrackingListing' => ['/sendorderUpdateStatus', 'status_id', 'Start repair'],
-            '/TrackingcloseListing' => ['/sendorderUpdateStatus', 'status_id', 'Complete repair'],
-            '/TrackingreturnListing' => ['/sendorder_deliver', 'status_id', 'Deliver to customer'],
-        ] as $route => [$action, $field, $button]) {
+            '/TrackingListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [3, 4]],
+            '/TrackingcloseListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [4]],
+            '/TrackingreturnListing' => ['/sendorder_deliver', 'status_id', 'Send', [5]],
+        ] as $route => [$action, $field, $button, $optionValues]) {
             $response = $this->withSession($session)->get($route);
             $response->assertStatus(200);
-            self::assertStringContainsString('action="' . $action . '"', $response->getBody());
-            self::assertStringContainsString('name="select_list_id[]"', $response->getBody());
-            self::assertStringContainsString('name="' . $field . '"', $response->getBody());
+            $body = $response->getBody();
+            self::assertStringContainsString('action="' . $action . '"', $body);
+            self::assertStringContainsString('name="select_list_id[]"', $body);
+            self::assertStringContainsString('name="' . $field . '"', $body);
             $response->assertSee($button);
+            // Discriminating anchors: the JS also mentions select_list_id and selectall_tracking,
+            // so match the actual row checkbox and the header input, not the bare names.
+            self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $body);
+            self::assertStringContainsString('id="selectall_tracking"', $body);
+            foreach ($optionValues as $value) {
+                self::assertStringContainsString('<option value="' . $value . '"', $body);
+            }
+            self::assertSame(count($optionValues), substr_count($body, '<option'));
         }
+    }
+
+    public function testBulkTransitionUpdatesEverySelectedOrder(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 92002, 'requestDate' => '2026-08-02 00:00:00',
+            'trackID' => 'WP00C-BULK-002', 'orderID' => 'OB2', 'orderIDShow' => 'WPC/B2',
+            'customerFullname' => 'BULK CUSTOMER', 'customerTel' => '0000000000',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 2,
+        ]);
+
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91002', '92002'], 'status_id' => '3'])
+            ->assertRedirectTo('/ReportTrackingListing');
+
+        self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 91002)->get()->getRow('action_status'));
+        self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 92002)->get()->getRow('action_status'));
+        self::assertSame(2, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testBulkSendToProviderUpdatesEverySelectedOrder(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 92001, 'requestDate' => '2026-08-01 00:00:00',
+            'trackID' => 'WP00C-BULK-001', 'orderID' => 'OB1', 'orderIDShow' => 'WPC/B1',
+            'customerFullname' => 'BULK PROVIDER CUSTOMER', 'customerTel' => '0000000000',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 1,
+        ]);
+
+        $this->postTransition('/sendorderUpdate', ['select_list_id' => ['91001', '92001'], 'provider_id' => '1'])
+            ->assertRedirectTo('/sendorderListing');
+
+        foreach ([91001, 92001] as $requestId) {
+            $row = $this->db->table('request_order')->where('request_id', $requestId)->get()->getRowArray();
+            self::assertSame(2, (int) $row['action_status']);
+            self::assertSame(1, (int) $row['provider_id']);
+        }
+        self::assertSame(2, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testCompleteAndCompletedListingsHaveNoBulkControls(): void
+    {
+        $session = $this->session(1, 1, null);
+        foreach (['/TrackingcompleteListing', '/TrackingCompletedListing'] as $route) {
+            $response = $this->withSession($session)->get($route);
+            $response->assertStatus(200);
+            $body = $response->getBody();
+            self::assertStringNotContainsString('name="select_list_id[]"', $body);
+            self::assertStringNotContainsString('selectall_tracking', $body);
+        }
+    }
+
+    public function testCompletedListingShowsCompletedDateColumnScopedToStatusSeven(): void
+    {
+        $this->db->table('request_order')->where('request_id', 91007)->update(['date_complete' => '2026-07-15 10:30:00']);
+        $this->db->table('request_order')->insert([
+            'request_id' => 91077, 'requestDate' => '2026-08-07 00:00:00',
+            'trackID' => 'WP00C-TRACK-077', 'orderID' => 'O77', 'orderIDShow' => 'WPC/77',
+            'customerFullname' => 'COMPLETED NULL DATE', 'customerTel' => '0000000000',
+            'branchID' => 2, 'branch_type_id' => 2, 'UserID' => 9003, 'action_status' => 7,
+        ]);
+        $admin = $this->session(1, 1, null);
+
+        $completed = $this->withSession($admin)->get('/TrackingCompletedListing');
+        $completed->assertStatus(200);
+        $completed->assertSee('Completed Date');
+        $completed->assertSee('15/07/2026');
+        $completed->assertSee('WP00C-TRACK-077'); // null date_complete row still renders (blank cell)
+        self::assertStringNotContainsString('name="select_list_id[]"', $completed->getBody());
+
+        // Column is scoped to status 7: status 5 listing must not expose it.
+        $complete = $this->withSession($admin)->get('/TrackingcompleteListing');
+        $complete->assertStatus(200);
+        $complete->assertDontSee('Completed Date');
+    }
+
+    public function testCompleteListingRendersRatingDialogScopedToStatusFive(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        $complete = $this->withSession($admin)->get('/TrackingcompleteListing');
+        $complete->assertStatus(200);
+        $body = $complete->getBody();
+        self::assertStringContainsString('<dialog', $body);
+        self::assertStringContainsString("fetch('/rating'", $body);
+        for ($question = 1; $question <= 8; $question++) {
+            self::assertStringContainsString('name="rating_' . $question . '"', $body);
+        }
+        self::assertStringContainsString('name="rating_comment"', $body);
+
+        $completed = $this->withSession($admin)->get('/TrackingCompletedListing');
+        $completed->assertStatus(200);
+        self::assertStringNotContainsString('<dialog', $completed->getBody());
+    }
+
+    public function testSubmittedRatingMovesOrderFromCompleteToCompletedListing(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->withSession($admin)->get('/TrackingcompleteListing')->assertSee('WP00C-TRACK-005');
+
+        $payload = ['csrf_test_name' => service('security')->getHash(), 'request_id' => '91005', 'track_id' => 'WP00C-TRACK-005', 'rating_comment' => 'SYNTHETIC RATING COMMENT'];
+        foreach ([5, 4, 3, 2, 1, 5, 4, 3] as $index => $score) {
+            $payload['rating_' . ($index + 1)] = (string) $score;
+        }
+        $this->post('/rating', $payload)->assertStatus(201);
+        self::assertSame(7, (int) $this->db->table('request_order')->where('request_id', 91005)->get()->getRow('action_status'));
+
+        $this->withSession($admin)->get('/TrackingcompleteListing')->assertDontSee('WP00C-TRACK-005');
+        $this->withSession($admin)->get('/TrackingCompletedListing')->assertSee('WP00C-TRACK-005');
+    }
+
+    public function testBatchStatusUpdateShowsLatestDescriptionInSingleQuery(): void
+    {
+        $this->db->table('tracking_status')->insertBatch([
+            ['status_id' => 10, 'description_th' => 'อยู่ระหว่างซ่อม'],
+            ['status_id' => 11, 'description_th' => 'ซ่อมเสร็จแล้ว'],
+        ]);
+        $this->db->table('uploadstaus')->insertBatch([
+            ['tracking_id' => 'O2', 'Telephone' => '0000000000', 'tracking_status' => 10, 'cdate' => '2026-08-02 09:00:00'],
+            ['tracking_id' => 'O2', 'Telephone' => '0000000000', 'tracking_status' => 11, 'cdate' => '2026-08-02 10:00:00'],
+        ]);
+
+        $uploadQueries = 0;
+        Events::on('DBQuery', static function ($query) use (&$uploadQueries): void {
+            if (stripos($query->getQuery(), 'uploadstaus') !== false) {
+                $uploadQueries++;
+            }
+        });
+
+        $response = $this->withSession($this->session(1, 1, null))->get('/TrackingListing');
+        $response->assertStatus(200);
+        $response->assertSee('TRANSPORTING');
+        $response->assertSee('O2');
+        $response->assertSee('STATUS 2');
+        $response->assertSee('02/08/2026');
+        $response->assertSee('ซ่อมเสร็จแล้ว');
+        $response->assertDontSee('อยู่ระหว่างซ่อม');
+        self::assertSame(1, $uploadQueries, 'listing must batch Status Update into one uploadstaus query per page');
+    }
+
+    public function testListingDateFilterMatchesExactDayAndIgnoresMalformedInput(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        $match = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('02/08/2026'));
+        $match->assertStatus(200);
+        $match->assertSee('WP00C-TRACK-002');
+
+        $miss = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('03/08/2026'));
+        $miss->assertStatus(200);
+        $miss->assertDontSee('WP00C-TRACK-002');
+
+        $malformed = $this->withSession($admin)->get('/TrackingListing?sdate=abc');
+        $malformed->assertStatus(200);
+        $malformed->assertSee('WP00C-TRACK-002');
     }
 
     public function testOrderSequenceStartsAfterExistingLegacyTrackingId(): void
