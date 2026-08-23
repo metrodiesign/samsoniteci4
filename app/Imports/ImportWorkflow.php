@@ -245,13 +245,17 @@ final class ImportWorkflow
         if ($this->db->table('request_order')->where('orderIDShow', $payload['order_id'])->countAllResults() !== 0) {
             throw new RuntimeException('New order import changed after preview.');
         }
-        $branch = $this->db->table('branch')->select('branch_type')->where('branch_id', $branchId)->get()->getRowArray();
+        $branch = $this->db->table('branch')->select('branch_type, default_suffix')->where('branch_id', $branchId)->get()->getRowArray();
         $parts = explode('/', (string) $payload['order_id'], 2);
         if ($branch === null || count($parts) !== 2 || $parts[1] === '') {
             throw new RuntimeException('Invalid new order import branch.');
         }
+        $suffix = trim((string) ($branch['default_suffix'] ?? ''));
+        if ($suffix === '' || strlen($suffix) > 10) {
+            throw new RuntimeException('Invalid new order import branch.');
+        }
         $now = new DateTimeImmutable('now');
-        $trackId = (new OrderSequence($this->db))->next($now);
+        $trackId = (new OrderSequence($this->db))->next($now, $suffix);
         $action = (int) $payload['success'] === 1 ? 4 : 2;
         $order = [
             'requestDate' => $payload['updated_at'], 'trackID' => $trackId, 'numberID' => $parts[1],

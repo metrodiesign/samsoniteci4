@@ -20,6 +20,8 @@ final class OrderCreationWorkflow
     public function create(int $actorId, int $actorRole, ?int $actorBranch, array $input, ?string $imageName): string
     {
         $values = $this->normalize($actorRole, $actorBranch, $input, $imageName);
+        $suffix = (string) $values['trackSuffix'];
+        unset($values['trackSuffix']);
         $submissionId = is_string($input['submission_id'] ?? null) ? $input['submission_id'] : '';
         if (preg_match('/\A[a-f0-9]{32}\z/D', $submissionId) !== 1 || $actorId < 1) {
             throw new InvalidArgumentException('Invalid order submission.');
@@ -33,7 +35,7 @@ final class OrderCreationWorkflow
         $timestamp = $now->format('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
-            $trackId = (new OrderSequence($this->db))->next($now);
+            $trackId = (new OrderSequence($this->db))->next($now, $suffix);
             if (! $this->db->table('request_order')->insert([
                 ...$values,
                 'trackID' => $trackId,
@@ -117,6 +119,7 @@ final class OrderCreationWorkflow
             'customerEmail' => strtolower($input['customer_email']), 'detailTypeId' => $typeId,
             'detailBrandId' => $brandId, 'detailNote' => $input['note'], 'detailImage' => $imageName,
             'branchID' => $branchId, 'branch_type_id' => (int) $branch['branch_type'],
+            'trackSuffix' => $suffix,
         ];
     }
 

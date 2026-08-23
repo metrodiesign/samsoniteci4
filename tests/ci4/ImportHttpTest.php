@@ -117,7 +117,7 @@ final class ImportHttpTest extends CIUnitTestCase
 
         $created = $this->db->table('request_order')->where('orderIDShow', 'WPA/300')->get()->getRowArray();
         self::assertNotNull($created);
-        self::assertMatchesRegularExpression('/\AG[0-9]{8}\z/', (string) $created['trackID']);
+        self::assertMatchesRegularExpression('/\AWPA[0-9]{8}\z/', (string) $created['trackID']);
         self::assertSame(4, (int) $created['action_status']);
         self::assertSame(1, (int) $created['branchID']);
         self::assertSame('NEW CUSTOMER', $created['customerFullname']);

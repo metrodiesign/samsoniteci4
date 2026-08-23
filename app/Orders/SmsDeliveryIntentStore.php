@@ -112,7 +112,7 @@ final class SmsDeliveryIntentStore
             || (int) ($payload['order_id'] ?? 0) !== (int) ($row['user_id'] ?? 0)
             || (int) ($payload['order_id'] ?? 0) < 1
             || ! is_string($payload['track_id'] ?? null)
-            || preg_match('/\AG[0-9]{8}\z/D', $payload['track_id']) !== 1
+            || preg_match('/\A[A-Za-z0-9]{1,10}[0-9]{8}\z/D', $payload['track_id']) !== 1
             || ! is_string($payload['telephone'] ?? null)
             || preg_match('/\A[0-9]{10,20}\z/D', $payload['telephone']) !== 1
             || ! is_string($payload['message'] ?? null) || mb_strlen($payload['message']) > 500
