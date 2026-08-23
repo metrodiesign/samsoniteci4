@@ -12,11 +12,17 @@ final class AuthorizationPolicy
 
     public const ACTION_DELETE = 'delete';
 
-    /** @var array<int, list<string>> */
+    /**
+     * CI3 parity (business decision 2026-08-23): every known role may write and
+     * delete, as the legacy isAdmin() gate was dead code and never restricted
+     * anyone. Branch isolation below still applies to roles 2 and 3.
+     *
+     * @var array<int, list<string>>
+     */
     private const ACTIONS_BY_ROLE = [
         1 => [self::ACTION_READ, self::ACTION_WRITE, self::ACTION_DELETE],
         2 => [self::ACTION_READ, self::ACTION_WRITE, self::ACTION_DELETE],
-        3 => [self::ACTION_READ],
+        3 => [self::ACTION_READ, self::ACTION_WRITE, self::ACTION_DELETE],
     ];
 
     public function allowsAction(mixed $role, string $action): bool

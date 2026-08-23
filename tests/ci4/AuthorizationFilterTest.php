@@ -172,7 +172,7 @@ final class AuthorizationFilterTest extends CIUnitTestCase
         $result->assertJSONExact(['error' => 'unauthenticated']);
     }
 
-    public function testViewerCannotUseWriteRoute(): void
+    public function testViewerCanUseWriteRouteForCi3Parity(): void
     {
         $result = $this
             ->withSession([
@@ -184,8 +184,8 @@ final class AuthorizationFilterTest extends CIUnitTestCase
             ])
             ->post('/test/protected/write');
 
-        $result->assertStatus(403);
-        $result->assertJSONExact(['error' => 'forbidden']);
+        $result->assertStatus(200);
+        $result->assertJSONExact(['status' => 'allowed']);
     }
 
     public function testViewerCanUseReadRoute(): void
@@ -324,7 +324,7 @@ final class AuthorizationFilterTest extends CIUnitTestCase
             ->getRow('is_active'));
     }
 
-    public function testReadOnlyRoleCannotMutateOwnBranchObjectAndLeavesDatabaseUnchanged(): void
+    public function testViewerCanMutateOwnBranchObjectForCi3Parity(): void
     {
         $result = $this
             ->withSession([
@@ -336,8 +336,8 @@ final class AuthorizationFilterTest extends CIUnitTestCase
             ])
             ->post('/test/protected/users/' . $this->operatorUserId . '/deactivate');
 
-        $result->assertStatus(403);
-        self::assertSame(1, (int) $this->db->table('ci4_users')
+        $result->assertStatus(200);
+        self::assertSame(0, (int) $this->db->table('ci4_users')
             ->select('is_active')
             ->where('id', $this->operatorUserId)
             ->get()
