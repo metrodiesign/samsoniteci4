@@ -145,7 +145,7 @@ INSERT INTO request_order (
   requestDate, trackID, numberID, orderIDShow, customerFullname, customerTel,
   branchID, branch_type_id, action_status
 ) VALUES (
-  UTC_TIMESTAMP(), CONCAT('G', DATE_FORMAT(UTC_DATE(), '%y%m'), '0042'), 'LEGACY-42',
+  UTC_TIMESTAMP(), CONCAT('WPA', DATE_FORMAT(UTC_DATE(), '%y%m'), '0042'), 'LEGACY-42',
   'WPA/LEGACY-42', 'LEGACY SEQUENCE', '0000000000', 1, 1, 1
 );
 SQL
@@ -163,7 +163,7 @@ order_status_two=$(docker wait "$order_two")
 order_output=$(docker logs "$order_one" 2>&1; docker logs "$order_two" 2>&1)
 [ "$order_status_one" = 0 ] && [ "$order_status_two" = 0 ] \
   || { printf '%s\n' "$order_output" >&2; exit 1; }
-[ "$(grep -c 'ORDER_CREATED G' <<<"$order_output")" = 2 ]
+[ "$(grep -c 'ORDER_CREATED WPA' <<<"$order_output")" = 2 ]
 docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe order-verify \
   | grep -Fq 'ORDER_VERIFIED unique=3 orders=3 logs=2 sms=2 baseline=0042 allocated=0043,0044'
 docker run --rm "${runtime[@]}" "$CI4_IMAGE" php spark sms:delivery-work --transport loopback --limit 10 \
