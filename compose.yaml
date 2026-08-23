@@ -26,6 +26,13 @@ services:
       - --innodb-flush-log-at-trx-commit=2
       - --max-allowed-packet=67108864
       - --skip-name-resolve
+      # Timestamp contract (2026-08-23 decision): Asia/Bangkok everywhere. Numeric offset,
+      # not a named zone, because tz tables are not loaded. Every TIMESTAMP column with
+      # DEFAULT/ON UPDATE current_timestamp() (cdate on 13 legacy tables) stamps in this
+      # zone, matching PHP appTimezone. Set BEFORE any production dump import: TIMESTAMP
+      # strings are interpreted in this zone at load time, so import and read must both
+      # run under +07:00 for dump parity (V13 in db/dbctl.sh).
+      - --default-time-zone=+07:00
     environment:
       MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is required}"
       MARIADB_DATABASE: "${MARIADB_DATABASE:?MARIADB_DATABASE is required}"

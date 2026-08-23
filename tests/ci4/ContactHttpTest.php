@@ -61,7 +61,12 @@ final class ContactHttpTest extends CIUnitTestCase
     {
         $invalid = $this->payload('c3', 'SYNTHETIC INVALID');
         $invalid['email'] = 'not-an-email';
-        $this->post('/contact', $invalid)->assertStatus(422);
+        $invalidResponse = $this->post('/contact', $invalid);
+        $invalidResponse->assertStatus(422);
+        $invalidResponse->assertSee('Please enter a valid email address');
+        $invalidResponse->assertSeeInField('fullname', 'SYNTHETIC INVALID');
+        $invalidResponse->assertSeeInField('email', 'not-an-email');
+        $invalidResponse->assertSeeInField('submission_id', str_repeat('c3', 16));
         self::assertSame(0, $this->db->table('contact')->countAllResults());
         self::assertSame(0, $this->db->table('ci4_delivery_intents')->countAllResults());
 
@@ -76,6 +81,20 @@ final class ContactHttpTest extends CIUnitTestCase
         $this->post('/contact', $this->payload('e5', 'SYNTHETIC UNAVAILABLE'))->assertStatus(503);
         self::assertSame(1, $this->db->table('contact')->countAllResults());
         self::assertSame(1, $this->db->table('ci4_delivery_intents')->countAllResults());
+    }
+
+    public function testInvalidThaiSubmissionRerendersFormWithErrorsAndKeptValues(): void
+    {
+        $invalid          = $this->payload('f6', 'SYNTHETIC INVALID TH');
+        $invalid['email'] = 'not-an-email';
+        $response         = $this->post('/contact-th', $invalid);
+        $response->assertStatus(422);
+        $response->assertSee('กรุณากรอกอีเมล');
+        $response->assertSeeInField('fullname', 'SYNTHETIC INVALID TH');
+        $response->assertSeeInField('email', 'not-an-email');
+        $response->assertSeeInField('submission_id', str_repeat('f6', 16));
+        self::assertSame(0, $this->db->table('contact')->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->countAllResults());
     }
 
     public function testContactListingIsSearchableByAdminAndHiddenFromBranchRole(): void

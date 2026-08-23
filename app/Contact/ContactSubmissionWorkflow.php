@@ -19,19 +19,41 @@ final class ContactSubmissionWorkflow
     ) {
     }
 
+    /**
+     * Field-level validation shared with submit() so the controller never
+     * copies the rules. Returns an empty array when the input is valid.
+     *
+     * @param array{fullname: string, email: string, phone: string, detail: string} $contact
+     *
+     * @return array<string, string> field name => error code
+     */
+    public function validate(array $contact): array
+    {
+        $contact = array_map('trim', $contact);
+        $errors  = [];
+        if ($contact['fullname'] === '' || mb_strlen($contact['fullname']) > 128) {
+            $errors['fullname'] = 'invalid';
+        }
+        if (filter_var($contact['email'], FILTER_VALIDATE_EMAIL) === false || strlen($contact['email']) > 128) {
+            $errors['email'] = 'invalid';
+        }
+        if (preg_match('/^[0-9+ -]{7,32}$/D', $contact['phone']) !== 1) {
+            $errors['phone'] = 'invalid';
+        }
+        if ($contact['detail'] === '' || mb_strlen($contact['detail']) > 4000) {
+            $errors['detail'] = 'invalid';
+        }
+
+        return $errors;
+    }
+
     /** @param array{fullname: string, email: string, phone: string, detail: string} $contact */
     public function submit(string $submissionId, array $contact, ?DateTimeImmutable $now = null): string
     {
         $contact = array_map('trim', $contact);
         if (
             preg_match('/^[0-9a-f]{32}$/D', $submissionId) !== 1
-            || $contact['fullname'] === ''
-            || mb_strlen($contact['fullname']) > 128
-            || filter_var($contact['email'], FILTER_VALIDATE_EMAIL) === false
-            || strlen($contact['email']) > 128
-            || preg_match('/^[0-9+ -]{7,32}$/D', $contact['phone']) !== 1
-            || $contact['detail'] === ''
-            || mb_strlen($contact['detail']) > 4000
+            || $this->validate($contact) !== []
             || filter_var($this->recipient, FILTER_VALIDATE_EMAIL) === false
         ) {
             throw new InvalidArgumentException('Invalid contact submission.');
