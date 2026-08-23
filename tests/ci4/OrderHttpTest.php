@@ -173,10 +173,12 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame(2, $this->db->table('status_log')->countAllResults());
     }
 
-    public function testCompleteAndCompletedListingsHaveNoBulkControls(): void
+    public function testCompletedListingHasNoBulkControls(): void
     {
+        // status 5 gained a bulk complete form in WP-04B T3; status 7 (COMPLETED) is terminal and
+        // keeps no bulk endpoint. The status 5 bulk form is asserted by testCompleteListing... below.
         $session = $this->session(1, 1, null);
-        foreach (['/TrackingcompleteListing', '/TrackingCompletedListing'] as $route) {
+        foreach (['/TrackingCompletedListing'] as $route) {
             $response = $this->withSession($session)->get($route);
             $response->assertStatus(200);
             $body = $response->getBody();
@@ -476,6 +478,77 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['92006'], 'status_id' => '3'])
             ->assertRedirectTo('/ReportTrackingListing');
         self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 92006)->get()->getRow('action_status'));
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testCompleteTransitionWritesCompletionColumnsAndQueuesCompletionSms(): void
+    {
+        // Guard-conforming trackID + telephone so the completion SMS clears enqueue's guards; the
+        // WP00C seed trackIDs contain hyphens and would be skipped.
+        $this->db->table('request_order')->insert([
+            'request_id' => 92007, 'requestDate' => '2026-08-05 00:00:00',
+            'trackID' => 'WPA26080057', 'orderID' => 'OC7', 'orderIDShow' => 'WPC/C7',
+            'customerFullname' => 'COMPLETE CUSTOMER', 'customerTel' => '0812345678',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 5,
+        ]);
+
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['92007'], 'status_id' => '7'])
+            ->assertRedirectTo('/ReportTrackingListing');
+
+        $row = $this->db->table('request_order')->where('request_id', 92007)->get()->getRowArray();
+        self::assertSame(7, (int) $row['action_status']);
+        self::assertNotEmpty($row['date_complete']);
+        self::assertNotEmpty($row['date_update_status']);
+        self::assertSame(1, $this->db->table('status_log')->where('order_id', 'WPA26080057')->where('action_id', 7)->countAllResults());
+
+        // AC-2: one completion intent carrying the verbatim CI3 copy (double space after Samsonite)
+        // and the rating link ending in the trackID; the telephone never lands in the ciphertext.
+        $intent = $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->get()->getRowArray();
+        self::assertNotNull($intent);
+        self::assertSame('pending', $intent['status']);
+        self::assertSame(92007, (int) $intent['user_id']);
+        self::assertSame(md5('sms-complete:92007'), $intent['request_id']);
+        self::assertStringNotContainsString('0812345678', (string) $intent['payload_ciphertext']);
+        $payload = json_decode(service('encrypter')->decrypt(base64_decode((string) $intent['payload_ciphertext'], true)), true);
+        self::assertStringContainsString('ขอบคุณที่ใช้บริการกับ Samsonite  แสดงความคิดเห็น', $payload['message']);
+        self::assertStringContainsString('/rating/WPA26080057', $payload['message']);
+    }
+
+    public function testCompleteListingExposesBulkCompleteFormAlongsideRatingButton(): void
+    {
+        $body = $this->withSession($this->session(2, 2, 1))->get('/TrackingcompleteListing')->getBody();
+        self::assertStringContainsString('action="/sendorderUpdateStatus"', $body);
+        self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $body);
+        self::assertStringContainsString('<option value="7"', $body);
+        // The per-row rating button stays on the same page as the bulk form.
+        self::assertStringContainsString('class="rate-open"', $body);
+    }
+
+    public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
+    {
+        foreach (['6', '8'] as $target) {
+            $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91005'], 'status_id' => $target])
+                ->assertStatus(409);
+        }
+        $row = $this->db->table('request_order')->where('request_id', 91005)->get()->getRowArray();
+        self::assertSame(5, (int) $row['action_status']);
+        self::assertEmpty($row['date_complete']);
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testCompleteWithMalformedTelSucceedsWithoutQueuingSms(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 92008, 'requestDate' => '2026-08-05 00:00:00',
+            'trackID' => 'WPA26080058', 'orderID' => 'OC8', 'orderIDShow' => 'WPC/C8',
+            'customerFullname' => 'COMPLETE LEGACY TEL', 'customerTel' => '08-1234-5678',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 5,
+        ]);
+
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['92008'], 'status_id' => '7'])
+            ->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame(7, (int) $this->db->table('request_order')->where('request_id', 92008)->get()->getRow('action_status'));
         self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
     }
 

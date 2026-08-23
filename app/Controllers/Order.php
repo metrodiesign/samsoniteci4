@@ -29,7 +29,7 @@ final class Order extends BaseController
         2 => ['title' => 'TRANSPORTING', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [3, 4], 'row_action' => null],
         3 => ['title' => 'STATUS REPAIR', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [4], 'row_action' => null],
         4 => ['title' => 'DELIVER TO CUSTOMER', 'bulk_endpoint' => '/sendorder_deliver', 'statuses' => [5], 'row_action' => null],
-        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => 'rate'],
+        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [7], 'row_action' => 'rate'],
         7 => ['title' => 'COMPLETED', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null],
     ];
 
