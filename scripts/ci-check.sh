@@ -14,6 +14,9 @@ composer validate --strict >/dev/null
 composer audit --locked --no-interaction >/dev/null
 if [ -f vendor/autoload.php ]; then
   php spark --version >/dev/null
+  php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
+    || fail "PHP runtime must load mysqli built on mysqlnd"
+  composer check-platform-reqs --no-interaction >/dev/null
   routes=$(php spark routes)
   vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
 else
@@ -34,6 +37,9 @@ else
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark --version)
   printf '%s\n' "$php_version" | grep -Fq 'CodeIgniter v4.7.4' \
     || fail "CI4 Docker runtime version mismatch"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
+    php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
+    || fail "CI4 image must load mysqli built on mysqlnd"
   routes=$(DOCKER_CONFIG="$ci4_docker_config" \
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark routes)
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
@@ -44,6 +50,7 @@ printf '%s\n' "$routes" | grep -Eq 'GET.*health.*Health::index' \
 grep -Fq 'public bool $autoRoute = false;' app/Config/Routing.php \
   || fail "CI4 Auto Routing Legacy is enabled"
 pass "CI4 dependency, route and health smoke gates"
+pass "PHP mysqli/mysqlnd and composer platform requirements"
 
 ci4_compose=$(sed -n '/^  ci4:/,/^networks:/p' compose.yaml)
 if grep -Eq '^[[:space:]]+(app|database|encryption)\.' <<<"$ci4_compose"; then
