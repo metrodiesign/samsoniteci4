@@ -11,19 +11,39 @@ final class MasterDataStore
     {
     }
 
+    private const PAGE_SIZE = 50;
+
     /** @return list<array<string, mixed>> */
-    public function all(string $type, string $search = ''): array
+    public function all(string $type, string $search = '', int $page = 1): array
     {
         $definition = MasterCatalog::definition($type);
         if ($definition === null) {
             return [];
         }
-        $query = $this->db->table($definition['table'])->orderBy($definition['pk'], 'ASC')->limit(100);
+        $page  = $page < 1 ? 1 : $page;
+        $query = $this->db->table($definition['table'])
+            ->orderBy($definition['pk'], 'ASC')
+            ->limit(self::PAGE_SIZE, ($page - 1) * self::PAGE_SIZE);
         if ($search !== '') {
             $query->like($definition['label'], $search);
         }
 
         return $query->get()->getResultArray();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function options(string $type): array
+    {
+        $definition = MasterCatalog::definition($type);
+        if ($definition === null) {
+            return [];
+        }
+
+        return $this->db->table($definition['table'])
+            ->select($definition['pk'] . ' AS value, ' . $definition['label'] . ' AS label')
+            ->orderBy($definition['pk'], 'ASC')
+            ->get()
+            ->getResultArray();
     }
 
     /** @return array<string, mixed>|null */
@@ -120,7 +140,7 @@ final class MasterDataStore
     }
 
     /**
-     * @param array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}> $fields
+     * @param array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}> $fields
      * @param array<string, mixed> $input
      * @return array<string, int|string|null>|null
      */

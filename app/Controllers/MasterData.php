@@ -16,8 +16,13 @@ final class MasterData extends BaseController
         $definition = $this->authorizedDefinition($type);
         $rawSearch  = $this->request->getGet('search');
         $search     = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+        $rawPage    = $this->request->getGet('page');
+        $page       = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+        if ($page < 1) {
+            throw PageNotFoundException::forPageNotFound();
+        }
 
-        return $this->render($type, $definition, null, $search);
+        return $this->render($type, $definition, null, $search, $page);
     }
 
     public function edit(string $type, string $rawId): string
@@ -64,7 +69,20 @@ final class MasterData extends BaseController
         };
     }
 
-    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool}>} */
+    public function image(string $name): ResponseInterface
+    {
+        $path = WRITEPATH . 'uploads/branch-types/' . $name;
+        if (preg_match('/\A[a-f0-9]{32}\.png\z/D', $name) !== 1 || ! is_file($path)) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'branch_type_image_not_found']);
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'image/png')
+            ->setHeader('Cache-Control', 'public, max-age=86400, immutable')
+            ->setBody((string) file_get_contents($path));
+    }
+
+    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>} */
     private function authorizedDefinition(string $type): array
     {
         // CI3 parity (business decision 2026-08-23): master data is open to every
@@ -113,19 +131,29 @@ final class MasterData extends BaseController
     }
 
     /**
-     * @param array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool}>} $definition
+     * @param array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>} $definition
      * @param array<string, mixed>|null $row
      */
-    private function render(string $type, array $definition, ?array $row, string $search): string
+    private function render(string $type, array $definition, ?array $row, string $search, int $page = 1): string
     {
+        $store     = new MasterDataStore(db_connect());
+        $fkOptions = [];
+        foreach ($definition['fields'] as $field => $rule) {
+            if (isset($rule['fk'])) {
+                $fkOptions[$field] = $store->options($rule['fk']);
+            }
+        }
+
         return view('layout', [
             'title'   => 'Master data: ' . $type,
             'content' => view('master_data', [
                 'definition' => $definition,
-                'rows'       => (new MasterDataStore(db_connect()))->all($type, $search),
+                'rows'       => $store->all($type, $search, $page),
                 'row'        => $row,
                 'search'     => $search,
                 'type'       => $type,
+                'page'       => $page,
+                'fkOptions'  => $fkOptions,
             ]),
         ]);
     }
