@@ -74,7 +74,10 @@ final class ReportMatrix
             return $query->groupBy(['orders.action_status', 'statuses.status_name'])
                 ->orderBy('orders.action_status', 'ASC')->get()->getResultArray();
         }
-        if (in_array($kind, ['in-progress-average', 'in-progress'], true)) {
+        if ($kind === 'in-progress-average') {
+            return $this->inProgressAverage($start, $end, $branchId);
+        }
+        if ($kind === 'in-progress') {
             $query = $this->db->table('request_order')
                 ->select('request_id AS id, trackID AS label, requestDate, date_update_status, action_status')
                 ->whereIn('action_status', [2, 3]);
@@ -131,6 +134,48 @@ final class ReportMatrix
             'Detail' => '',
             'Job' => number_format($total, 0),
             'Average (Percent)' => number_format($sumPercent, 0) . '%',
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<array<string, int|string>> */
+    private function inProgressAverage(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $grouped = $this->db->table('request_order')
+            ->select('action_status, COUNT(*) AS total', false)
+            ->whereIn('action_status', [1, 2, 3, 4, 5]);
+        $this->scope($grouped, 'requestDate', 'branchID', $start, $end, $branchId);
+        $counts = [];
+        foreach ($grouped->groupBy('action_status')->get()->getResultArray() as $row) {
+            $counts[(int) $row['action_status']] = (int) $row['total'];
+        }
+        $total = array_sum($counts);
+
+        $sumPercent = 0.0;
+        $rows = [];
+        foreach ([
+            [1, 'เปิดงานซ่อม รอศูนย์บริการมารับ'],
+            [2, 'สินค้าจัดส่งเข้าศูนย์บริการ'],
+            [3, 'อยู่ระหว่างดำเนินการซ่อมสินค้า'],
+            [4, 'ซ่อมเสร็จเรียบร้อยแล้ว รอส่งกลับจุดรับบริการ'],
+            [5, 'สินค้าถึงจุดรับบริการ รอลูกค้ามารับ'],
+        ] as [$no, $detail]) {
+            $count = $counts[$no] ?? 0;
+            $percent = $total > 0 ? $count * 100 / $total : 0.0;
+            $sumPercent += $percent;
+            $rows[] = [
+                'No' => $no,
+                'Detail' => $detail,
+                'Job' => number_format($count, 0),
+                'Average (Percent)' => number_format($percent, 2) . '%',
+            ];
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'Detail' => '',
+            'Job' => number_format($total, 0),
+            'Average (Percent)' => number_format($sumPercent, 2) . '%',
         ];
 
         return $rows;

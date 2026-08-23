@@ -81,6 +81,66 @@ final class ReportMatrixTest extends CIUnitTestCase
         ], $rows);
     }
 
+    public function testInProgressAverageReturnsFiveThaiBucketsWithTwoDecimalPercent(): void
+    {
+        // status 1..5 present: 5, 2, 1, 1, 1 of 10 -> 50.00%, 20.00%, 10.00%, 10.00%, 10.00%.
+        $this->insertOrder(1, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(2, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(3, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(4, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(5, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(6, 2, '2026-08-06 10:00:00');
+        $this->insertOrder(7, 2, '2026-08-06 10:00:00');
+        $this->insertOrder(8, 3, '2026-08-07 10:00:00');
+        $this->insertOrder(9, 4, '2026-08-08 10:00:00');
+        $this->insertOrder(10, 5, '2026-08-09 10:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress-average', '01/08/2026', '31/08/2026', null);
+
+        self::assertSame([
+            ['No' => 1, 'Detail' => 'เปิดงานซ่อม รอศูนย์บริการมารับ', 'Job' => '5', 'Average (Percent)' => '50.00%'],
+            ['No' => 2, 'Detail' => 'สินค้าจัดส่งเข้าศูนย์บริการ', 'Job' => '2', 'Average (Percent)' => '20.00%'],
+            ['No' => 3, 'Detail' => 'อยู่ระหว่างดำเนินการซ่อมสินค้า', 'Job' => '1', 'Average (Percent)' => '10.00%'],
+            ['No' => 4, 'Detail' => 'ซ่อมเสร็จเรียบร้อยแล้ว รอส่งกลับจุดรับบริการ', 'Job' => '1', 'Average (Percent)' => '10.00%'],
+            ['No' => 5, 'Detail' => 'สินค้าถึงจุดรับบริการ รอลูกค้ามารับ', 'Job' => '1', 'Average (Percent)' => '10.00%'],
+            ['No' => 'TOTAL', 'Detail' => '', 'Job' => '10', 'Average (Percent)' => '100.00%'],
+        ], $rows);
+    }
+
+    public function testInProgressAverageSumsFloatPercentBeforeRounding(): void
+    {
+        // Three equal buckets each 33.33...%; summing floats before rounding yields 100.00%, not 99.99%.
+        $this->insertOrder(1, 1, '2026-08-05 10:00:00');
+        $this->insertOrder(2, 2, '2026-08-06 10:00:00');
+        $this->insertOrder(3, 3, '2026-08-07 10:00:00');
+
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress-average', '01/08/2026', '31/08/2026', null);
+
+        self::assertSame([
+            ['No' => 1, 'Detail' => 'เปิดงานซ่อม รอศูนย์บริการมารับ', 'Job' => '1', 'Average (Percent)' => '33.33%'],
+            ['No' => 2, 'Detail' => 'สินค้าจัดส่งเข้าศูนย์บริการ', 'Job' => '1', 'Average (Percent)' => '33.33%'],
+            ['No' => 3, 'Detail' => 'อยู่ระหว่างดำเนินการซ่อมสินค้า', 'Job' => '1', 'Average (Percent)' => '33.33%'],
+            ['No' => 4, 'Detail' => 'ซ่อมเสร็จเรียบร้อยแล้ว รอส่งกลับจุดรับบริการ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 5, 'Detail' => 'สินค้าถึงจุดรับบริการ รอลูกค้ามารับ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 'TOTAL', 'Detail' => '', 'Job' => '3', 'Average (Percent)' => '100.00%'],
+        ], $rows);
+    }
+
+    public function testInProgressAverageZeroesEveryBucketWhenScopeEmpty(): void
+    {
+        // No rows in scope: every bucket 0 and percent guarded to '0.00%' (no divide-by-zero).
+        $rows = (new ReportMatrix($this->db))->matrix('in-progress-average', '01/08/2026', '31/08/2026', null);
+
+        self::assertSame([
+            ['No' => 1, 'Detail' => 'เปิดงานซ่อม รอศูนย์บริการมารับ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 2, 'Detail' => 'สินค้าจัดส่งเข้าศูนย์บริการ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 3, 'Detail' => 'อยู่ระหว่างดำเนินการซ่อมสินค้า', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 4, 'Detail' => 'ซ่อมเสร็จเรียบร้อยแล้ว รอส่งกลับจุดรับบริการ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 5, 'Detail' => 'สินค้าถึงจุดรับบริการ รอลูกค้ามารับ', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+            ['No' => 'TOTAL', 'Detail' => '', 'Job' => '0', 'Average (Percent)' => '0.00%'],
+        ], $rows);
+    }
+
     private function insertOrder(int $id, int $status, string $requestDate, ?string $dateComplete = null, int $branch = 1): void
     {
         $this->db->table('request_order')->insert([

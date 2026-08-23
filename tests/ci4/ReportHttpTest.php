@@ -267,6 +267,31 @@ final class ReportHttpTest extends CIUnitTestCase
         $filteredSecond->assertDontSee('WP00C-PAGE-110');
     }
 
+    public function testInProgressAverageRouteRendersGenericViewWithThaiBucketsAndTwoDecimalPercent(): void
+    {
+        // Branch 1 fixture: status 1=1, status 2=2 (order id 9 shares status 2), 3=1, 4=1, 5=0; total 5.
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_average', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $response->assertStatus(200);
+        // The view emits Thai labels as numeric HTML entities; decode so assertions read as real Thai.
+        $body = html_entity_decode($response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Generic view emits each bucket as data-col cells with the CI3 Thai label and number_format job count.
+        self::assertStringContainsString(
+            '<td data-col="Detail">เปิดงานซ่อม รอศูนย์บริการมารับ</td><td data-col="Job">1</td>',
+            $body,
+        );
+        // Order id 9 (branch 1, status 2) is counted: this kind has no INNER JOIN, so status 2 = 2 jobs.
+        self::assertStringContainsString(
+            '<td data-col="Detail">สินค้าจัดส่งเข้าศูนย์บริการ</td><td data-col="Job">2</td>',
+            $body,
+        );
+        // Percent is number_format(p, 2): 40.00% (not round's "40"); the TOTAL row sums to 100.00%.
+        self::assertStringContainsString('40.00%', $body);
+        self::assertStringContainsString('100.00%', $body);
+    }
+
     /** @return array<string, int|string|null> */
     private function order(int $id, int $branch, int $status, int $brand, int $type): array
     {
