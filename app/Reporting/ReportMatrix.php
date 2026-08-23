@@ -50,9 +50,12 @@ final class ReportMatrix
     }
 
     /** @return list<array<string, int|string|null>> */
-    public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId): array
+    public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId, mixed $rawStatusIds = null): array
     {
         [$start, $end] = $this->dates($startDate, $endDate);
+        if ($kind === 'pending-total') {
+            return $this->pendingTotal($start, $end, $branchId);
+        }
         if ($kind === 'jobs-by-day') {
             $query = $this->db->table('request_order')
                 ->select('DATE(requestDate) AS label, COUNT(*) AS total', false)
@@ -61,7 +64,7 @@ final class ReportMatrix
 
             return $query->groupBy('DATE(requestDate)', false)->orderBy('label', 'ASC')->get()->getResultArray();
         }
-        if (in_array($kind, ['pending', 'pending-total'], true)) {
+        if ($kind === 'pending') {
             $query = $this->db->table('request_order orders')
                 ->select('orders.action_status AS id, statuses.status_name AS label, COUNT(*) AS total', false)
                 ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
@@ -85,6 +88,52 @@ final class ReportMatrix
             return $rows;
         }
         throw new InvalidArgumentException('Unknown report.');
+    }
+
+    /** @return list<array<string, int|string>> */
+    private function pendingTotal(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $grouped = $this->db->table('request_order')
+            ->select('action_status, COUNT(*) AS total', false)
+            ->where('action_status >=', 1)->where('action_status <=', 4);
+        $this->scope($grouped, 'requestDate', 'branchID', $start, $end, $branchId);
+        $counts = [];
+        foreach ($grouped->groupBy('action_status')->get()->getResultArray() as $row) {
+            $counts[(int) $row['action_status']] = (int) $row['total'];
+        }
+        $waiting = $counts[1] ?? 0;
+        $working = ($counts[2] ?? 0) + ($counts[3] ?? 0) + ($counts[4] ?? 0);
+
+        $pendingQuery = $this->db->table('request_order')
+            ->where('action_status', 5)->where('date_complete IS NOT NULL', null, false);
+        $this->scope($pendingQuery, 'requestDate', 'branchID', $start, $end, $branchId);
+        $pending = $pendingQuery->countAllResults();
+
+        $total = $waiting + $working + $pending;
+        $sumPercent = 0.0;
+        $rows = [];
+        foreach ([
+            [1, 'Waiting for CMG to pick up', $waiting],
+            [2, 'Working in process - CMG', $working],
+            [3, 'Pending for customer to pick up', $pending],
+        ] as [$no, $detail, $count]) {
+            $percent = $total > 0 ? $count * 100 / $total : 0.0;
+            $sumPercent += $percent;
+            $rows[] = [
+                'No' => $no,
+                'Detail' => $detail,
+                'Job' => $count,
+                'Average (Percent)' => round($percent, 2) . '%',
+            ];
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'Detail' => '',
+            'Job' => number_format($total, 0),
+            'Average (Percent)' => number_format($sumPercent, 0) . '%',
+        ];
+
+        return $rows;
     }
 
     /** @return list<array<string, int|float|string|null>> */

@@ -124,6 +124,34 @@ final class ReportHttpTest extends CIUnitTestCase
         $filtered->assertSee('100.00%');
     }
 
+    public function testNonRatingReportsDefaultToLastMonthWhenDatesOmitted(): void
+    {
+        // Bucket 3 (status 5 + date_complete) is empty in the base fixture, so these two rows are isolated.
+        $near = $this->order(201, 1, 5, 1, 1);
+        $near['requestDate'] = (new \DateTimeImmutable('today'))->modify('-1 day')->format('Y-m-d H:i:s');
+        $near['date_complete'] = $near['requestDate'];
+        $near['trackID'] = 'WP06A-NEAR';
+        $this->db->table('request_order')->insert($near);
+
+        $far = $this->order(202, 1, 5, 1, 1);
+        $far['requestDate'] = (new \DateTimeImmutable('today'))->modify('-40 days')->format('Y-m-d H:i:s');
+        $far['date_complete'] = $far['requestDate'];
+        $far['trackID'] = 'WP06A-FAR';
+        $this->db->table('request_order')->insert($far);
+
+        $response = $this->withSession($this->session(2, 2, 1))->get('/user/report_total_job_pending');
+        $response->assertStatus(200);
+        // The 1-day-old row is within the default one-month window, the 40-day-old row is not: bucket 3 counts 1.
+        self::assertStringContainsString(
+            '<td data-col="Detail">Pending for customer to pick up</td><td data-col="Job">1</td>',
+            $response->getBody(),
+        );
+        // The defaulted range is echoed back into the filter form.
+        $today = new \DateTimeImmutable('today');
+        self::assertStringContainsString('value="' . $today->modify('-1 month')->format('d/m/Y') . '"', $response->getBody());
+        self::assertStringContainsString('value="' . $today->format('d/m/Y') . '"', $response->getBody());
+    }
+
     public function testSummaryOmitsMissingMasterAndAppliesBranchStatusBrandTypeFilters(): void
     {
         $all = $this->withSession($this->session(1, 1, null))->get('/reportsummary');

@@ -10,11 +10,15 @@
 <a class="button" href="<?= esc(site_url('reports/' . $exportType . '/export') . ($exportQuery === '' ? '' : '?' . $exportQuery)) ?>">Export XLS</a>
 <?php endif ?>
 </form>
-<div class="card table-wrap"><table><thead><tr><th>Item</th><th>Total</th><th>Detail</th></tr></thead><tbody>
-<?php foreach ($rows as $row): ?>
+<div class="card table-wrap">
 <?php if ($kind === 'ratings'): ?>
+<table><thead><tr><th>Item</th><th>Total</th><th>Detail</th></tr></thead><tbody>
+<?php foreach ($rows as $row): ?>
 <tr data-question="<?= (int) $row['question'] ?>" data-total="<?= (int) $row['total'] ?>"><td>Question <?= (int) $row['question'] ?></td><td><?= (int) $row['total'] ?></td><td><?php foreach ($row['scores'] as $score => $value): ?><?= (int) $score ?>: <?= esc($value['percentage']) ?>% <?php endforeach ?></td></tr>
+<?php endforeach ?>
+</tbody></table>
 <?php else: ?>
-<tr><td><?= esc((string) ($row['label'] ?? $row['id'] ?? '')) ?></td><td><?= esc((string) ($row['total'] ?? '')) ?></td><td><?= esc((string) ($row['action_status'] ?? '')) ?></td></tr>
+<?php $columns = $rows === [] ? [] : array_keys($rows[0]); ?>
+<table data-kind="<?= esc($kind) ?>"><thead><tr><?php foreach ($columns as $column): ?><th><?= esc((string) $column) ?></th><?php endforeach ?></tr></thead><tbody><?php foreach ($rows as $row): ?><tr><?php foreach ($row as $column => $value): ?><td data-col="<?= esc((string) $column) ?>"><?= esc((string) $value) ?></td><?php endforeach ?></tr><?php endforeach ?></tbody></table>
 <?php endif ?>
-<?php endforeach ?></tbody></table></div></section>
+</div></section>

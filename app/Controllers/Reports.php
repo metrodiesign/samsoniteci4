@@ -7,6 +7,7 @@ use App\Reporting\ReportMatrix;
 use App\Reporting\TrackingReport;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
+use DateTimeImmutable;
 use InvalidArgumentException;
 
 final class Reports extends BaseController
@@ -25,6 +26,9 @@ final class Reports extends BaseController
         $branchId = $this->branchScope();
         $start = $this->input('start_date');
         $end = $this->input('end_date');
+        if ($kind !== 'ratings') {
+            [$start, $end] = $this->defaultRange($start, $end);
+        }
         $error = null;
         try {
             $matrix = new ReportMatrix(db_connect());
@@ -103,6 +107,7 @@ final class Reports extends BaseController
         if (ini_set('memory_limit', '8048M') === false) {
             log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
         }
+        [$inProgressStart, $inProgressEnd] = $this->defaultRange($this->input('start_date'), $this->input('end_date'));
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
@@ -115,7 +120,7 @@ final class Reports extends BaseController
                     $this->input('status_id'), $this->input('detailBrandId'), $this->input('detailTypeId'), $branchId,
                 ),
                 'ratings' => $matrix->ratings($this->input('start_date'), $this->input('end_date'), $branchId),
-                'in-progress' => $matrix->matrix('in-progress', $this->input('start_date'), $this->input('end_date'), $branchId),
+                'in-progress' => $matrix->matrix('in-progress', $inProgressStart, $inProgressEnd, $branchId),
             };
         } catch (InvalidArgumentException $exception) {
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
@@ -131,6 +136,22 @@ final class Reports extends BaseController
     public function legacyExport(string $type, string ...$ignored): ResponseInterface
     {
         return $this->export($type);
+    }
+
+    /**
+     * CI3 parity: when a date field is omitted, default the range to the last month
+     * (start = today minus one month, end = today) before filtering.
+     *
+     * @return array{string, string}
+     */
+    private function defaultRange(mixed $start, mixed $end): array
+    {
+        $today = new DateTimeImmutable('today');
+
+        return [
+            is_string($start) && $start !== '' ? $start : $today->modify('-1 month')->format('d/m/Y'),
+            is_string($end) && $end !== '' ? $end : $today->format('d/m/Y'),
+        ];
     }
 
     private function branchScope(?string $routeBranchId = null): ?int
