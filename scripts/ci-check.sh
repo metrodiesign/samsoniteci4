@@ -20,13 +20,22 @@ if [ -f vendor/autoload.php ]; then
   composer check-platform-reqs --no-interaction >/dev/null
   find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null \
     || fail "php lint failed"
+  vendor/bin/phpstan analyse --no-progress --memory-limit=1G >/dev/null \
+    || fail "phpstan static analysis failed"
   routes=$(php spark routes)
   vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
 else
   ci4_docker_config=${DOCKER_CONFIG:-/tmp/samsonite-ci4-docker-config}
   mkdir -p "$ci4_docker_config"
   ci4_image=samsonitetracking-ci4:4.7.4-php8.5.7
-  DOCKER_CONFIG="$ci4_docker_config" docker image inspect "$ci4_image" >/dev/null 2>&1 \
+  ci4_image_fresh=0
+  if DOCKER_CONFIG="$ci4_docker_config" docker image inspect "$ci4_image" >/dev/null 2>&1; then
+    image_lock=$(DOCKER_CONFIG="$ci4_docker_config" docker run --rm "$ci4_image" \
+      cksum composer.lock | awk '{print $1" "$2}')
+    repo_lock=$(cksum "$ROOT/composer.lock" | awk '{print $1" "$2}')
+    [ "$image_lock" = "$repo_lock" ] && ci4_image_fresh=1
+  fi
+  [ "$ci4_image_fresh" = 1 ] \
     || DOCKER_CONFIG="$ci4_docker_config" docker build -f Dockerfile.ci4 -t "$ci4_image" "$ROOT" >/dev/null
   ci4_mounts=(
     -v "$ROOT/app:/app/app:ro"
@@ -35,6 +44,9 @@ else
     -v "$ROOT/tests/wp00c:/app/tests/wp00c:ro"
     -v "$ROOT/phpunit.xml.dist:/app/phpunit.xml.dist:ro"
     -v "$ROOT/spark:/app/spark:ro"
+    -v "$ROOT/phpstan.neon.dist:/app/phpstan.neon.dist:ro"
+    -v "$ROOT/phpstan-baseline.neon:/app/phpstan-baseline.neon:ro"
+    -v "$ROOT/scripts/phpstan-bootstrap.php:/app/scripts/phpstan-bootstrap.php:ro"
   )
   php_version=$(DOCKER_CONFIG="$ci4_docker_config" \
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark --version)
@@ -46,6 +58,9 @@ else
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
     sh -c "find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null" \
     || fail "php lint failed in CI4 image"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm -e HOME=/tmp "${ci4_mounts[@]}" "$ci4_image" \
+    vendor/bin/phpstan analyse --no-progress --memory-limit=1G >/dev/null \
+    || fail "phpstan static analysis failed in CI4 image"
   routes=$(DOCKER_CONFIG="$ci4_docker_config" \
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark routes)
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \

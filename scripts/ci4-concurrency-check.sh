@@ -37,9 +37,14 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$DOCKER_CONFIG"
-if ! docker image inspect "$CI4_IMAGE" >/dev/null 2>&1; then
-  docker build -f "$ROOT/Dockerfile.ci4" --tag "$CI4_IMAGE" "$ROOT" >/dev/null
+ci4_image_fresh=0
+if docker image inspect "$CI4_IMAGE" >/dev/null 2>&1; then
+  image_lock=$(docker run --rm "$CI4_IMAGE" cksum composer.lock | awk '{print $1" "$2}')
+  repo_lock=$(cksum "$ROOT/composer.lock" | awk '{print $1" "$2}')
+  [ "$image_lock" = "$repo_lock" ] && ci4_image_fresh=1
 fi
+[ "$ci4_image_fresh" = 1 ] \
+  || docker build -f "$ROOT/Dockerfile.ci4" --tag "$CI4_IMAGE" "$ROOT" >/dev/null
 docker network create "$network" >/dev/null
 docker run --detach --rm \
   --name "$database" \

@@ -1,0 +1,91 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to function is_string\(\) with non\-empty\-string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Authentication/PasswordPolicy.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:escapeIdentifiers\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Database/Migrations/2026-08-22-092000_AddLoginIdentityToShadowUsers.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:prefixTable\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Database/Migrations/2026-08-22-092000_AddLoginIdentityToShadowUsers.php
+
+		-
+			message: '#^Parameter \#1 \$db of class App\\Authentication\\LegacyUserImporter constructor expects CodeIgniter\\Database\\BaseConnection, CodeIgniter\\Database\\ConnectionInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Database/Migrations/2026-08-22-092000_AddLoginIdentityToShadowUsers.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<''customer_name''\|''number_cmg''\|''order_id''\|''repair_price''\|''repair_started_at''\|''status''\|''telephone''\|''updated_at''\|''warranty'', string\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Imports/ImportWorkflow.php
+
+		-
+			message: '#^Offset 2 on array\{0\: int\<0, max\>, 1\: int\<0, max\>, 2\: int, 3\: string, mime\: string, channels\?\: int, bits\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Master/BranchTypeImageStore.php
+
+		-
+			message: '#^Call to function is_int\(\) with int will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Reporting/ReportMatrix.php
+
+		-
+			message: '#^Parameter \#1 \$array of function array_values contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Reporting/ReportMatrix.php
+
+		-
+			message: '#^Call to function is_int\(\) with int will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Reporting/TrackingReport.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between 2\|3 and 1 will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Users/UserStore.php
+
+		-
+			message: '#^Parameter \#1 \$routes of method Tests\\Ci4\\AuthorizationFilterTest\:\:withRoutes\(\) expects array\<int, array\{0\: string, 1\: string, 2\: \(Closure\(mixed \.\.\.\)\: \(CodeIgniter\\HTTP\\ResponseInterface\|string\|void\)\)\|string, 3\?\: array\<string, mixed\>\}\>\|null, array\{array\{''GET'', ''test/protected/read'', Closure\(\)\: CodeIgniter\\HTTP\\ResponseInterface, array\{filter\: ''authorized\:read''\}\}, array\{''POST'', ''test/protected/write'', Closure\(\)\: CodeIgniter\\HTTP\\ResponseInterface, array\{filter\: ''authorized\:write''\}\}, array\{''GET'', ''test/protected…'', Closure\(\)\: CodeIgniter\\HTTP\\ResponseInterface, array\{filter\: ''authorized\:unknown''\}\}, array\{''GET'', ''test/protected…'', Closure\(string\)\: CodeIgniter\\HTTP\\ResponseInterface, array\{filter\: ''authorized\:read''\}\}, array\{''POST'', ''test/protected…'', Closure\(string\)\: CodeIgniter\\HTTP\\ResponseInterface, array\{filter\: ''authorized\:write''\}\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: tests/ci4/AuthorizationFilterTest.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Test\\TestResponse\:\:assertSeeInOrder\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: tests/ci4/BusinessParityHttpTest.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Test\\TestResponse\:\:assertSeeInOrder\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: tests/ci4/PublicTrackingHttpTest.php
+
+		-
+			message: '#^Method Tests\\Ci4\\ReportHttpTest\:\:session\(\) should return array\<string, bool\|int\|null\> but returns array\<string, int\|string\|true\|null\>\.$#'
+			identifier: return.type
+			count: 1
+			path: tests/ci4/ReportHttpTest.php
+
+		-
+			message: '#^Call to function is_string\(\) with non\-falsy\-string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: tests/ci4/support/Commands/ConcurrencyProbe.php
