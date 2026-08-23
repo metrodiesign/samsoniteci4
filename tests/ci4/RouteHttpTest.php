@@ -101,6 +101,14 @@ final class RouteHttpTest extends CIUnitTestCase
         return false;
     }
 
+    public function testStateChangingPostOnlyEndpointsRejectGet(): void
+    {
+        foreach (['/loginMe', '/logout', '/password-reset/request', '/password-reset/complete', '/rating'] as $path) {
+            $this->assert404($path, false);
+            $this->assert404($path, true);
+        }
+    }
+
     public function testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers(): void
     {
         foreach (['/wp00c-missing-route', '/menu/deleteUser', '/menu/changePassword', '/order/do_upload_multi', '/Order/ReportTrackingListingTest'] as $path) {
