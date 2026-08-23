@@ -48,12 +48,16 @@ final class ImportWorkflow
                 'payload_ciphertext' => base64_encode($this->encrypter->encrypt(json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))),
             ];
         }
+        $fileSha = hash_file('sha256', $path);
+        if ($fileSha === false) {
+            throw new RuntimeException('Unable to hash import file.');
+        }
         $timestamp = date('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
             if (! $this->db->table('ci4_import_batches')->insert([
                 'batch_id' => $batchId, 'kind' => $kind, 'owner_user_id' => $ownerId,
-                'owner_branch_id' => $ownerBranch, 'state' => 'previewed', 'file_sha256' => hash_file('sha256', $path),
+                'owner_branch_id' => $ownerBranch, 'state' => 'previewed', 'file_sha256' => $fileSha,
                 'row_count' => count($rows), 'accepted_count' => $accepted, 'rejected_count' => count($rows) - $accepted,
                 'created_at' => $timestamp,
             ]) || ! $this->db->table('ci4_import_rows')->insertBatch($stored)
@@ -64,6 +68,7 @@ final class ImportWorkflow
             $this->db->transRollback();
             throw $exception;
         }
+        $this->storeSourceFile($path, $fileSha);
 
         return ['batch_id' => $batchId, 'accepted' => $accepted, 'rejected' => count($rows) - $accepted, 'rows' => $preview];
     }
@@ -121,6 +126,22 @@ final class ImportWorkflow
         }
 
         return 'confirmed';
+    }
+
+    private function storeSourceFile(string $path, string $sha): void
+    {
+        $directory = WRITEPATH . 'uploads/imports';
+        $target = $directory . '/' . $sha . '.xlsx';
+        if (is_file($target)) {
+            return;
+        }
+        if (! is_dir($directory) && ! mkdir($directory, 0750, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Import file storage unavailable.');
+        }
+        if (! copy($path, $target)) {
+            throw new RuntimeException('Import file storage unavailable.');
+        }
+        chmod($target, 0640);
     }
 
     /** @param array<string, string> $payload @return array{bool, string|null, array<string, mixed>} */
