@@ -2,6 +2,7 @@
 
 namespace Tests\Ci4;
 
+use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\Security\Exceptions\SecurityException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
@@ -96,6 +97,82 @@ final class RatingHttpTest extends CIUnitTestCase
             ->get()
             ->getRow('action_status'));
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testStatusSevenOrderWithoutRatingStillRendersRatingForm(): void
+    {
+        $this->insertStatusSevenOrder();
+
+        $result = $this->get('/rating/WP00C-RATE-007');
+
+        $result->assertStatus(200);
+        $result->assertSee('WP00C-RATE-007');
+        for ($question = 1; $question <= 8; $question++) {
+            self::assertStringContainsString('name="rating_' . $question . '"', $result->getBody());
+        }
+    }
+
+    public function testStatusSevenRatingRecordsWithoutTouchingStatusOrDateColumns(): void
+    {
+        $this->insertStatusSevenOrder();
+
+        $result = $this->post('/rating', $this->payload(91007, 'WP00C-RATE-007'));
+
+        $result->assertStatus(201);
+        $result->assertJSONExact(['status' => 'rating_recorded']);
+        self::assertSame(8, $this->db->table('rating')->countAllResults());
+        self::assertSame(1, $this->db->table('rating_comment')->countAllResults());
+        $order = $this->db->table('request_order')->where('request_id', 91007)->get()->getRowArray();
+        self::assertSame(7, (int) $order['action_status']);
+        self::assertSame('2020-01-01 00:00:00', (string) $order['date_complete']);
+        self::assertSame('2020-01-01 00:00:00', (string) $order['date_update_status']);
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testStatusSevenRatingRejectsSecondSubmissionAsDuplicate(): void
+    {
+        $this->insertStatusSevenOrder();
+
+        $this->post('/rating', $this->payload(91007, 'WP00C-RATE-007'))->assertStatus(201);
+        $this->post('/rating', $this->payload(91007, 'WP00C-RATE-007'))->assertStatus(409);
+
+        self::assertSame(8, $this->db->table('rating')->countAllResults());
+        self::assertSame(1, $this->db->table('rating_comment')->countAllResults());
+    }
+
+    public function testStatusesOtherThanFiveOrSevenAreNotRatable(): void
+    {
+        foreach ([1, 2, 3, 4, 6, 8] as $status) {
+            $requestId = 91200 + $status;
+            $trackId   = 'WP00C-RATE-2' . $status;
+            $this->db->table('request_order')->insert([
+                'request_id'    => $requestId,
+                'trackID'       => $trackId,
+                'branchID'      => 1,
+                'action_status' => $status,
+            ]);
+
+            try {
+                $this->get('/rating/' . $trackId);
+                self::fail('Expected 404 for GET on status ' . $status);
+            } catch (PageNotFoundException) {
+                // expected: form() rejects a non-ratable status
+            }
+            $this->post('/rating', $this->payload($requestId, $trackId))->assertStatus(404);
+            self::assertSame(0, $this->db->table('rating')->where('order_id', $trackId)->countAllResults());
+        }
+    }
+
+    private function insertStatusSevenOrder(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id'         => 91007,
+            'trackID'            => 'WP00C-RATE-007',
+            'branchID'           => 1,
+            'action_status'      => 7,
+            'date_complete'      => '2020-01-01 00:00:00',
+            'date_update_status' => '2020-01-01 00:00:00',
+        ]);
     }
 
     /** @return array<string, string> */
