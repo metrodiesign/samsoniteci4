@@ -67,9 +67,8 @@ final class MasterData extends BaseController
     /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool}>} */
     private function authorizedDefinition(string $type): array
     {
-        if ((int) service('session')->get('role') !== 1) {
-            throw PageNotFoundException::forPageNotFound();
-        }
+        // CI3 parity (business decision 2026-08-23): master data is open to every
+        // authenticated role; the route-level authorized filters remain in force.
         $definition = MasterCatalog::definition($type);
         if ($definition === null) {
             throw PageNotFoundException::forPageNotFound();

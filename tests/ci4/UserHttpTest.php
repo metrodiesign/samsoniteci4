@@ -181,12 +181,14 @@ final class UserHttpTest extends CIUnitTestCase
     public function testUserRoutesDenyAnonymousViewerEscalationAndCrossBranchMutation(): void
     {
         $this->get('/users')->assertStatus(401);
+        // CI3 parity: role 3 may write, but only inside its own branch — a
+        // cross-branch create (viewer in branch 2, target branch 1) must fail.
         $viewerWrite = $this->postAs(9003, 3, 2, 4, '/users', [
             'username' => 'blocked', 'name' => 'BLOCKED', 'email' => 'blocked@example.invalid',
-            'mobile' => '0000000000', 'group_id' => '4', 'role_id' => '3', 'branch_id' => '2',
+            'mobile' => '0000000000', 'group_id' => '4', 'role_id' => '3', 'branch_id' => '1',
             'password' => 'Synthetic passphrase', 'password_confirmation' => 'Synthetic passphrase',
         ]);
-        $viewerWrite->assertStatus(403);
+        $viewerWrite->assertStatus(422);
 
         try {
             $this->withSession($this->session(9002, 2, 1, 4))->get('/users/9003');

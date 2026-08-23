@@ -35,6 +35,8 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         ]);
         $english->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         $english->assertDontSee('wp00c-customer-5@example.invalid');
+        $english->assertSee('05/08/2569');
+        $english->assertSee('08/08/2569');
 
         $thai = $this->get('/tracking-th/WP00C-TRACK-005');
         $thai->assertStatus(200);
@@ -46,6 +48,7 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
             'สถานะทดสอบ 1',
         ]);
         $thai->assertDontSee('SYNTHETIC CUSTOMER FIVE');
+        $thai->assertSee('05/08/2569');
     }
 
     public function testSearchRejectsUnknownWildcardAndOversizedTrackingIdsWithoutPartialMatch(): void

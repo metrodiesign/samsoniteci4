@@ -5,7 +5,9 @@ namespace App\Controllers;
 use App\Authentication\AtomicRateLimiter;
 use App\Authentication\PasswordPolicy;
 use App\Authentication\PasswordResetWorkflow;
+use App\Authentication\ResetAuditLog;
 use App\Authentication\ResetRequestWorkflow;
+use App\Authentication\ShadowUserStore;
 use CodeIgniter\HTTP\ResponseInterface;
 use DateTimeImmutable;
 use JsonException;
@@ -29,15 +31,41 @@ final class PasswordReset extends BaseController
             ]);
     }
 
+    public function forgotForm(): string
+    {
+        return view('layout', [
+            'title'   => 'Forgot password',
+            'content' => view('forgot_password'),
+        ]);
+    }
+
+    public function resetForm(): string
+    {
+        $token = (string) $this->request->getGet('token');
+
+        if (preg_match('/^[0-9a-f]{64}$/D', $token) !== 1) {
+            $token = '';
+        }
+
+        return view('layout', [
+            'title'   => 'Reset password',
+            'content' => view('reset_password', ['token' => $token]),
+        ]);
+    }
+
     public function requestReset(): ResponseInterface
     {
         if (! str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'application/json')) {
+            $this->audit()->record('request_invalid', null, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(415)
                 ->setJSON(['error' => 'unsupported_media_type']);
         }
 
         if (($response = $this->oversizedPayloadResponse()) !== null) {
+            $this->audit()->record('request_invalid', null, $this->request->getIPAddress());
+
             return $response;
         }
 
@@ -49,6 +77,8 @@ final class PasswordReset extends BaseController
             || strlen($email) > 128
             || filter_var(trim($email), FILTER_VALIDATE_EMAIL) === false
         ) {
+            $this->audit()->record('request_invalid', null, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(422)
                 ->setJSON(['error' => 'invalid_request']);
@@ -69,6 +99,8 @@ final class PasswordReset extends BaseController
         }
 
         if ($retryAfter !== null) {
+            $this->audit()->record('request_throttled', $email, $this->request->getIPAddress());
+
             return $this->response
                 ->setHeader('Retry-After', (string) $retryAfter)
                 ->setStatusCode(429)
@@ -94,6 +126,19 @@ final class PasswordReset extends BaseController
             $this->waitForResetRequestFloor($startedAt);
         }
 
+        try {
+            $known = (new ShadowUserStore(db_connect()))->findActiveIdByEmail($email) !== null;
+            $this->audit()->record(
+                $known ? 'request_accepted' : 'request_unknown_identity',
+                $email,
+                $this->request->getIPAddress(),
+            );
+        } catch (Throwable $exception) {
+            log_message('error', 'Password reset audit lookup failed: {exception}', [
+                'exception' => $exception::class,
+            ]);
+        }
+
         return $this->response
             ->setStatusCode(202)
             ->setJSON([
@@ -105,12 +150,16 @@ final class PasswordReset extends BaseController
     public function completeReset(): ResponseInterface
     {
         if (! str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'application/json')) {
+            $this->audit()->record('complete_invalid', null, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(415)
                 ->setJSON(['error' => 'unsupported_media_type']);
         }
 
         if (($response = $this->oversizedPayloadResponse()) !== null) {
+            $this->audit()->record('complete_invalid', null, $this->request->getIPAddress());
+
             return $response;
         }
 
@@ -127,12 +176,16 @@ final class PasswordReset extends BaseController
             || filter_var(trim($email), FILTER_VALIDATE_EMAIL) === false
             || preg_match('/^[0-9a-f]{64}$/D', $token) !== 1
         ) {
+            $this->audit()->record('complete_invalid', null, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(400)
                 ->setJSON(['error' => 'invalid_or_expired_reset']);
         }
 
         if (! hash_equals($password, $confirmation) || ! (new PasswordPolicy())->accepts($password)) {
+            $this->audit()->record('complete_invalid', $email, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(422)
                 ->setJSON(['error' => 'invalid_password']);
@@ -153,6 +206,8 @@ final class PasswordReset extends BaseController
         }
 
         if ($retryAfter !== null) {
+            $this->audit()->record('complete_throttled', $email, $this->request->getIPAddress());
+
             return $this->response
                 ->setHeader('Retry-After', (string) $retryAfter)
                 ->setStatusCode(429)
@@ -177,12 +232,21 @@ final class PasswordReset extends BaseController
         }
 
         if (! $reset) {
+            $this->audit()->record('complete_invalid_token', $email, $this->request->getIPAddress());
+
             return $this->response
                 ->setStatusCode(400)
                 ->setJSON(['error' => 'invalid_or_expired_reset']);
         }
 
+        $this->audit()->record('complete_success', $email, $this->request->getIPAddress());
+
         return $this->response->setJSON(['status' => 'password_reset']);
+    }
+
+    private function audit(): ResetAuditLog
+    {
+        return new ResetAuditLog(db_connect());
     }
 
     private function oversizedPayloadResponse(): ?ResponseInterface
