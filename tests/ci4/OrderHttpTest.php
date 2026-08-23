@@ -295,13 +295,25 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame(0, $this->db->table('ci4_order_sequences')->countAllResults());
         $this->db->table('request_order')->insert([
             'requestDate' => '2026-08-22 00:00:00',
-            'trackID' => 'G26080042',
+            'trackID' => 'WPA26080042',
         ]);
         $sequence = new OrderSequence($this->db);
         $now = new DateTimeImmutable('2026-08-22T00:00:00+00:00');
 
-        self::assertSame('G26080043', $sequence->next($now));
-        self::assertSame('G26080044', $sequence->next($now));
+        self::assertSame('WPA26080043', $sequence->next($now, 'WPA'));
+        self::assertSame('WPA26080044', $sequence->next($now, 'WPA'));
+    }
+
+    public function testOrderSequenceScopesSequenceByBranchSuffix(): void
+    {
+        $sequence = new OrderSequence($this->db);
+        $now = new DateTimeImmutable('2026-08-22T00:00:00+00:00');
+
+        // Two branches with different suffixes in the same month each start their own run at 0001.
+        self::assertSame('WPA26080001', $sequence->next($now, 'WPA'));
+        self::assertSame('WPB26080001', $sequence->next($now, 'WPB'));
+        self::assertSame('WPA26080002', $sequence->next($now, 'WPA'));
+        self::assertSame('WPB26080002', $sequence->next($now, 'WPB'));
     }
 
     public function testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically(): void
@@ -322,11 +334,11 @@ final class OrderHttpTest extends CIUnitTestCase
         $payload['csrf_test_name'] = service('security')->getHash();
         $created = $this->withSession($this->session(2, 2, 1))->post('/orders/new', $payload);
         $created->assertRedirect();
-        self::assertMatchesRegularExpression('#/orders/new\?created=G[0-9]{8}\z#', $created->getRedirectUrl());
+        self::assertMatchesRegularExpression('#/orders/new\?created=WPA[0-9]{8}\z#', $created->getRedirectUrl());
 
         $order = $this->db->table('request_order')->where('customerFullname', 'NEW CUSTOMER')->get()->getRowArray();
         self::assertNotNull($order);
-        self::assertMatchesRegularExpression('/\AG[0-9]{8}\z/', (string) $order['trackID']);
+        self::assertMatchesRegularExpression('/\AWPA[0-9]{8}\z/', (string) $order['trackID']);
         self::assertSame(1, (int) $order['action_status']);
         self::assertSame(1, (int) $order['branchID']);
         self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', (string) $order['detailImage']);

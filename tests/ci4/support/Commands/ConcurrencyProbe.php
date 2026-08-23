@@ -151,12 +151,12 @@ final class ConcurrencyProbe extends BaseCommand
         $logs = $db->table('status_log')->countAllResults();
         $intents = $db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults();
         $period = (new DateTimeImmutable('now'))->format('ym');
-        $expected = ["G{$period}0042", "G{$period}0043", "G{$period}0044"];
+        $expected = ["WPA{$period}0042", "WPA{$period}0043", "WPA{$period}0044"];
         if ($tracks !== $expected || count(array_unique($tracks)) !== 3 || $logs !== 2 || $intents !== 2) {
             throw new RuntimeException('Order concurrency invariant failed.');
         }
         foreach ($tracks as $track) {
-            if (! is_string($track) || preg_match('/\AG[0-9]{8}\z/D', $track) !== 1) {
+            if (! is_string($track) || preg_match('/\A[A-Za-z0-9]{1,10}[0-9]{8}\z/D', $track) !== 1) {
                 throw new RuntimeException('Invalid concurrent tracking ID.');
             }
         }
