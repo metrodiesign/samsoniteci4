@@ -236,6 +236,80 @@ final class ImportHttpTest extends CIUnitTestCase
         self::assertSame(3, $this->db->table('ci4_import_batches')->where('state', 'confirmed')->countAllResults());
     }
 
+    public function testSuccessfulImportRetainsSourceFileUnderWritableAndAuditDownloadServesIt(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xlsx') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $path = $this->xlsx([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]);
+        $this->preview('price', $path)->assertStatus(200);
+
+        $sha = (string) $this->db->table('ci4_import_batches')->where('kind', 'price')->get()->getRow('file_sha256');
+        self::assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $sha);
+        self::assertSame($sha, hash_file('sha256', $path));
+        self::assertFileExists($directory . $sha . '.xlsx');
+
+        $download = $this->withSession($this->session(1, 1))->get('/imports/file/' . $sha . '.xlsx');
+        $download->assertStatus(200);
+        self::assertSame(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $download->response()->getHeaderLine('Content-Type'),
+        );
+        self::assertSame((string) file_get_contents($path), (string) $download->response()->getBody());
+
+        $this->cleanupImports($before);
+    }
+
+    public function testAuditDownloadRequiresAuthAndValidatesFilenameFormat(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xlsx') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $path = $this->xlsx([$headers, ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS']]);
+        $this->preview('status', $path)->assertStatus(200);
+        $sha = (string) $this->db->table('ci4_import_batches')->where('kind', 'status')->get()->getRow('file_sha256');
+        self::assertFileExists($directory . $sha . '.xlsx');
+
+        $this->withSession([])->get('/imports/file/' . $sha . '.xlsx')->assertStatus(401);
+        $this->withSession($this->session(1, 1))->get('/imports/file/not_a_hash.xlsx')->assertStatus(404);
+        $this->withSession($this->session(1, 1))->get('/imports/file/' . str_repeat('a', 64) . '.xlsx')->assertStatus(404);
+
+        $this->cleanupImports($before);
+    }
+
+    public function testFailedValidationStoresNoSourceFileAndDuplicateImportIsDeduped(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xlsx') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+
+        $wrongHeaders = $headers;
+        $wrongHeaders[0] = 'tracking_id';
+        $this->preview('status', $this->xlsx([$wrongHeaders, ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS']]))->assertStatus(422);
+        self::assertSame($before, glob($directory . '*.xlsx') ?: []);
+
+        $path = $this->xlsx([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]);
+        $this->preview('price', $path)->assertStatus(200);
+        $sha = (string) hash_file('sha256', $path);
+        $duplicate = tempnam(sys_get_temp_dir(), 'wp05c-dup-');
+        self::assertIsString($duplicate);
+        self::assertNotFalse(copy($path, $duplicate));
+        $this->preview('price', $duplicate)->assertStatus(200);
+        self::assertSame([$directory . $sha . '.xlsx'], array_values(array_diff(glob($directory . '*.xlsx') ?: [], $before)));
+
+        $this->cleanupImports($before);
+    }
+
+    /** @param list<string> $keep */
+    private function cleanupImports(array $keep): void
+    {
+        foreach (glob(WRITEPATH . 'uploads/imports/*.xlsx') ?: [] as $file) {
+            if (! in_array($file, $keep, true)) {
+                unlink($file);
+            }
+        }
+    }
+
     private function preview(string $kind, string $path)
     {
         return $this->previewAs($kind, $path, 1, 1);

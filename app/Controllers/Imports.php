@@ -73,6 +73,19 @@ final class Imports extends BaseController
         };
     }
 
+    public function download(string $name): ResponseInterface
+    {
+        $path = WRITEPATH . 'uploads/imports/' . $name;
+        if (preg_match('/\A[a-f0-9]{64}\.xlsx\z/D', $name) !== 1 || ! is_file($path)) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'import_file_not_found']);
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')
+            ->setBody((string) file_get_contents($path));
+    }
+
     public function legacyConfirm(string $kind): ResponseInterface
     {
         $batchId = $this->request->getPost('batch_id');

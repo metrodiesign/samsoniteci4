@@ -67,6 +67,7 @@ $routes->get('orders/(:num)', 'Order::editForm/$1', ['filter' => ['web-auth', 'a
 $routes->post('orders/(:num)', 'Order::edit/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('orders/(:num)/print', 'Order::print/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->post('orders/(:num)/delete', 'Order::delete/$1', ['filter' => ['web-auth', 'authorized:delete', 'csrf']]);
+$routes->get('imports/file/(:segment)', 'Imports::download/$1', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->get('imports/(:segment)', 'Imports::listing/$1', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->post('imports/(:segment)/preview', 'Imports::preview/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('imports/(:segment)/(:segment)/confirm', 'Imports::confirm/$1/$2', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
