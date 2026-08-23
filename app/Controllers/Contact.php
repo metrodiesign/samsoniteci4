@@ -106,9 +106,10 @@ final class Contact extends BaseController
 
     private function render(string $language): string
     {
-        return view('layout', [
-            'title'   => $language === 'th' ? 'ติดต่อเรา' : 'Contact us',
-            'content' => view('contact', [
+        return view('layout_public', [
+            'title'    => $language === 'th' ? 'ติดต่อเรา' : 'Contact us',
+            'language' => $language,
+            'content'  => view('contact', [
                 'language'     => $language,
                 'submissionId' => bin2hex(random_bytes(16)),
                 'submitted'    => $this->request->getGet('submitted') === '1',
@@ -124,9 +125,10 @@ final class Contact extends BaseController
      */
     private function renderInvalid(string $language, array $fields, string $submissionId, array $errors): ResponseInterface
     {
-        $html = view('layout', [
-            'title'   => $language === 'th' ? 'ติดต่อเรา' : 'Contact us',
-            'content' => view('contact', [
+        $html = view('layout_public', [
+            'title'    => $language === 'th' ? 'ติดต่อเรา' : 'Contact us',
+            'language' => $language,
+            'content'  => view('contact', [
                 'language'     => $language,
                 'submissionId' => $submissionId,
                 'submitted'    => false,
