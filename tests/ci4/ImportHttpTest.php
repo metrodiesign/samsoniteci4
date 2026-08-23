@@ -271,6 +271,8 @@ final class ImportHttpTest extends CIUnitTestCase
         self::assertFileExists($directory . $sha . '.xlsx');
 
         $this->withSession([])->get('/imports/file/' . $sha . '.xlsx')->assertStatus(401);
+        $this->withSession(['userId' => 1, 'role' => 99, 'BranchID' => 1, 'sessionVersion' => 1, 'isLoggedIn' => true])
+            ->get('/imports/file/' . $sha . '.xlsx')->assertStatus(401);
         $this->withSession($this->session(1, 1))->get('/imports/file/not_a_hash.xlsx')->assertStatus(404);
         $this->withSession($this->session(1, 1))->get('/imports/file/' . str_repeat('a', 64) . '.xlsx')->assertStatus(404);
 
@@ -290,20 +292,158 @@ final class ImportHttpTest extends CIUnitTestCase
 
         $path = $this->xlsx([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]);
         $this->preview('price', $path)->assertStatus(200);
-        $sha = (string) hash_file('sha256', $path);
+        self::assertFileExists($directory . (string) hash_file('sha256', $path) . '.xlsx');
+        $afterFirst = glob($directory . '*.xlsx') ?: [];
+
         $duplicate = tempnam(sys_get_temp_dir(), 'wp05c-dup-');
         self::assertIsString($duplicate);
         self::assertNotFalse(copy($path, $duplicate));
         $this->preview('price', $duplicate)->assertStatus(200);
-        self::assertSame([$directory . $sha . '.xlsx'], array_values(array_diff(glob($directory . '*.xlsx') ?: [], $before)));
+        self::assertSame($afterFirst, glob($directory . '*.xlsx') ?: []);
 
         $this->cleanupImports($before);
+    }
+
+    public function testXlsImportPreviewsAndConfirmsLikeXlsx(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xls*') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $files = [
+            'status' => $this->xls([$headers, ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'], ['', 'INVALID', '', '', '', '', '', '', '']]),
+            'price' => $this->xls([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]),
+            'new-order' => $this->xls([$headers, ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-NEW']]),
+        ];
+        foreach ($files as $kind => $path) {
+            $response = $this->previewAs($kind, $path, 1, 1, $kind . '.xls');
+            $response->assertStatus(200);
+            $response->assertSee('Accepted: 1');
+            $response->assertSee($kind === 'status' ? 'Rejected: 1' : 'Rejected: 0');
+        }
+        foreach (array_keys($files) as $kind) {
+            $batch = (string) $this->db->table('ci4_import_batches')->where('kind', $kind)->get()->getRow('batch_id');
+            $this->confirm($kind, $batch)->assertRedirectTo('/imports/' . $kind . '?confirmed=1');
+        }
+
+        $status = $this->db->table('request_order')->where('request_id', 1)->get()->getRowArray();
+        self::assertSame(4, (int) $status['action_status']);
+        self::assertSame('250.00', number_format((float) $status['RepairPrice'], 2, '.', ''));
+        self::assertSame('2026-08-22 00:00:00', $status['date_update_status']);
+        self::assertSame('275.50', number_format((float) $this->db->table('request_order')->where('request_id', 2)->get()->getRow('RepairPrice'), 2, '.', ''));
+        $created = $this->db->table('request_order')->where('orderIDShow', 'WPA/300')->get()->getRowArray();
+        self::assertNotNull($created);
+        self::assertSame('NEW CUSTOMER', $created['customerFullname']);
+        self::assertSame('300.00', number_format((float) $created['RepairPrice'], 2, '.', ''));
+        self::assertSame(3, $this->db->table('ci4_import_batches')->where('state', 'confirmed')->countAllResults());
+
+        $this->cleanupImports($before);
+    }
+
+    public function testXlsSourceFileRetainedWithXlsExtensionAndDownloadServesIt(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xls*') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $path = $this->xls([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]);
+        $this->previewAs('price', $path, 1, 1, 'price.xls')->assertStatus(200);
+
+        $sha = (string) $this->db->table('ci4_import_batches')->where('kind', 'price')->get()->getRow('file_sha256');
+        self::assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $sha);
+        self::assertSame($sha, hash_file('sha256', $path));
+        self::assertFileExists($directory . $sha . '.xls');
+        self::assertFileDoesNotExist($directory . $sha . '.xlsx');
+
+        $download = $this->withSession($this->session(1, 1))->get('/imports/file/' . $sha . '.xls');
+        $download->assertStatus(200);
+        self::assertSame('application/vnd.ms-excel', $download->response()->getHeaderLine('Content-Type'));
+        self::assertSame((string) file_get_contents($path), (string) $download->response()->getBody());
+
+        $this->cleanupImports($before);
+    }
+
+    public function testXlsGateRejectsForgedAndMistypedUploads(): void
+    {
+        $directory = WRITEPATH . 'uploads/imports/';
+        $before = glob($directory . '*.xls*') ?: [];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $row = ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'];
+
+        $textAsXls = tempnam(sys_get_temp_dir(), 'wp05a-txt-');
+        self::assertIsString($textAsXls);
+        file_put_contents($textAsXls, 'just some text, not a spreadsheet');
+        $this->previewAs('status', $textAsXls, 1, 1, 'status.xls')->assertStatus(422);
+
+        $realXlsx = $this->xlsx([$headers, $row]);
+        $this->previewAs('status', $realXlsx, 1, 1, 'status.xls')->assertStatus(422);
+
+        $realXls = $this->xls([$headers, $row]);
+        $this->previewAs('status', $realXls, 1, 1, 'status.txt')->assertStatus(422);
+
+        $empty = tempnam(sys_get_temp_dir(), 'wp05a-empty-');
+        self::assertIsString($empty);
+        file_put_contents($empty, '');
+        $this->previewAs('status', $empty, 1, 1, 'status.xls')->assertStatus(422);
+
+        self::assertSame(0, $this->db->table('ci4_import_batches')->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_import_rows')->countAllResults());
+        self::assertSame(2, $this->db->table('request_order')->countAllResults());
+        self::assertSame($before, glob($directory . '*.xls*') ?: []);
+
+        unlink($textAsXls);
+        unlink($empty);
+        $this->cleanupImports($before);
+    }
+
+    public function testXlsReaderRejectsOversizeAndOverRowLimit(): void
+    {
+        $oversize = tempnam(sys_get_temp_dir(), 'wp05a-big-');
+        self::assertIsString($oversize);
+        file_put_contents($oversize, str_repeat('a', 5_242_881));
+        try {
+            (new \App\Imports\XlsReader())->rows($oversize);
+            self::fail('Expected oversize XLS rejection.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('Invalid XLS size.', $exception->getMessage());
+        }
+        unlink($oversize);
+
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $rows = [$headers];
+        for ($i = 0; $i < 501; $i++) {
+            $rows[] = ['WPA/' . $i, 'C', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '1.00', 'IN', 'CMG-' . $i];
+        }
+        $path = $this->xls($rows);
+        try {
+            (new \App\Imports\XlsReader())->rows($path);
+            self::fail('Expected row-limit XLS rejection.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('XLS row limit exceeded.', $exception->getMessage());
+        }
+        unlink($path);
+    }
+
+    public function testXlsFormulaCellsAreNotExecuted(): void
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setCellValue([1, 1], '=1+1');
+        $sheet->setCellValueExplicit([2, 1], 'plain', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $path = tempnam(sys_get_temp_dir(), 'wp05a-fx-');
+        self::assertIsString($path);
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xls($spreadsheet))->save($path);
+        $spreadsheet->disconnectWorksheets();
+
+        $rows = (new \App\Imports\XlsReader())->rows($path);
+        self::assertSame('=1+1', $rows[0][0]);
+        self::assertNotSame('2', $rows[0][0]);
+
+        unlink($path);
     }
 
     /** @param list<string> $keep */
     private function cleanupImports(array $keep): void
     {
-        foreach (glob(WRITEPATH . 'uploads/imports/*.xlsx') ?: [] as $file) {
+        foreach (glob(WRITEPATH . 'uploads/imports/*.xls*') ?: [] as $file) {
             if (! in_array($file, $keep, true)) {
                 unlink($file);
             }
@@ -378,6 +518,24 @@ final class ImportHttpTest extends CIUnitTestCase
         }
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheet . '</sheetData></worksheet>');
         self::assertTrue($zip->close());
+
+        return $path;
+    }
+
+    /** @param list<list<string>> $rows */
+    private function xls(array $rows): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'wp05a-xls-');
+        self::assertIsString($path);
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        foreach ($rows as $rowIndex => $row) {
+            foreach ($row as $column => $value) {
+                $sheet->setCellValueExplicit([$column + 1, $rowIndex + 1], $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+        }
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xls($spreadsheet))->save($path);
+        $spreadsheet->disconnectWorksheets();
 
         return $path;
     }
