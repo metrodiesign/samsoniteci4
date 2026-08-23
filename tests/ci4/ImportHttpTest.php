@@ -271,6 +271,8 @@ final class ImportHttpTest extends CIUnitTestCase
         self::assertFileExists($directory . $sha . '.xlsx');
 
         $this->withSession([])->get('/imports/file/' . $sha . '.xlsx')->assertStatus(401);
+        $this->withSession(['userId' => 1, 'role' => 99, 'BranchID' => 1, 'sessionVersion' => 1, 'isLoggedIn' => true])
+            ->get('/imports/file/' . $sha . '.xlsx')->assertStatus(401);
         $this->withSession($this->session(1, 1))->get('/imports/file/not_a_hash.xlsx')->assertStatus(404);
         $this->withSession($this->session(1, 1))->get('/imports/file/' . str_repeat('a', 64) . '.xlsx')->assertStatus(404);
 
@@ -290,12 +292,14 @@ final class ImportHttpTest extends CIUnitTestCase
 
         $path = $this->xlsx([$headers, ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE']]);
         $this->preview('price', $path)->assertStatus(200);
-        $sha = (string) hash_file('sha256', $path);
+        self::assertFileExists($directory . (string) hash_file('sha256', $path) . '.xlsx');
+        $afterFirst = glob($directory . '*.xlsx') ?: [];
+
         $duplicate = tempnam(sys_get_temp_dir(), 'wp05c-dup-');
         self::assertIsString($duplicate);
         self::assertNotFalse(copy($path, $duplicate));
         $this->preview('price', $duplicate)->assertStatus(200);
-        self::assertSame([$directory . $sha . '.xlsx'], array_values(array_diff(glob($directory . '*.xlsx') ?: [], $before)));
+        self::assertSame($afterFirst, glob($directory . '*.xlsx') ?: []);
 
         $this->cleanupImports($before);
     }
