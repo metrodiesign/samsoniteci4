@@ -1,0 +1,16 @@
+/* public.css — bootstrap grid shim (design §2.4)
+   แทน assets/bootstrap ทั้งชุด เหลือเฉพาะ .container / .row ที่หน้า public ใช้จริง */
+.container {
+    width: 100%;
+    max-width: 1170px;
+    margin-right: auto;
+    margin-left: auto;
+    padding-right: 15px;
+    padding-left: 15px;
+}
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-right: -15px;
+    margin-left: -15px;
+}
