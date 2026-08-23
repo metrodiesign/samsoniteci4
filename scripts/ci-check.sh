@@ -7,7 +7,8 @@ cd "$ROOT"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS $*"; }
 
-bash -n db/dbctl.sh db/privacy-purge-local.sh scripts/ci4-concurrency-check.sh scripts/wp00c-recovery-check.sh
+bash -n db/dbctl.sh db/privacy-purge-local.sh scripts/ci4-concurrency-check.sh \
+  scripts/wp00c-recovery-check.sh scripts/ci4-web-boundary-check.sh
 pass "shell syntax"
 
 composer validate --strict >/dev/null
@@ -105,6 +106,12 @@ for command in validate seed verify clean; do
     || fail "WP-00C fixture command is missing: $command"
 done
 pass "WP-00C catalog, synthetic fixture kit and fail-closed closure gate"
+
+if curl -s --max-time 2 -o /dev/null "${CI4_BASE_URL:-http://127.0.0.1:18405}/health" 2>/dev/null; then
+  bash scripts/ci4-web-boundary-check.sh
+else
+  pass "web boundary skipped: CI4 runtime not listening"
+fi
 
 ci3_source_root=${CI3_SOURCE_ROOT:-$ROOT/../samsoniteci3}
 if [ -d "$ci3_source_root/.git" ]; then
