@@ -208,6 +208,90 @@ final class PasswordResetHttpTest extends CIUnitTestCase
         $result->assertJSONExact(['error' => 'reset_service_unavailable']);
     }
 
+    public function testResetRequestAuditsKnownAndUnknownWithDistinctEventsButSameResponse(): void
+    {
+        (new ShadowUserStore($this->db))->create(
+            'audit-known@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            2,
+            1,
+        );
+
+        $known = $this->postJson('/password-reset/request', ['email' => 'audit-known@example.invalid']);
+        $unknown = $this->postJson('/password-reset/request', ['email' => 'audit-unknown@example.invalid']);
+
+        $known->assertStatus(202);
+        $unknown->assertStatus(202);
+        self::assertSame($known->getJSON(), $unknown->getJSON());
+
+        $byEvent = $this->auditRowsByEvent();
+        self::assertArrayHasKey('request_accepted', $byEvent);
+        self::assertArrayHasKey('request_unknown_identity', $byEvent);
+
+        // No-PII: identity_hash must be the sha256 of the normalized email, never the plaintext.
+        self::assertSame(
+            hash('sha256', 'audit-known@example.invalid'),
+            $byEvent['request_accepted']['identity_hash'],
+        );
+        self::assertMatchesRegularExpression(
+            '/^[0-9a-f]{64}$/D',
+            (string) $byEvent['request_unknown_identity']['identity_hash'],
+        );
+        $this->assertNoPlaintextIdentity();
+    }
+
+    public function testResetCompletionWithWrongTokenAuditsInvalidToken(): void
+    {
+        $result = $this->postJson('/password-reset/complete', [
+            'email'                 => 'audit-complete@example.invalid',
+            'token'                 => str_repeat('a', 64),
+            'password'              => 'Synthetic modern passphrase',
+            'password_confirmation' => 'Synthetic modern passphrase',
+        ]);
+
+        $result->assertStatus(400);
+        self::assertArrayHasKey('complete_invalid_token', $this->auditRowsByEvent());
+        $this->assertNoPlaintextIdentity();
+    }
+
+    public function testResetRequestThrottleIsAudited(): void
+    {
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $this->postJson('/password-reset/request', ['email' => 'audit-throttle@example.invalid'])
+                ->assertStatus(202);
+        }
+
+        $this->postJson('/password-reset/request', ['email' => 'audit-throttle@example.invalid'])
+            ->assertStatus(429);
+
+        self::assertArrayHasKey('request_throttled', $this->auditRowsByEvent());
+        $this->assertNoPlaintextIdentity();
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function auditRowsByEvent(): array
+    {
+        $byEvent = [];
+
+        foreach ($this->db->table('ci4_password_reset_audit')->get()->getResultArray() as $row) {
+            $byEvent[(string) $row['event']] = $row;
+        }
+
+        return $byEvent;
+    }
+
+    private function assertNoPlaintextIdentity(): void
+    {
+        $rows = $this->db->table('ci4_password_reset_audit')->get()->getResultArray();
+        self::assertNotEmpty($rows);
+
+        foreach ($rows as $row) {
+            if ($row['identity_hash'] !== null) {
+                self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/D', (string) $row['identity_hash']);
+            }
+        }
+    }
+
     /** @param array<string, string> $payload */
     private function postJson(string $path, array $payload)
     {
