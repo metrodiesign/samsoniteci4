@@ -12,7 +12,7 @@
 | WP-05A Spreadsheet | custom `XlsxReader` ปลอด dependency, MIME+extension+malformed test ครบ เข้มกว่า CI3 | ไม่รับ `.xls` legacy; cap ใหม่ 501 แถว / 5 MB ที่ CI3 ไม่เคยมี — ต้องยืนยันกับ usage จริง | decision |
 | WP-05B Batch isolation | defect shared temp table แก้แล้ว: batch_id + owner + state machine + probe 2-owner ใน gate | ไม่มี | - |
 | WP-05C File storage | CI4 ไม่เก็บไฟล์ต้นฉบับเลย เก็บแค่ SHA-256 (CI3 เก็บถาวรใต้ document root แบบไม่มี control) | ต้อง decision: audit trail ไฟล์จริง vs hash-only; `writable/uploads/` เป็น dead scaffolding | medium (ถ้าต้องเก็บ) |
-| WP-06A Report queries | ratings matrix + summary parity ตรง (และปิด SQL injection ที่ CI3 มี) | **report 4 ตัวชื่อตรง CI3 แต่คำนวณคนละเรื่อง**: jobs-by-day, pending, pending-total, in-progress-average — ดูหัวข้อถัดไป | large |
+| WP-06A Report queries | ratings matrix + summary parity ตรง รวม inner join brand/type (และปิด SQL injection ที่ CI3 มี) | **report 4 ตัวชื่อตรง CI3 แต่คำนวณคนละเรื่อง**: jobs-by-day, pending, pending-total, in-progress-average; summary search เหลือ 3 จาก 9 field (ดูหมายเหตุ) | large |
 | WP-06B Export | format HTML-as-xls + header ตรง CI3 มี contract test | ไม่มี memory ceiling ทั้งคู่ (CI3 อัด `memory_limit=8048M`, CI4 ไม่ทำอะไรเลย = เสี่ยง fatal บน dataset ใหญ่) | medium |
 
 ## Gap เรียงตามความเสี่ยง
@@ -48,5 +48,6 @@
 ## หมายเหตุ
 
 - WP-05B ปิดได้เลยเมื่อ business sign-off — evidence ครบทั้ง state machine และ concurrency probe
-- Report `summary` มีคำถามค้างเล็ก: `join(..., 'inner')` กับ brand/type (`ReportMatrix.php:117-118`) อาจตัด order ที่ brand/type เป็น null ต่างจาก CI3 — ตรวจตอน implement WP-06A
+- คำถามค้างเรื่อง `join(..., 'inner')` ของ `summary` ปิดแล้ว (ตรวจซ้ำ 2026-08-23 รอบหลัง): CI3 `reportsummary` ก็ inner join กับ brand/type เหมือนกัน (`Request_order_model.php:793-794`) — parity ตรง ไม่มี gap
+- เจอ gap เล็กเพิ่มจากการตรวจซ้ำ: search ของ `summary` CI3 ครอบ 9 field (`trackID`, `orderID`, `customerFullname`, `detailSKUName`, `orderIDShow`, `branch_name`, `customerTel`, `customerEmail`, `status_name` — `Request_order_model.php:799-807`) แต่ CI4 ครอบแค่ 3 field (`trackID`, `orderIDShow`, `customerFullname` — `ReportMatrix.php:124-126`) — user ที่เคยค้นด้วยเบอร์โทร/อีเมล/ชื่อสถานะจะหาไม่เจอ ขนาดงาน small รวมเข้า scope WP-06A
 - Export test ปัจจุบัน (`ReportHttpTest.php:151`) ครอบแค่ contract ไม่ครอบ scale — งาน memory ceiling ควรมาพร้อม volume benchmark ของ WP-00C
