@@ -137,7 +137,7 @@ final class Order extends BaseController
     private function transition(string $mode, mixed $value, string $redirect): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
         $session = service('session');
-        $result = (new OrderTransitionWorkflow(db_connect()))->transition(
+        $result = (new OrderTransitionWorkflow(db_connect(), service('encrypter')))->transition(
             (int) $session->get('role'),
             $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
             $this->request->getPost('select_list_id'),

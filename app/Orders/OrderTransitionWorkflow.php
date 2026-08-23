@@ -3,12 +3,14 @@
 namespace App\Orders;
 
 use CodeIgniter\Database\BaseConnection;
+use CodeIgniter\Encryption\EncrypterInterface;
+use DateTimeImmutable;
 use RuntimeException;
 use Throwable;
 
 final class OrderTransitionWorkflow
 {
-    public function __construct(private BaseConnection $db)
+    public function __construct(private BaseConnection $db, private EncrypterInterface $encrypter)
     {
     }
 
@@ -23,7 +25,7 @@ final class OrderTransitionWorkflow
             return 'invalid';
         }
         $query = $this->db->table('request_order')
-            ->select('request_id, trackID, action_status, branchID')
+            ->select('request_id, trackID, action_status, branchID, customerTel')
             ->whereIn('request_id', $ids);
         if ($actorRole !== 1) {
             $query->where('branchID', $actorBranch);
@@ -44,7 +46,9 @@ final class OrderTransitionWorkflow
             }
         }
 
-        $timestamp = date('Y-m-d H:i:s');
+        $now = new DateTimeImmutable('now');
+        $timestamp = $now->format('Y-m-d H:i:s');
+        $store = $mode === 'deliver' ? new SmsDeliveryIntentStore($this->db, $this->encrypter) : null;
         $this->db->transBegin();
         try {
             foreach ($rows as $row) {
@@ -68,6 +72,11 @@ final class OrderTransitionWorkflow
                 ])) {
                     throw new RuntimeException('Unable to log order transition.');
                 }
+                $store?->enqueue(
+                    (int) $row['request_id'], (string) $row['trackID'], (string) $row['customerTel'],
+                    OrderSmsMessages::returned((string) $row['trackID']),
+                    md5('sms-return:' . (string) $row['request_id']), $now,
+                );
             }
             if (! $this->db->transStatus() || ! $this->db->transCommit()) {
                 throw new RuntimeException('Unable to commit order transition.');

@@ -416,6 +416,69 @@ final class OrderHttpTest extends CIUnitTestCase
         ));
     }
 
+    public function testDeliverTransitionQueuesReturnSmsAndDedupesOnReplay(): void
+    {
+        // Seed a status 4 order with a guard-conforming trackID and telephone; the WP00C seed
+        // trackIDs contain hyphens and would be skipped by enqueue's trackID guard.
+        $this->db->table('request_order')->insert([
+            'request_id' => 92004, 'requestDate' => '2026-08-04 00:00:00',
+            'trackID' => 'WPA26080044', 'orderID' => 'OD4', 'orderIDShow' => 'WPC/D4',
+            'customerFullname' => 'DELIVER CUSTOMER', 'customerTel' => '0812345678',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 4,
+        ]);
+
+        $this->postTransition('/sendorder_deliver', ['select_list_id' => ['92004'], 'status_id' => '5'])
+            ->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame(5, (int) $this->db->table('request_order')->where('request_id', 92004)->get()->getRow('action_status'));
+
+        $intent = $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->get()->getRowArray();
+        self::assertNotNull($intent);
+        self::assertSame('pending', $intent['status']);
+        self::assertSame(92004, (int) $intent['user_id']);
+        self::assertSame(md5('sms-return:92004'), $intent['request_id']);
+        self::assertStringNotContainsString('0812345678', (string) $intent['payload_ciphertext']);
+        $payload = json_decode(service('encrypter')->decrypt(base64_decode((string) $intent['payload_ciphertext'], true)), true);
+        self::assertStringContainsString('ส่งคืนมายังสาขาแล้ว', $payload['message']);
+        self::assertStringContainsString('WPA26080044', $payload['message']);
+
+        // Replay: order is already status 5, so the matrix rejects 4->5 (409) and intent count holds.
+        $this->postTransition('/sendorder_deliver', ['select_list_id' => ['92004'], 'status_id' => '5'])
+            ->assertStatus(409);
+        self::assertSame(1, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testDeliverWithMalformedTelSucceedsWithoutQueuingSms(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 92005, 'requestDate' => '2026-08-05 00:00:00',
+            'trackID' => 'WPA26080045', 'orderID' => 'OD5', 'orderIDShow' => 'WPC/D5',
+            'customerFullname' => 'LEGACY TEL CUSTOMER', 'customerTel' => '08-1234-5678',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 4,
+        ]);
+
+        $this->postTransition('/sendorder_deliver', ['select_list_id' => ['92005'], 'status_id' => '5'])
+            ->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame(5, (int) $this->db->table('request_order')->where('request_id', 92005)->get()->getRow('action_status'));
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testNonDeliverTransitionDoesNotQueueSms(): void
+    {
+        // Conforming trackID + telephone: the only thing that can suppress the intent here is the
+        // deliver-mode gate, so a green assertion of 0 intents proves the gate discriminates.
+        $this->db->table('request_order')->insert([
+            'request_id' => 92006, 'requestDate' => '2026-08-06 00:00:00',
+            'trackID' => 'WPA26080046', 'orderID' => 'OD6', 'orderIDShow' => 'WPC/D6',
+            'customerFullname' => 'STATUS MODE CUSTOMER', 'customerTel' => '0812345678',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 2,
+        ]);
+
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['92006'], 'status_id' => '3'])
+            ->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 92006)->get()->getRow('action_status'));
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
     public function testInvalidDirectAndMixedBatchTransitionsRollbackEveryRow(): void
     {
         $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91002'], 'status_id' => '7'])
