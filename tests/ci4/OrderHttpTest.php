@@ -441,7 +441,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('request_order')->insert([
             'request_id' => 92004, 'requestDate' => '2026-08-04 00:00:00',
             'trackID' => 'WPA26080044', 'orderID' => 'OD4', 'orderIDShow' => 'WPC/D4',
-            'customerFullname' => 'DELIVER CUSTOMER', 'customerTel' => '0812345678',
+            'customerFullname' => 'DELIVER CUSTOMER', 'customerTel' => '0000000000',
             'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 4,
         ]);
 
@@ -454,7 +454,7 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame('pending', $intent['status']);
         self::assertSame(92004, (int) $intent['user_id']);
         self::assertSame(md5('sms-return:92004'), $intent['request_id']);
-        self::assertStringNotContainsString('0812345678', (string) $intent['payload_ciphertext']);
+        self::assertStringNotContainsString('0000000000', (string) $intent['payload_ciphertext']);
         $payload = json_decode(service('encrypter')->decrypt(base64_decode((string) $intent['payload_ciphertext'], true)), true);
         self::assertStringContainsString('ส่งคืนมายังสาขาแล้ว', $payload['message']);
         self::assertStringContainsString('WPA26080044', $payload['message']);
@@ -487,7 +487,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('request_order')->insert([
             'request_id' => 92006, 'requestDate' => '2026-08-06 00:00:00',
             'trackID' => 'WPA26080046', 'orderID' => 'OD6', 'orderIDShow' => 'WPC/D6',
-            'customerFullname' => 'STATUS MODE CUSTOMER', 'customerTel' => '0812345678',
+            'customerFullname' => 'STATUS MODE CUSTOMER', 'customerTel' => '0000000000',
             'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 2,
         ]);
 
@@ -504,7 +504,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('request_order')->insert([
             'request_id' => 92007, 'requestDate' => '2026-08-05 00:00:00',
             'trackID' => 'WPA26080057', 'orderID' => 'OC7', 'orderIDShow' => 'WPC/C7',
-            'customerFullname' => 'COMPLETE CUSTOMER', 'customerTel' => '0812345678',
+            'customerFullname' => 'COMPLETE CUSTOMER', 'customerTel' => '0000000000',
             'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 5,
         ]);
 
@@ -524,7 +524,7 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame('pending', $intent['status']);
         self::assertSame(92007, (int) $intent['user_id']);
         self::assertSame(md5('sms-complete:92007'), $intent['request_id']);
-        self::assertStringNotContainsString('0812345678', (string) $intent['payload_ciphertext']);
+        self::assertStringNotContainsString('0000000000', (string) $intent['payload_ciphertext']);
         $payload = json_decode(service('encrypter')->decrypt(base64_decode((string) $intent['payload_ciphertext'], true)), true);
         self::assertStringContainsString('ขอบคุณที่ใช้บริการกับ Samsonite  แสดงความคิดเห็น', $payload['message']);
         self::assertStringContainsString('/rating/WPA26080057', $payload['message']);
@@ -629,8 +629,8 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('request_order')->insert([
             'request_id' => 92010, 'requestDate' => '2026-08-10 00:00:00',
             'trackID' => 'WPA26080110', 'orderID' => 'O110', 'orderIDShow' => 'WPC/110',
-            'customerFullname' => 'PRINT CUSTOMER', 'customerTel' => '0812345678',
-            'customerTel2' => '0898887777', 'customerEmail' => 'print@example.invalid',
+            'customerFullname' => 'PRINT CUSTOMER', 'customerTel' => '0000000000',
+            'customerTel2' => '027619999', 'customerEmail' => 'print@example.invalid',
             'detailAgent' => '1', 'detailTypeId' => 1, 'detailBrandId' => 1,
             'detailDatePurchase' => '0000-00-00 00:00:00', 'detailSKUName' => 'BAG <SPORT>',
             'detailNumberWaranty' => 'WRT-123',
