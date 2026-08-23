@@ -52,12 +52,12 @@ final class MasterCatalog
         ],
     ];
 
-    /** @var array<string, array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}>}> */
+    /** @var array<string, array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}> */
     private const DEFINITIONS = [
         'branch' => [
             'table' => 'branch', 'pk' => 'branch_id', 'label' => 'branch_name',
             'fields' => [
-                'branch_type' => ['kind' => 'int', 'required' => true],
+                'branch_type' => ['kind' => 'int', 'required' => true, 'fk' => 'branchtype'],
                 'branch_user_name' => ['kind' => 'string', 'max' => 100],
                 'branch_name' => ['kind' => 'string', 'max' => 250, 'required' => true],
                 'branch_details' => ['kind' => 'string', 'max' => 250, 'required' => true],
@@ -85,7 +85,7 @@ final class MasterCatalog
         'book' => [
             'table' => 'book', 'pk' => 'book_id', 'label' => 'book_detail',
             'fields' => [
-                'branch_id' => ['kind' => 'int', 'required' => true],
+                'branch_id' => ['kind' => 'int', 'required' => true, 'fk' => 'branch'],
                 'book_detail' => ['kind' => 'string', 'max' => 3, 'required' => true],
                 'status' => ['kind' => 'int', 'required' => true, 'allowZero' => true],
                 'bunber_limit' => ['kind' => 'int', 'required' => true],
@@ -117,7 +117,7 @@ final class MasterCatalog
         ],
     ];
 
-    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool}>}|null */
+    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}|null */
     public static function definition(string $type): ?array
     {
         return self::DEFINITIONS[$type] ?? null;

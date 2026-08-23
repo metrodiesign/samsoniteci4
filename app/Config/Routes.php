@@ -29,6 +29,7 @@ $routes->post('master/(:segment)', 'MasterData::create/$1', ['filter' => ['autho
 $routes->get('master/(:segment)/(:num)', 'MasterData::edit/$1/$2', ['filter' => 'authorized:read']);
 $routes->post('master/(:segment)/(:num)', 'MasterData::update/$1/$2', ['filter' => ['authorized:write', 'csrf']]);
 $routes->post('master/(:segment)/(:num)/delete', 'MasterData::delete/$1/$2', ['filter' => ['authorized:delete', 'csrf']]);
+$routes->get('branch-type-image/(:segment)', 'MasterData::image/$1');
 $routes->get('bookListing', 'MasterData::listing/book', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('bookListing/(:num)', 'MasterData::listing/book', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('menu', 'Menu::listing', ['filter' => 'web-auth']);

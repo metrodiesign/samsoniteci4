@@ -3,6 +3,7 @@
 namespace Tests\Ci4;
 
 use App\Authentication\ShadowUserStore;
+use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -198,6 +199,113 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $listing = $this->getAsAdmin('/master/brand');
         $listing->assertStatus(200);
         $listing->assertSee('/master/brand/' . $brandId . '/delete');
+    }
+
+    public function testForeignKeyFieldRendersSelectWithReferenceOptions(): void
+    {
+        $this->db->table('branch_type')->insert([
+            'branch_type_details' => 'TYPE ONE',
+            'cdate'               => '2026-08-22 09:00:00',
+        ]);
+        $branchTypeId = (int) $this->db->insertID();
+        $this->db->table('branch')->insert([
+            'branch_id'    => 1, 'branch_type' => $branchTypeId, 'branch_name' => 'ALPHA BRANCH',
+            'branch_details' => 'A', 'default_suffix' => 'A', 'book_order' => 'A',
+            'cdate'        => '2026-08-22 09:00:00',
+        ]);
+
+        // book.branch_id is a FK to the branch entity.
+        $bookForm = $this->getAsAdmin('/master/book');
+        $bookForm->assertStatus(200);
+        $bookForm->assertSee('<select');
+        $bookForm->assertSee('name="branch_id"');
+        $bookForm->assertSee('ALPHA BRANCH');
+        $bookForm->assertSee('value="1"');
+
+        // branch.branch_type is a FK to the branchtype entity.
+        $branchForm = $this->getAsAdmin('/master/branch');
+        $branchForm->assertSee('name="branch_type"');
+        $branchForm->assertSee('TYPE ONE');
+
+        // Selected state on the edit form reflects the stored value.
+        $this->db->table('book')->insert([
+            'book_id' => 5, 'branch_id' => 1, 'book_detail' => 'ED1', 'status' => 1,
+            'bunber_limit' => 10, 'cdate' => '2026-08-22 09:00:00',
+        ]);
+        $edit = $this->getAsAdmin('/master/book/5');
+        $edit->assertStatus(200);
+        $edit->assertSee('value="1" selected');
+    }
+
+    public function testListingPaginatesAtFiftyRowsWithNextLink(): void
+    {
+        for ($i = 1; $i <= 51; $i++) {
+            $this->db->table('book')->insert([
+                'book_id'      => $i,
+                'branch_id'    => 1,
+                'book_detail'  => sprintf('b%02d', $i),
+                'status'       => 1,
+                'bunber_limit' => 1,
+                'cdate'        => '2026-08-22 09:00:00',
+            ]);
+        }
+
+        $page1 = $this->getAsAdmin('/master/book?page=1');
+        $page1->assertStatus(200);
+        $page1->assertSee('b01');
+        $page1->assertSee('b50');
+        $page1->assertDontSee('b51');
+        $page1->assertSee('page=2');
+
+        $page2 = $this->getAsAdmin('/master/book?page=2');
+        $page2->assertStatus(200);
+        $page2->assertSee('b51');
+        $page2->assertDontSee('b01');
+        $page2->assertDontSee('page=3');
+    }
+
+    public function testInvalidPageParameterThrowsNotFound(): void
+    {
+        $this->expectException(PageNotFoundException::class);
+        $this->getAsAdmin('/master/book?page=0');
+    }
+
+    public function testBranchTypeImageIsServedPreviewedAndThumbnailed(): void
+    {
+        $directory = WRITEPATH . 'uploads/branch-types';
+        if (! is_dir($directory)) {
+            mkdir($directory, 0750, true);
+        }
+        $name = str_repeat('a', 32) . '.png';
+        $path = $directory . '/' . $name;
+        file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
+
+        try {
+            $this->db->table('branch_type')->insert([
+                'branch_type_id'      => 7,
+                'branch_type_details' => 'ICON TYPE',
+                'branch_type_image'   => $name,
+                'cdate'               => '2026-08-22 09:00:00',
+            ]);
+
+            $listing = $this->getAsAdmin('/master/branchtype');
+            $listing->assertStatus(200);
+            $listing->assertSee('<img');
+            $listing->assertSee('/branch-type-image/' . $name);
+
+            $edit = $this->getAsAdmin('/master/branchtype/7');
+            $edit->assertStatus(200);
+            $edit->assertSee('/branch-type-image/' . $name);
+
+            $served = $this->get('/branch-type-image/' . $name);
+            $served->assertStatus(200);
+            $served->assertHeader('Content-Type', 'image/png');
+
+            $this->get('/branch-type-image/' . str_repeat('b', 32) . '.png')->assertStatus(404);
+            $this->get('/branch-type-image/not-a-valid-name.png')->assertStatus(404);
+        } finally {
+            @unlink($path);
+        }
     }
 
     private function getAsAdmin(string $path)
