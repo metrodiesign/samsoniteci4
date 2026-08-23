@@ -239,11 +239,13 @@ final class MasterDataHttpTest extends CIUnitTestCase
 
     public function testListingPaginatesAtFiftyRowsWithNextLink(): void
     {
+        // Prefix 'p' is not a hex character, so markers cannot collide with the
+        // 32-hex csrf hash rendered in every form on the page.
         for ($i = 1; $i <= 51; $i++) {
             $this->db->table('book')->insert([
                 'book_id'      => $i,
                 'branch_id'    => 1,
-                'book_detail'  => sprintf('b%02d', $i),
+                'book_detail'  => sprintf('p%02d', $i),
                 'status'       => 1,
                 'bunber_limit' => 1,
                 'cdate'        => '2026-08-22 09:00:00',
@@ -252,16 +254,22 @@ final class MasterDataHttpTest extends CIUnitTestCase
 
         $page1 = $this->getAsAdmin('/master/book?page=1');
         $page1->assertStatus(200);
-        $page1->assertSee('b01');
-        $page1->assertSee('b50');
-        $page1->assertDontSee('b51');
+        $page1->assertSee('p01');
+        $page1->assertSee('p50');
+        $page1->assertDontSee('p51');
         $page1->assertSee('page=2');
 
         $page2 = $this->getAsAdmin('/master/book?page=2');
         $page2->assertStatus(200);
-        $page2->assertSee('b51');
-        $page2->assertDontSee('b01');
+        $page2->assertSee('p51');
+        $page2->assertDontSee('p01');
         $page2->assertDontSee('page=3');
+
+        // Next link carries the active search term (every book_detail starts with 'p').
+        $searched = $this->getAsAdmin('/master/book?search=p&page=1');
+        $searched->assertStatus(200);
+        $searched->assertSee('search=p');
+        $searched->assertSee('page=2');
     }
 
     public function testInvalidPageParameterThrowsNotFound(): void
