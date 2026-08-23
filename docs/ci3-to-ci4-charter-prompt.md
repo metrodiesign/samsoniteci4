@@ -36,8 +36,10 @@ Repo หลัก (worktree ที่ใช้ทำงาน): `/Users/king_dev
 - **Phase 0**: WP-00C ยัง `OPEN 51/53` — closure gate exit `1`; `51 PASS`, `2 BLOCKED`, `0 FAIL`; approval records ครบ `149/149`
   - `RPT-EDGE-001` และ `PERF-CI3-001` `BLOCKED` ทั้ง 3 รอบ เพราะขาด **input จากมนุษย์**: approved volume profile, request mix, p50/p95 + memory + query-count/plan budget, environment manifest
   - งานอื่นของ Phase 0 (source inventory, DB baseline, DB foundation, point/function baseline) มีหลักฐานสะสมอยู่ใน `outputs/reference/` และ `evidence/` — ตรวจสถานะจริงจากไฟล์ก่อนถือว่าปิดแล้ว
-- **Phase 1**: มี CI4 scaffold แล้ว (ยัง untracked บางส่วน): `app/`, `public/`, `spark`, `composer.json/lock`, `phpunit.xml.dist`, `Dockerfile.ci4`, `tests/ci4/`, `writable/` — pin `CodeIgniter 4.7.4`, `PHP 8.5.7`, `PHPUnit 11.5.56`
+- **Phase 1**: scaffold ทั้งชุด commit แล้วบน PR #9 (`feature/ci4-scaffold-wp00c-closure` -> `develop`) — CI `repository-safety` เขียวบน HEAD; pin `CodeIgniter 4.7.4`, `PHP 8.5.7`, `PHPUnit 11.5.56`
   - มี Report Tracking vertical slice, authorization filter, CI4-owned authentication แล้ว; **business parity ยังไม่ครบ**
+  - ปิดบางส่วนแล้ว (2026-08-23): WP-01A assertion mysqli/mysqlnd + `composer check-platform-reqs`; WP-01F `DBDebug => ENVIRONMENT !== 'production'` + guard; WP-01G replacement-coverage test 174 mapped routes; WP-01I ledger ผูกเข้า `ci-check.sh` (skip เมื่อไม่มี CI3 checkout); WP-01D `scripts/ci4-web-boundary-check.sh` + evidence (`outputs/reference/2026-08-23_wp01d-web-boundary-evidence_v1.md`, production topology รอ BLK-008); WP-01J `db/dbctl.sh ci4-port-preflight` (read-only allocator 18405-18419)
+  - ค้างรอ input: WP-01E (branch protection required check + เพิ่ม `phpstan` — ทั้งคู่ถูก permission บล็อกฝั่ง agent), WP-01H (รอ WP-00N registry ลงนาม), timestamp contract (CI3 เก็บ `Asia/Bangkok` local, CI4 ใช้ `gmdate` UTC — ต้องมี decision ก่อนแก้)
 - **Phase 2-7**: ยังไม่เริ่ม
 - CI3 source อยู่คนละ repo: `metrodiesign/samsoniteci3` pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6`, image `samsonitetracking-ci3:ee1c95e` — หลักฐานที่ผลิตบน pin เก่า `8dad4e3` ต้อง rerun
 

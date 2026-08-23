@@ -18,6 +18,8 @@ if [ -f vendor/autoload.php ]; then
   php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
     || fail "PHP runtime must load mysqli built on mysqlnd"
   composer check-platform-reqs --no-interaction >/dev/null
+  find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null \
+    || fail "php lint failed"
   routes=$(php spark routes)
   vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
 else
@@ -41,6 +43,9 @@ else
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
     php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
     || fail "CI4 image must load mysqli built on mysqlnd"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
+    sh -c "find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null" \
+    || fail "php lint failed in CI4 image"
   routes=$(DOCKER_CONFIG="$ci4_docker_config" \
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark routes)
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
@@ -54,6 +59,7 @@ grep -Eq "'DBDebug'[[:space:]]*=> ENVIRONMENT !== 'production'," app/Config/Data
   || fail "CI4 default DBDebug must be disabled in production"
 pass "CI4 dependency, route and health smoke gates"
 pass "PHP mysqli/mysqlnd and composer platform requirements"
+pass "php lint (app + tests/ci4)"
 
 ci4_compose=$(sed -n '/^  ci4:/,/^networks:/p' compose.yaml)
 if grep -Eq '^[[:space:]]+(app|database|encryption)\.' <<<"$ci4_compose"; then
