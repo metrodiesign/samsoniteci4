@@ -1,0 +1,32 @@
+{
+    "name": "samsonite/ci4-migration",
+    "description": "CodeIgniter 4 migration target for the Samsonite CI3 rehearsal",
+    "license": "proprietary",
+    "type": "project",
+    "require": {
+        "php": ">=8.5.0 <8.6.0",
+        "codeigniter4/framework": ">=4.7.4 <=4.7.4"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.2",
+        "phpunit/phpunit": "11.5.56"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Config\\": "app/Config/"
+        },
+        "exclude-from-classmap": [
+            "**/Database/Migrations/**"
+        ]
+    },
+    "config": {
+        "allow-plugins": {},
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit --configuration phpunit.xml.dist"
+    }
+}

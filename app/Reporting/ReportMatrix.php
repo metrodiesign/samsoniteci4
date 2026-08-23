@@ -1,0 +1,209 @@
+<?php
+
+namespace App\Reporting;
+
+use CodeIgniter\Database\BaseConnection;
+use DateTimeImmutable;
+use DateTimeZone;
+use InvalidArgumentException;
+
+final class ReportMatrix
+{
+    public function __construct(private BaseConnection $db)
+    {
+    }
+
+    /** @return list<array{question:int,total:int,scores:array<int, array{count:int,percentage:string}>}> */
+    public function ratings(mixed $startDate, mixed $endDate, ?int $branchId): array
+    {
+        [$start, $end] = $this->dates($startDate, $endDate);
+        $query = $this->db->table('rating')
+            ->select('add_id, rating, COUNT(*) AS total', false)
+            ->where('add_id >=', 1)->where('add_id <=', 8)
+            ->where('rating >=', 1)->where('rating <=', 5);
+        $this->scope($query, 'cdate', 'branchID', $start, $end, $branchId);
+        $groups = [];
+        for ($question = 1; $question <= 8; $question++) {
+            $groups[$question] = ['question' => $question, 'total' => 0, 'scores' => []];
+            for ($score = 1; $score <= 5; $score++) {
+                $groups[$question]['scores'][$score] = ['count' => 0, 'percentage' => '0.00'];
+            }
+        }
+        foreach ($query->groupBy(['add_id', 'rating'])->orderBy('add_id', 'ASC')->orderBy('rating', 'ASC')->get()->getResultArray() as $row) {
+            $question = (int) $row['add_id'];
+            $score = (int) $row['rating'];
+            $count = (int) $row['total'];
+            $groups[$question]['total'] += $count;
+            $groups[$question]['scores'][$score]['count'] = $count;
+        }
+        foreach ($groups as &$group) {
+            foreach ($group['scores'] as &$score) {
+                $score['percentage'] = $group['total'] === 0
+                    ? '0.00'
+                    : number_format($score['count'] * 100 / $group['total'], 2, '.', '');
+            }
+            unset($score);
+        }
+        unset($group);
+
+        return array_values($groups);
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId): array
+    {
+        [$start, $end] = $this->dates($startDate, $endDate);
+        if ($kind === 'jobs-by-day') {
+            $query = $this->db->table('request_order')
+                ->select('DATE(requestDate) AS label, COUNT(*) AS total', false)
+                ->where('action_status >', 0);
+            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
+
+            return $query->groupBy('DATE(requestDate)', false)->orderBy('label', 'ASC')->get()->getResultArray();
+        }
+        if (in_array($kind, ['pending', 'pending-total'], true)) {
+            $query = $this->db->table('request_order orders')
+                ->select('orders.action_status AS id, statuses.status_name AS label, COUNT(*) AS total', false)
+                ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
+                ->whereIn('orders.action_status', [1, 2, 3, 4]);
+            $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
+
+            return $query->groupBy(['orders.action_status', 'statuses.status_name'])
+                ->orderBy('orders.action_status', 'ASC')->get()->getResultArray();
+        }
+        if (in_array($kind, ['in-progress-average', 'in-progress'], true)) {
+            $query = $this->db->table('request_order')
+                ->select('request_id AS id, trackID AS label, requestDate, date_update_status, action_status')
+                ->whereIn('action_status', [2, 3]);
+            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
+            $rows = $query->orderBy('request_id', 'ASC')->get()->getResultArray();
+            foreach ($rows as &$row) {
+                $row['total'] = $this->days($row['requestDate'], $row['date_update_status']);
+            }
+            unset($row);
+
+            return $rows;
+        }
+        throw new InvalidArgumentException('Unknown report.');
+    }
+
+    /** @return list<array<string, int|float|string|null>> */
+    public function summary(
+        mixed $searchText,
+        mixed $startDate,
+        mixed $endDate,
+        mixed $rawStatusIds,
+        mixed $rawBrandId,
+        mixed $rawTypeId,
+        ?int $branchId,
+        ?int $limit = null,
+        int $offset = 0,
+    ): array {
+        $search = is_string($searchText) ? trim($searchText) : '';
+        if (mb_strlen($search) > 128) {
+            throw new InvalidArgumentException('Search text is too long.');
+        }
+        [$start, $end] = $this->dates($startDate, $endDate);
+        $brandId = $this->optionalId($rawBrandId, 'brand');
+        $typeId = $this->optionalId($rawTypeId, 'type');
+        $statuses = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
+        $query = $this->db->table('request_order orders')
+            ->select([
+                'orders.request_id', 'orders.requestDate', 'orders.trackID', 'orders.orderIDShow',
+                'orders.customerFullname', 'orders.branchID', 'orders.action_status', 'orders.detailBrandId',
+                'orders.detailTypeId', 'orders.RepairPrice', 'branches.branch_name', 'statuses.status_name',
+                'brands.brand_details', 'types.type_details',
+            ])
+            ->join('brand brands', 'brands.brand_id = orders.detailBrandId', 'inner')
+            ->join('type types', 'types.type_id = orders.detailTypeId', 'inner')
+            ->join('branch branches', 'branches.branch_id = orders.branchID', 'left')
+            ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
+            ->where('orders.action_status >', 0);
+        $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
+        if ($search !== '') {
+            $query->groupStart()->like('orders.trackID', $search)->orLike('orders.orderIDShow', $search)
+                ->orLike('orders.customerFullname', $search)->groupEnd();
+        }
+        if ($statuses !== []) {
+            $query->whereIn('orders.action_status', $statuses);
+        }
+        if ($brandId !== null) {
+            $query->where('orders.detailBrandId', $brandId);
+        }
+        if ($typeId !== null) {
+            $query->where('orders.detailTypeId', $typeId);
+        }
+
+        $query->orderBy('orders.requestDate', 'DESC')->orderBy('orders.request_id', 'DESC');
+        if ($limit !== null) {
+            $query->limit($limit, $offset);
+        }
+
+        return $query->get()->getResultArray();
+    }
+
+    /** @return array{?DateTimeImmutable, ?DateTimeImmutable} */
+    private function dates(mixed $start, mixed $end): array
+    {
+        $start = $this->date($start, 'start date');
+        $end = $this->date($end, 'end date');
+        if ($start !== null && $end !== null && $start > $end) {
+            throw new InvalidArgumentException('Start date must not be after end date.');
+        }
+
+        return [$start, $end];
+    }
+
+    private function date(mixed $value, string $label): ?DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (! is_string($value) || strlen($value) !== 10) {
+            throw new InvalidArgumentException('Invalid ' . $label . '.');
+        }
+        $date = DateTimeImmutable::createFromFormat('!d/m/Y', $value, new DateTimeZone(date_default_timezone_get()));
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            || $date->format('d/m/Y') !== $value) {
+            throw new InvalidArgumentException('Invalid ' . $label . '.');
+        }
+
+        return $date;
+    }
+
+    private function optionalId(mixed $value, string $label): ?int
+    {
+        if ($value === null || $value === '' || $value === '0') {
+            return null;
+        }
+        if (! is_string($value) || preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1) {
+            throw new InvalidArgumentException('Invalid ' . $label . '.');
+        }
+
+        return (int) $value;
+    }
+
+    private function scope($query, string $dateColumn, string $branchColumn, ?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): void
+    {
+        if ($start !== null) {
+            $query->where($dateColumn . ' >=', $start->format('Y-m-d 00:00:00'));
+        }
+        if ($end !== null) {
+            $query->where($dateColumn . ' <', $end->modify('+1 day')->format('Y-m-d 00:00:00'));
+        }
+        if ($branchId !== null) {
+            $query->where($branchColumn, $branchId);
+        }
+    }
+
+    private function days(mixed $start, mixed $end): ?int
+    {
+        if (! is_string($start) || ! is_string($end) || $start === '' || $end === '') {
+            return null;
+        }
+        $interval = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end));
+
+        return is_int($interval->days) ? ($interval->invert ? -$interval->days : $interval->days) : null;
+    }
+}

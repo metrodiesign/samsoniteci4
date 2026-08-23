@@ -670,6 +670,76 @@ wp00c_fixture_verify() {
   return "$rc"
 }
 
+ci4_port_preflight() {
+  # WP-01J: pick the CI4 web port before any `up`. Read-only - prints the candidate and
+  # never rewrites .env; the caller passes it as CI4_HTTP_PORT/CI4_HOST_PORT explicitly.
+  local mine="" p
+  mine=$(dc port ci4 8080 2>/dev/null | sed 's/.*://') || true
+  if [ -n "$mine" ]; then
+    note "ci4 service already publishes port $mine, keeping it" >&2
+    echo "$mine"
+    return
+  fi
+  for p in $(seq 18405 18419); do
+    if port_busy "$p"; then
+      note "port $p busy, skipping (owner untouched)" >&2
+    else
+      note "selected CI4 candidate port $p" >&2
+      echo "$p"
+      return
+    fi
+  done
+  die "every CI4 candidate port in 18405-18419 is taken; stop and pick a new pool"
+}
+
+ci4_db_bootstrap() {
+  lock
+  local target=${CI4_DATABASE:-samsonite_ci4} target_tables missing_tables
+  case "$DB" in ''|*[!A-Za-z0-9_]*) die "MARIADB_DATABASE contains unsafe characters" ;; esac
+  case "$target" in ''|*[!A-Za-z0-9_]*) die "CI4_DATABASE contains unsafe characters" ;; esac
+  case "$MARIADB_USER" in ''|*[!A-Za-z0-9_]*) die "MARIADB_USER contains unsafe characters" ;; esac
+  [ "$target" != "$DB" ] || die "CI4_DATABASE must differ from MARIADB_DATABASE"
+
+  dc up -d --wait db
+  target_tables=$(sql -e "SELECT COUNT(*) FROM information_schema.TABLES
+                           WHERE TABLE_SCHEMA='$target' AND TABLE_TYPE='BASE TABLE';")
+  case "$target_tables" in ''|*[!0-9]*) die "invalid CI4 target table count" ;; esac
+
+  if [ "$target_tables" -gt 0 ]; then
+    missing_tables=$(sql -e "SELECT COUNT(*)
+      FROM information_schema.TABLES source
+      LEFT JOIN information_schema.TABLES target_table
+        ON target_table.TABLE_SCHEMA='$target'
+       AND target_table.TABLE_NAME=source.TABLE_NAME
+       AND target_table.TABLE_TYPE='BASE TABLE'
+      WHERE source.TABLE_SCHEMA='$DB'
+        AND source.TABLE_TYPE='BASE TABLE'
+        AND target_table.TABLE_NAME IS NULL;")
+    [ "$missing_tables" = 0 ] \
+      || die "CI4 database $target is partial; $missing_tables legacy table(s) missing"
+    note "PASS CI4 database already initialized: $target ($target_tables tables)"
+    return 0
+  fi
+
+  wp00c_fixture_verify || die "CI4 bootstrap requires verified WP-00C synthetic source fixtures"
+
+  sql -e "CREATE DATABASE IF NOT EXISTS \`$target\`
+            CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+          GRANT ALL PRIVILEGES ON \`$target\`.* TO '$MARIADB_USER'@'%';"
+  note "copying verified synthetic source $DB -> $target"
+  dc exec -T -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db \
+    mariadb-dump --default-character-set=utf8mb4 --single-transaction --quick \
+                 --skip-comments --no-tablespaces -u root "$DB" \
+    | dc exec -T -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db \
+        mariadb --default-character-set=utf8mb4 -u root "$target"
+
+  ck "CI4 cloned legacy table count" "31" \
+    "$(sql -e "SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA='$target' AND TABLE_TYPE='BASE TABLE';")" \
+    || die "CI4 database clone is incomplete"
+  note "PASS CI4 synthetic database ready: $target; run CI4 migrations next"
+}
+
 wp00c_fixture_seed() {
   lock
   : "${CI3_REPO:?CI3_SOURCE_ROOT is required}" "${CI3_WEB_IMAGE:?}"
@@ -1703,6 +1773,8 @@ case "${1:-}" in
   wp00c-fixture-seed) wp00c_fixture_seed ;;
   wp00c-fixture-verify) wp00c_fixture_verify ;;
   wp00c-fixture-clean) wp00c_fixture_clean ;;
+  ci4-db-bootstrap) ci4_db_bootstrap ;;
+  ci4-port-preflight) ci4_port_preflight ;;
   safe-preview-smoke) safe_preview_smoke ;;
   safe-confirm-smoke) safe_confirm_smoke ;;
   safe-confirm-negative-smoke) safe_confirm_negative_smoke ;;
@@ -1713,5 +1785,5 @@ case "${1:-}" in
   reset)     reset_db ;;
   status)    dc ps -a; dc port db 3306 || true ;;
   down)      lock; dc ps -a; dc down ;;
-  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|wp00c-fixture-validate|wp00c-fixture-seed|wp00c-fixture-verify|wp00c-fixture-clean|safe-preview-smoke|safe-confirm-smoke|safe-confirm-negative-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
+  *) echo "usage: db/dbctl.sh [--runtime-root ABSOLUTE_PATH] <preflight|snapshot before|snapshot after|diff|expect|up|import [file..]|verify|collation|backup [label]|backups|restore <id>|upgrade-check|rehearsal|web-build|web-up|wp00c-fixture-validate|wp00c-fixture-seed|wp00c-fixture-verify|wp00c-fixture-clean|ci4-db-bootstrap|ci4-port-preflight|safe-preview-smoke|safe-confirm-smoke|safe-confirm-negative-smoke|excel-preview-smoke|smoke|reset|status|down>"; exit 2 ;;
 esac

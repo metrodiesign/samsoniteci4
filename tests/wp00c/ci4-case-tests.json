@@ -1,0 +1,220 @@
+{
+  "cases": {
+    "ROUTE-EXPLICIT-001": {
+      "tests": ["Tests\\Ci4\\RouteHttpTest::testAll178Ci3ExplicitRoutesHaveDeterministicCi4Disposition"],
+      "source_files": ["app/Config/Routes.php", "scripts/wp00c-route-disposition.py", "tests/ci4/RouteHttpTest.php", "tests/wp00c/ci4-route-disposition.json"]
+    },
+    "ROUTE-IMPLICIT-001": {
+      "tests": ["Tests\\Ci4\\RouteHttpTest::testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers"],
+      "source_files": ["app/Config/Routing.php", "app/Config/Routes.php", "tests/ci4/RouteHttpTest.php"]
+    },
+    "ROUTE-404-001": {
+      "tests": ["Tests\\Ci4\\RouteHttpTest::testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers"],
+      "source_files": ["app/Config/Exceptions.php", "app/Config/Routes.php", "tests/ci4/RouteHttpTest.php"]
+    },
+    "ROUTE-DEFECT-001": {
+      "tests": ["Tests\\Ci4\\RouteHttpTest::testKnownBrokenBookAliasIsCorrectedAndRackstatusIsRetired"],
+      "source_files": ["app/Config/Routes.php", "tests/ci4/RouteHttpTest.php", "tests/wp00c/ci4-route-disposition.json"]
+    },
+    "RPT-TRACKING-TEST-001": {
+      "tests": ["Tests\\Ci4\\BusinessParityHttpTest::testLegacyTestRouteIsAbsent", "Tests\\Ci4\\BusinessParityHttpTest::testTrackingReportConsolidatesStatusFiltersAndSearch"],
+      "source_files": ["app/Config/Routes.php", "app/Controllers/Reports.php", "app/Reporting/TrackingReport.php", "tests/ci4/BusinessParityHttpTest.php"]
+    },
+    "AUTH-LOGIN-001": {
+      "tests": ["Tests\\Ci4\\BusinessParityHttpTest::testValidLoginPreservesSessionContractAndWritesHistory", "Tests\\Ci4\\BusinessParityHttpTest::testLoginUsesCi4OwnedPasswordAfterReset", "Tests\\Ci4\\BusinessParityHttpTest::testLegacyIdentityImportRollsBackOnInvalidCredentialRow"],
+      "source_files": ["app/Authentication/LegacyUserImporter.php", "app/Authentication/LoginService.php", "app/Controllers/Login.php", "tests/ci4/BusinessParityHttpTest.php"]
+    },
+    "AUTH-LOGIN-002": {
+      "tests": ["Tests\\Ci4\\BusinessParityHttpTest::testInvalidUnknownAndDeletedLoginsUseGenericFailureWithoutHistory", "Tests\\Ci4\\BusinessParityHttpTest::testLoginThrottleCannotBeBypassedByRotatingUsernames", "Tests\\Ci4\\BusinessParityHttpTest::testLoginWithoutCsrfIsRejectedBeforeCredentialCheck"],
+      "source_files": ["app/Authentication/AtomicRateLimiter.php", "app/Controllers/Login.php", "tests/ci4/BusinessParityHttpTest.php"]
+    },
+    "AUTH-SESSION-001": {
+      "tests": ["Tests\\Ci4\\AuthorizationFilterTest::testIncompleteSessionIsDenied", "Tests\\Ci4\\AuthorizationFilterTest::testStaleSessionVersionIsDenied", "Tests\\Ci4\\AuthorizationFilterTest::testSessionRoleCannotElevateAboveShadowUser", "Tests\\Ci4\\BusinessParityHttpTest::testStaleWebSessionReturnsLoginWithoutRedirectLoop", "Tests\\Ci4\\BusinessParityHttpTest::testLogoutDestroysSessionAndProtectedRouteReturnsLogin"],
+      "source_files": ["app/Controllers/Login.php", "app/Filters/AuthenticationFilter.php", "tests/ci4/AuthorizationFilterTest.php", "tests/ci4/BusinessParityHttpTest.php"]
+    },
+    "AUTH-RESET-001": {
+      "tests": ["Tests\\Ci4\\PasswordResetHttpTest::testKnownAndUnknownResetRequestsReturnSameGenericResponse", "Tests\\Ci4\\PasswordResetHttpTest::testKnownAndUnknownResetRequestsBothObserveMinimumResponseTime", "Tests\\Ci4\\PasswordResetHttpTest::testCsrfBootstrapReturnsHeaderNameAndToken", "Tests\\Ci4\\PasswordResetHttpTest::testResetRequestRateLimitAlsoAppliesToUnknownAccount", "Tests\\Ci4\\PasswordResetHttpTest::testResetRequestWithoutCsrfTokenIsRejectedWithoutDebugDetails", "Tests\\Ci4\\PasswordResetHttpTest::testResetRequestFailsClosedWhenEncryptionKeyIsMissing", "Tests\\Ci4\\ResetDeliveryIntentStoreTest::testStaleWorkerReservationCanBeRecovered", "Tests\\Ci4\\ResetDeliveryWorkerTest::testLoopbackDeliverySendsIntentOnceWithoutSensitiveDebugOutput", "Tests\\Ci4\\ResetDeliveryWorkerTest::testProviderFailureRetriesWithSameIdempotencyKey", "Tests\\Ci4\\ResetRequestWorkflowTest::testKnownAccountCreatesUsableTokenAndEncryptedDeliveryIntent", "Tests\\Ci4\\ResetRequestWorkflowTest::testUnknownAccountCreatesNoDeliveryIntent"],
+      "source_files": ["app/Authentication/ResetDeliveryIntentStore.php", "app/Authentication/ResetDeliveryWorker.php", "app/Authentication/ResetRequestWorkflow.php", "app/Controllers/PasswordReset.php", "tests/ci4/PasswordResetHttpTest.php", "tests/ci4/ResetDeliveryIntentStoreTest.php", "tests/ci4/ResetDeliveryWorkerTest.php", "tests/ci4/ResetRequestWorkflowTest.php"]
+    },
+    "AUTH-RESET-002": {
+      "tests": ["Tests\\Ci4\\PasswordResetHttpTest::testMalformedResetCompletionJsonReturnsGenericValidationError", "Tests\\Ci4\\PasswordResetHttpTest::testValidResetCompletesOnceAndReplayIsDenied", "Tests\\Ci4\\PasswordResetWorkflowTest::testSuccessfulResetConsumesTokenChangesPasswordAndRevokesSessions", "Tests\\Ci4\\PasswordResetWorkflowTest::testWrongEmailDeniesWithoutConsumingTokenOrChangingPassword", "Tests\\Ci4\\ResetRequestWorkflowTest::testNewRequestSupersedesPreviousTokenAndPendingDelivery", "Tests\\Ci4\\ResetTokenStoreTest::testConsumeIsSingleUse", "Tests\\Ci4\\ResetTokenStoreTest::testExpiredWrongUserAndMalformedTokensAreDenied", "Tests\\Ci4\\ResetTokenStoreTest::testFailedPasswordUpdateRollsBackTokenConsume"],
+      "source_files": ["app/Authentication/PasswordResetWorkflow.php", "app/Authentication/ResetTokenFactory.php", "app/Authentication/ResetTokenStore.php", "app/Controllers/PasswordReset.php", "tests/ci4/PasswordResetHttpTest.php", "tests/ci4/PasswordResetWorkflowTest.php", "tests/ci4/ResetTokenStoreTest.php"]
+    },
+    "USER-CRUD-001": {
+      "tests": ["Tests\\Ci4\\UserHttpTest::testUserCrudScopesListingsAndSoftDeletesBothStores"],
+      "source_files": ["app/Controllers/Users.php", "app/Users/UserStore.php", "tests/ci4/UserHttpTest.php"]
+    },
+    "USER-CRUD-002": {
+      "tests": ["Tests\\Ci4\\UserHttpTest::testUserValidationDuplicateEmailAndExistenceContractHaveNoWrites"],
+      "source_files": ["app/Controllers/Users.php", "app/Users/UserStore.php", "tests/ci4/UserHttpTest.php"]
+    },
+    "USER-PASSWORD-001": {
+      "tests": ["Tests\\Ci4\\UserHttpTest::testChangePasswordRejectsWrongAndSameThenRevokesOtherSessionsOnSuccess"],
+      "source_files": ["app/Controllers/Users.php", "app/Users/UserStore.php", "tests/ci4/UserHttpTest.php"]
+    },
+    "USER-HISTORY-001": {
+      "tests": ["Tests\\Ci4\\UserHttpTest::testLoginHistoryAndBranchBookJsonAreEscapedAndBranchScoped"],
+      "source_files": ["app/Controllers/Users.php", "app/Users/UserStore.php", "tests/ci4/UserHttpTest.php"]
+    },
+    "AUTHZ-ROUTE-001": {
+      "tests": ["Tests\\Ci4\\AuthorizationPolicyTest::testConfirmedRoleActionMatrix", "Tests\\Ci4\\AuthorizationFilterTest::testAnonymousRequestIsDeniedBeforeController", "Tests\\Ci4\\AuthorizationFilterTest::testViewerCannotUseWriteRoute", "Tests\\Ci4\\AuthorizationFilterTest::testViewerCanUseReadRoute", "Tests\\Ci4\\AuthorizationFilterTest::testUnknownActionFailsClosed"],
+      "source_files": ["app/Authorization/AuthorizationPolicy.php", "app/Filters/AuthorizationFilter.php", "tests/ci4/AuthorizationFilterTest.php", "tests/ci4/AuthorizationPolicyTest.php"]
+    },
+    "AUTHZ-BRANCH-001": {
+      "tests": ["Tests\\Ci4\\AuthorizationPolicyTest::testConfirmedBranchOwnershipMatrix", "Tests\\Ci4\\AuthorizationPolicyTest::testCrossBranchGuardUsesNotFoundResponse", "Tests\\Ci4\\AuthorizationFilterTest::testCrossBranchWriteReturnsNotFoundAndLeavesDatabaseUnchanged", "Tests\\Ci4\\UserHttpTest::testUserRoutesDenyAnonymousViewerEscalationAndCrossBranchMutation"],
+      "source_files": ["app/Authorization/AuthorizationPolicy.php", "app/Filters/AuthorizationFilter.php", "app/Users/UserStore.php", "tests/ci4/AuthorizationFilterTest.php", "tests/ci4/UserHttpTest.php"]
+    },
+    "ORDER-LIST-001": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testAllStatusListingsLegacyRoutesSearchAndBranchScope"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderStore.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-CREATE-001": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderCreationWorkflow.php", "app/Orders/OrderSequence.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-CREATE-002": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testCreateOrderRejectsInvalidUploadReplayDuplicateAndCrossBranchWithoutPartialWrites"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderCreationWorkflow.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-LIFECYCLE-001": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testNormalLifecycleWritesExactProviderDatesStatusesAndLogs"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderTransitionWorkflow.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-LIFECYCLE-002": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testInvalidDirectAndMixedBatchTransitionsRollbackEveryRow"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderTransitionWorkflow.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-EDIT-001": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testPrintEditAndSoftDeletePreserveStatusLogAndDenyCrossBranch"],
+      "source_files": ["app/Controllers/Order.php", "app/Orders/OrderStore.php", "tests/ci4/OrderHttpTest.php"]
+    },
+    "ORDER-CONCURRENCY-001": {
+      "tests": ["Tests\\Ci4\\OrderHttpTest::testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically", "Tests\\Ci4\\OrderHttpTest::testOrderSequenceStartsAfterExistingLegacyTrackingId", "Tests\\Operational\\ConcurrencyCheck::testOrderTrackingIdAllocation"],
+      "source_files": ["app/Orders/OrderCreationWorkflow.php", "app/Orders/OrderSequence.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/OrderHttpTest.php", "tests/ci4/support/Commands/ConcurrencyProbe.php"]
+    },
+    "TRACK-PUBLIC-001": {
+      "tests": ["Tests\\Ci4\\PublicTrackingHttpTest::testKnownTrackingIdRendersEnglishAndThaiTimelineInOrder"],
+      "source_files": ["app/Controllers/Tracking.php", "app/Tracking/TrackingLookup.php", "tests/ci4/PublicTrackingHttpTest.php"]
+    },
+    "TRACK-NEGATIVE-001": {
+      "tests": ["Tests\\Ci4\\PublicTrackingHttpTest::testSearchRejectsUnknownWildcardAndOversizedTrackingIdsWithoutPartialMatch"],
+      "source_files": ["app/Controllers/Tracking.php", "app/Tracking/TrackingLookup.php", "tests/ci4/PublicTrackingHttpTest.php"]
+    },
+    "TRACK-CONCURRENCY-001": {
+      "tests": ["Tests\\Ci4\\PublicTrackingHttpTest::testKnownTrackingIdRendersEnglishAndThaiTimelineInOrder", "Tests\\Operational\\ConcurrencyCheck::testPublicTrackingIsolation"],
+      "source_files": ["app/Tracking/TrackingLookup.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/PublicTrackingHttpTest.php"]
+    },
+    "CONTACT-PUBLIC-001": {
+      "tests": ["Tests\\Ci4\\ContactHttpTest::testEnglishAndThaiSubmissionsPersistContactAndEncryptedDeliveryIntent"],
+      "source_files": ["app/Contact/ContactSubmissionWorkflow.php", "app/Controllers/Contact.php", "tests/ci4/ContactHttpTest.php"]
+    },
+    "CONTACT-FAILURE-001": {
+      "tests": ["Tests\\Ci4\\ContactHttpTest::testInvalidReplayAndUnavailableDeliveryDoNotCreatePartialOrDuplicateRows", "Tests\\Ci4\\ContactDeliveryWorkerTest::testProviderTimeoutRetriesWithStableIdempotencyKey"],
+      "source_files": ["app/Contact/ContactDeliveryWorker.php", "app/Contact/ContactSubmissionWorkflow.php", "app/Controllers/Contact.php", "tests/ci4/ContactDeliveryWorkerTest.php", "tests/ci4/ContactHttpTest.php"]
+    },
+    "CONTACT-LIST-001": {
+      "tests": ["Tests\\Ci4\\ContactHttpTest::testContactListingIsSearchableByAdminAndHiddenFromBranchRole"],
+      "source_files": ["app/Controllers/Contact.php", "tests/ci4/ContactHttpTest.php"]
+    },
+    "RATING-PAGE-001": {
+      "tests": ["Tests\\Ci4\\RatingHttpTest::testValidStatusFiveOrderRendersEightQuestionRatingForm"],
+      "source_files": ["app/Controllers/Rating.php", "app/Rating/RatingWorkflow.php", "tests/ci4/RatingHttpTest.php"]
+    },
+    "RATING-SUBMIT-001": {
+      "tests": ["Tests\\Ci4\\RatingHttpTest::testFirstValidRatingWritesEightScoresCommentAndCompletesOrder"],
+      "source_files": ["app/Controllers/Rating.php", "app/Rating/RatingWorkflow.php", "tests/ci4/RatingHttpTest.php"]
+    },
+    "RATING-NEGATIVE-001": {
+      "tests": ["Tests\\Ci4\\RatingHttpTest::testDuplicateInvalidUnknownAndTokenlessRatingsHaveNoExtraSideEffects"],
+      "source_files": ["app/Controllers/Rating.php", "app/Rating/RatingWorkflow.php", "tests/ci4/RatingHttpTest.php"]
+    },
+    "XLS-PREVIEW-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testThreePreviewsCreateOwnedEncryptedBatchesWithoutBusinessWrites", "Tests\\Ci4\\ImportHttpTest::testLegacyListingPreviewAndConfirmRoutesUseOwnedBatchWorkflow"],
+      "source_files": ["app/Controllers/Imports.php", "app/Imports/ImportWorkflow.php", "app/Imports/XlsxReader.php", "tests/ci4/ImportHttpTest.php"]
+    },
+    "XLS-CONFIRM-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testThreeConfirmsApplyAcceptedRowsOnceAndReplayWithoutExtraWrites", "Tests\\Ci4\\ImportHttpTest::testLegacyListingPreviewAndConfirmRoutesUseOwnedBatchWorkflow"],
+      "source_files": ["app/Controllers/Imports.php", "app/Imports/ImportWorkflow.php", "app/Orders/OrderSequence.php", "tests/ci4/ImportHttpTest.php"]
+    },
+    "XLS-NEGATIVE-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testMalformedWrongHeaderEmptyAndInvalidBatchInputsWriteNothing"],
+      "source_files": ["app/Imports/ImportWorkflow.php", "app/Imports/XlsxReader.php", "tests/ci4/ImportHttpTest.php"]
+    },
+    "XLS-REPLAY-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testThreeConfirmsApplyAcceptedRowsOnceAndReplayWithoutExtraWrites", "Tests\\Operational\\ConcurrencyCheck::testImportConfirmIdempotency"],
+      "source_files": ["app/Imports/ImportWorkflow.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/ImportHttpTest.php"]
+    },
+    "XLS-ISOLATION-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testBatchOwnershipAndBranchScopePreventCrossUserContamination", "Tests\\Operational\\ConcurrencyCheck::testImportBatchOwnershipIsolation"],
+      "source_files": ["app/Imports/ImportWorkflow.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/ImportHttpTest.php"]
+    },
+    "XLS-CSRF-001": {
+      "tests": ["Tests\\Ci4\\ImportHttpTest::testTokenlessConfirmForEveryImportKindIsRejectedBeforeBusinessWrite"],
+      "source_files": ["app/Config/Filters.php", "app/Controllers/Imports.php", "tests/ci4/ImportHttpTest.php"]
+    },
+    "MASTER-CRUD-001": {
+      "tests": ["Tests\\Ci4\\MasterDataHttpTest::testAllTenMasterTypesSupportValidatedCrudAndRejectDuplicates"],
+      "source_files": ["app/Controllers/MasterData.php", "app/Master/MasterCatalog.php", "app/Master/MasterDataStore.php", "tests/ci4/MasterDataHttpTest.php"]
+    },
+    "MASTER-REFERENCE-001": {
+      "tests": ["Tests\\Ci4\\MasterDataHttpTest::testReferencedMasterCannotBeDeleted"],
+      "source_files": ["app/Master/MasterDataStore.php", "tests/ci4/MasterDataHttpTest.php"]
+    },
+    "MASTER-UPLOAD-001": {
+      "tests": ["Tests\\Ci4\\MasterDataHttpTest::testBranchTypeUploadAcceptsRealPngAndRejectsDisguisedFile"],
+      "source_files": ["app/Master/BranchTypeImageStore.php", "tests/ci4/MasterDataHttpTest.php"]
+    },
+    "MASTER-MENU-001": {
+      "tests": ["Tests\\Ci4\\MenuHttpTest::testAdminCanListCreateAndEditMenuGroupsWithValidation", "Tests\\Ci4\\MenuHttpTest::testSidebarUsesOnlyCurrentGroupCsvSelection"],
+      "source_files": ["app/Controllers/Menu.php", "app/Master/MenuStore.php", "tests/ci4/MenuHttpTest.php"]
+    },
+    "MASTER-BACKGROUND-001": {
+      "tests": ["Tests\\Ci4\\BackgroundHttpTest::testBackgroundCrudDrivesPublicPageAndRejectsAlternateExtension"],
+      "source_files": ["app/Controllers/Background.php", "app/Master/BackgroundStore.php", "tests/ci4/BackgroundHttpTest.php"]
+    },
+    "RPT-DASHBOARD-001": {
+      "tests": ["Tests\\Ci4\\ReportHttpTest::testDashboardTotalsUseSessionBranchAndBranchTypeBackground"],
+      "source_files": ["app/Controllers/Dashboard.php", "app/Views/dashboard.php", "tests/ci4/ReportHttpTest.php"]
+    },
+    "RPT-MATRIX-001": {
+      "tests": ["Tests\\Ci4\\ReportHttpTest::testAllLegacyHtmlReportRoutesUseExactScopedMatrixTotals"],
+      "source_files": ["app/Controllers/Reports.php", "app/Reporting/ReportMatrix.php", "tests/ci4/ReportHttpTest.php"]
+    },
+    "RPT-TRACKING-001": {
+      "tests": ["Tests\\Ci4\\BusinessParityHttpTest::testTrackingReportConsolidatesStatusFiltersAndSearch", "Tests\\Ci4\\BusinessParityHttpTest::testTrackingReportEnforcesSessionBranch", "Tests\\Ci4\\BusinessParityHttpTest::testTrackingReportDeniesCrossBranchRoute", "Tests\\Ci4\\BusinessParityHttpTest::testTrackingReportPreservesRouteNumbering", "Tests\\Ci4\\BusinessParityHttpTest::testTrackingDayCountPreservesNegativeChronology"],
+      "source_files": ["app/Controllers/Reports.php", "app/Reporting/TrackingReport.php", "tests/ci4/BusinessParityHttpTest.php"]
+    },
+    "RPT-SUMMARY-001": {
+      "tests": ["Tests\\Ci4\\ReportHttpTest::testSummaryOmitsMissingMasterAndAppliesBranchStatusBrandTypeFilters", "Tests\\Ci4\\ReportHttpTest::testSummaryLimitsEachLegacyPageToOneHundredRows"],
+      "source_files": ["app/Controllers/Reports.php", "app/Reporting/ReportMatrix.php", "tests/ci4/ReportHttpTest.php"]
+    },
+    "RPT-EXPORT-001": {
+      "tests": ["Tests\\Ci4\\ReportHttpTest::testTrackingSummaryRatingsAndInProgressExportsHaveStableXlsContract"],
+      "source_files": ["app/Controllers/Reports.php", "app/Views/reports/export.php", "tests/ci4/ReportHttpTest.php"]
+    },
+    "RPT-EDGE-001": {
+      "tests": ["Tests\\Ci4\\ReportHttpTest::testReportEdgesRejectBadDatesLargeSearchAndCrossBranchWithoutDataLeak", "Tests\\Ci4\\ReportHttpTest::testSummaryLimitsEachLegacyPageToOneHundredRows"],
+      "source_files": ["app/Controllers/Reports.php", "app/Reporting/ReportMatrix.php", "tests/ci4/ReportHttpTest.php"],
+      "execution_status": "BLOCKED",
+      "blocker": "Approved generated-volume profile, report latency/memory/query-plan budget, and production-like environment manifest are missing; functional input and 100-row pagination checks cannot establish performance acceptance."
+    },
+    "INTEGRATION-EMAIL-001": {
+      "tests": ["Tests\\Ci4\\ContactDeliveryWorkerTest::testLoopbackSendsOnceWithoutExposingContactPayload", "Tests\\Ci4\\ContactDeliveryWorkerTest::testProviderTimeoutRetriesWithStableIdempotencyKey", "Tests\\Ci4\\ResetDeliveryIntentStoreTest::testStaleWorkerReservationCanBeRecovered", "Tests\\Ci4\\ResetDeliveryWorkerTest::testLoopbackDeliverySendsIntentOnceWithoutSensitiveDebugOutput", "Tests\\Ci4\\ResetDeliveryWorkerTest::testProviderFailureRetriesWithSameIdempotencyKey", "Tests\\Operational\\ConcurrencyCheck::testEmailDeliveryWorkerIdempotency"],
+      "source_files": ["app/Authentication/ResetDeliveryIntentStore.php", "app/Authentication/ResetDeliveryWorker.php", "app/Contact/ContactDeliveryWorker.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/ContactDeliveryWorkerTest.php", "tests/ci4/ResetDeliveryIntentStoreTest.php", "tests/ci4/ResetDeliveryWorkerTest.php"]
+    },
+    "INTEGRATION-SMS-001": {
+      "tests": ["Tests\\Ci4\\SmsDeliveryWorkerTest::testLoopbackSendsOrderSmsOnceWithoutExposingPayload", "Tests\\Ci4\\SmsDeliveryWorkerTest::testProviderTimeoutRetriesWithStableSmsIdempotencyKey", "Tests\\Operational\\ConcurrencyCheck::testSmsDeliveryWorkerIdempotency"],
+      "source_files": ["app/Orders/SmsDeliveryWorker.php", "scripts/ci4-concurrency-check.sh", "tests/ci4/SmsDeliveryWorkerTest.php"]
+    },
+    "PERF-CI3-001": {
+      "tests": ["Tests\\Ci4\\PublicTrackingHttpTest::testKnownTrackingIdRendersEnglishAndThaiTimelineInOrder", "Tests\\Ci4\\BusinessParityHttpTest::testValidLoginPreservesSessionContractAndWritesHistory", "Tests\\Ci4\\OrderHttpTest::testAllStatusListingsLegacyRoutesSearchAndBranchScope", "Tests\\Ci4\\OrderHttpTest::testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically", "Tests\\Ci4\\ReportHttpTest::testAllLegacyHtmlReportRoutesUseExactScopedMatrixTotals", "Tests\\Ci4\\ReportHttpTest::testTrackingSummaryRatingsAndInProgressExportsHaveStableXlsContract"],
+      "source_files": ["outputs/diagrams/2026-08-09_ci3-to-ci4-upgrade-plan_v3.md", "tests/ci4/BusinessParityHttpTest.php", "tests/ci4/OrderHttpTest.php", "tests/ci4/PublicTrackingHttpTest.php", "tests/ci4/ReportHttpTest.php"],
+      "execution_status": "BLOCKED",
+      "blocker": "Approved sanitized production-like volume profile and production-like environment manifest are missing; synthetic 116-row functional evidence is not a capacity baseline."
+    },
+    "RECOVERY-FIXTURE-001": {
+      "tests": ["Tests\\Operational\\RecoveryCheck::testFixtureSeedCleanupAndRestore"],
+      "source_files": ["db/dbctl.sh", "db/local-schema-only.sql", "scripts/wp00c-kit.py", "scripts/wp00c-recovery-check.sh", "tests/wp00c/fixtures.json"]
+    }
+  }
+}

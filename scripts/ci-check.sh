@@ -7,8 +7,107 @@ cd "$ROOT"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS $*"; }
 
-bash -n db/dbctl.sh db/privacy-purge-local.sh
+bash -n db/dbctl.sh db/privacy-purge-local.sh scripts/ci4-concurrency-check.sh \
+  scripts/wp00c-recovery-check.sh scripts/ci4-web-boundary-check.sh
 pass "shell syntax"
+
+composer validate --strict >/dev/null
+composer audit --locked --no-interaction >/dev/null
+if [ -f vendor/autoload.php ]; then
+  php spark --version >/dev/null
+  php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
+    || fail "PHP runtime must load mysqli built on mysqlnd"
+  composer check-platform-reqs --no-interaction >/dev/null
+  find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null \
+    || fail "php lint failed"
+  vendor/bin/phpstan analyse --no-progress --memory-limit=1G >/dev/null \
+    || fail "phpstan static analysis failed"
+  routes=$(php spark routes)
+  vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
+else
+  ci4_docker_config=${DOCKER_CONFIG:-/tmp/samsonite-ci4-docker-config}
+  mkdir -p "$ci4_docker_config"
+  ci4_image=samsonitetracking-ci4:4.7.4-php8.5.7
+  ci4_image_fresh=0
+  if DOCKER_CONFIG="$ci4_docker_config" docker image inspect "$ci4_image" >/dev/null 2>&1; then
+    image_lock=$(DOCKER_CONFIG="$ci4_docker_config" docker run --rm "$ci4_image" \
+      cksum composer.lock | awk '{print $1" "$2}')
+    repo_lock=$(cksum "$ROOT/composer.lock" | awk '{print $1" "$2}')
+    [ "$image_lock" = "$repo_lock" ] && ci4_image_fresh=1
+  fi
+  [ "$ci4_image_fresh" = 1 ] \
+    || DOCKER_CONFIG="$ci4_docker_config" docker build -f Dockerfile.ci4 -t "$ci4_image" "$ROOT" >/dev/null
+  ci4_mounts=(
+    -v "$ROOT/app:/app/app:ro"
+    -v "$ROOT/public:/app/public:ro"
+    -v "$ROOT/tests/ci4:/app/tests/ci4:ro"
+    -v "$ROOT/tests/wp00c:/app/tests/wp00c:ro"
+    -v "$ROOT/phpunit.xml.dist:/app/phpunit.xml.dist:ro"
+    -v "$ROOT/spark:/app/spark:ro"
+    -v "$ROOT/phpstan.neon.dist:/app/phpstan.neon.dist:ro"
+    -v "$ROOT/phpstan-baseline.neon:/app/phpstan-baseline.neon:ro"
+    -v "$ROOT/scripts/phpstan-bootstrap.php:/app/scripts/phpstan-bootstrap.php:ro"
+  )
+  php_version=$(DOCKER_CONFIG="$ci4_docker_config" \
+    docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark --version)
+  printf '%s\n' "$php_version" | grep -Fq 'CodeIgniter v4.7.4' \
+    || fail "CI4 Docker runtime version mismatch"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
+    php -r 'exit(extension_loaded("mysqli") && str_contains(mysqli_get_client_info(), "mysqlnd") ? 0 : 1);' \
+    || fail "CI4 image must load mysqli built on mysqlnd"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
+    sh -c "find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null" \
+    || fail "php lint failed in CI4 image"
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm -e HOME=/tmp "${ci4_mounts[@]}" "$ci4_image" \
+    vendor/bin/phpstan analyse --no-progress --memory-limit=1G >/dev/null \
+    || fail "phpstan static analysis failed in CI4 image"
+  routes=$(DOCKER_CONFIG="$ci4_docker_config" \
+    docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark routes)
+  DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
+    vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
+fi
+printf '%s\n' "$routes" | grep -Eq 'GET.*health.*Health::index' \
+  || fail "CI4 explicit health route is missing"
+grep -Fq 'public bool $autoRoute = false;' app/Config/Routing.php \
+  || fail "CI4 Auto Routing Legacy is enabled"
+grep -Eq "'DBDebug'[[:space:]]*=> ENVIRONMENT !== 'production'," app/Config/Database.php \
+  || fail "CI4 default DBDebug must be disabled in production"
+pass "CI4 dependency, route and health smoke gates"
+pass "PHP mysqli/mysqlnd and composer platform requirements"
+pass "php lint (app + tests/ci4)"
+
+ci4_compose=$(sed -n '/^  ci4:/,/^networks:/p' compose.yaml)
+if grep -Eq '^[[:space:]]+(app|database|encryption)\.' <<<"$ci4_compose"; then
+  fail "CI4 Compose uses Docker-incompatible dotted environment keys"
+fi
+for key in \
+  app_baseURL \
+  database_default_hostname \
+  database_default_port \
+  database_default_database \
+  database_default_username \
+  database_default_password \
+  database_default_DBDriver \
+  encryption_driver \
+  encryption_key; do
+  grep -Fq "      $key:" <<<"$ci4_compose" \
+    || fail "CI4 Compose environment alias is missing: $key"
+done
+pass "CI4 Docker environment aliases"
+
+grep -Fq 'database_default_database: "${CI4_DATABASE:-samsonite_ci4}"' compose.yaml \
+  || fail "CI4 must use its isolated default database"
+grep -Fq '  ci4-db-bootstrap) ci4_db_bootstrap ;;' db/dbctl.sh \
+  || fail "CI4 synthetic database bootstrap command is missing"
+pass "CI4 database isolation"
+
+grep -Fxq 'CI4_HOST_PORT=18405' .env.example \
+  || fail "CI4 loopback port placeholder is missing"
+grep -Fxq 'CI4_RESET_ENCRYPTION_KEY=' .env.example \
+  || fail "CI4 reset encryption-key placeholder is missing"
+pass "CI4 environment placeholders"
+
+bash scripts/ci4-concurrency-check.sh
 
 schema_tables=$(grep -c '^CREATE TABLE' db/local-schema-only.sql || true)
 [ "$schema_tables" = 31 ] || fail "schema table count is $schema_tables, expected 31"
@@ -20,11 +119,30 @@ pass "schema-only SQL: tables=31 data statements=0"
 
 python3 scripts/wp00c-kit.py validate-data >/dev/null
 python3 -m py_compile scripts/wp00c-route-auth.py
+python3 -m py_compile scripts/wp00c-closure.py
+python3 -m unittest tests/wp00c/test_closure.py >/dev/null
+python3 -m unittest tests/wp00c/test_junit_evidence.py tests/wp00c/test_route_disposition.py >/dev/null
 for command in validate seed verify clean; do
   grep -Fq "  wp00c-fixture-$command)" db/dbctl.sh \
     || fail "WP-00C fixture command is missing: $command"
 done
-pass "WP-00C catalog and synthetic fixture kit"
+pass "WP-00C catalog, synthetic fixture kit and fail-closed closure gate"
+
+if curl -s --max-time 2 -o /dev/null "${CI4_BASE_URL:-http://127.0.0.1:18405}/health" 2>/dev/null; then
+  bash scripts/ci4-web-boundary-check.sh
+else
+  pass "web boundary skipped: CI4 runtime not listening"
+fi
+
+ci3_source_root=${CI3_SOURCE_ROOT:-$ROOT/../samsoniteci3}
+if [ -d "$ci3_source_root/.git" ]; then
+  CI3_SOURCE_ROOT="$ci3_source_root" php scripts/check-function-disposition.php \
+    outputs/diagrams/2026-08-22_function-disposition-evidence_v3.md >/dev/null \
+    || fail "function disposition ledger reconciliation failed"
+  pass "function disposition ledger (WP-01I)"
+else
+  pass "function disposition ledger skipped: CI3 checkout unavailable"
+fi
 
 grep -Fq \
   'WP00C_CURRENT_CI3_STATE="ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6 0"' \
@@ -43,12 +161,12 @@ tracked_sql=$(git ls-files '*.sql')
 [ "$tracked_sql" = "db/local-schema-only.sql" ] \
   || fail "unexpected tracked SQL file"
 
-tracked_sensitive=$(git ls-files | grep -E \
+candidate_sensitive=$(git ls-files --cached --others --exclude-standard | grep -E \
   '(^|/)\.env($|\.)|(^|/)(auth|credentials)\.json$|\.(pem|key)$|(^|/)SECRETS-LOCAL\.md$' \
   | grep -v '^\.env\.example$' || true)
-[ -z "$tracked_sensitive" ] || {
-  printf '%s\n' "$tracked_sensitive" >&2
-  fail "sensitive filename is tracked"
+[ -z "$candidate_sensitive" ] || {
+  printf '%s\n' "$candidate_sensitive" >&2
+  fail "sensitive filename is present in candidate tree"
 }
 git check-ignore -q .env || fail ".env is not ignored"
 pass "secret file policy"
@@ -63,10 +181,15 @@ email = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,}|example\.in
 phone = re.compile(r"(?<![0-9A-Fa-f])(?:\+66|0)\d{1,2}[ -]?\d{3}[ -]?\d{4,5}(?![0-9A-Fa-f])")
 violations = []
 
-for raw_path in subprocess.check_output(["git", "ls-files", "-z"]).split(b"\0"):
+for raw_path in subprocess.check_output(
+    ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+).split(b"\0"):
     if not raw_path:
         continue
     path = pathlib.Path(raw_path.decode())
+    # Composer lock metadata contains public upstream package-author addresses.
+    if path == pathlib.Path("composer.lock"):
+        continue
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (UnicodeDecodeError, OSError):
@@ -82,7 +205,7 @@ if violations:
     print("\n".join(violations), file=sys.stderr)
     sys.exit(1)
 PY
-pass "tracked-tree PII guard"
+pass "candidate-tree PII guard"
 
 grep -Fxq \
   'disable_functions = mail,mb_send_mail,curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client,popen,proc_open,exec,shell_exec,system,passthru' \

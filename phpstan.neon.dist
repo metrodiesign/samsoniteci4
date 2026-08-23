@@ -1,0 +1,20 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+    paths:
+        - app
+        - tests/ci4
+    excludePaths:
+        - app/Views
+        - app/Config/Kint.php
+    dynamicConstantNames:
+        - ENVIRONMENT
+        - CI_DEBUG
+    bootstrapFiles:
+        - scripts/phpstan-bootstrap.php
+    scanDirectories:
+        - vendor/codeigniter4/framework/system/Helpers
+    scanFiles:
+        - vendor/codeigniter4/framework/system/Common.php

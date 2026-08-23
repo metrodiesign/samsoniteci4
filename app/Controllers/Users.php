@@ -1,0 +1,196 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Users\UserStore;
+use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\HTTP\RedirectResponse;
+use CodeIgniter\HTTP\ResponseInterface;
+
+final class Users extends BaseController
+{
+    public function listing(): string
+    {
+        return $this->render(null);
+    }
+
+    public function edit(string $rawId): string
+    {
+        $id = $this->positiveInteger($rawId);
+        $row = $id === null ? null : $this->store()->findAccessible($this->role(), $this->branch(), $id);
+        if ($row === null) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $this->render($row);
+    }
+
+    public function create(): RedirectResponse|ResponseInterface
+    {
+        return $this->save(null);
+    }
+
+    public function update(string $rawId): RedirectResponse|ResponseInterface
+    {
+        $id = $this->positiveInteger($rawId);
+        if ($id === null) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $this->save($id);
+    }
+
+    public function delete(string $rawId): ResponseInterface
+    {
+        $id = $this->positiveInteger($rawId);
+        $result = $id === null ? 'not_found' : $this->store()->softDelete($this->actorId(), $this->role(), $this->branch(), $id);
+
+        return match ($result) {
+            'deleted' => $this->response->setStatusCode(204),
+            'forbidden' => $this->response->setStatusCode(409)->setJSON(['error' => 'user_delete_forbidden']),
+            'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'user_not_found']),
+            default => $this->response->setStatusCode(503)->setJSON(['error' => 'user_unavailable']),
+        };
+    }
+
+    public function emailExists(): ResponseInterface
+    {
+        $rawEmail = $this->request->getGet('email');
+        $rawExclude = $this->request->getGet('exclude_id');
+        $exclude = is_string($rawExclude) ? $this->positiveInteger($rawExclude) : null;
+        $exists = is_string($rawEmail) && ($rawExclude === null || $exclude !== null)
+            ? $this->store()->emailExists($this->role(), $this->branch(), $rawEmail, $exclude)
+            : null;
+
+        return $exists === null
+            ? $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_email'])
+            : $this->response->setJSON(['exists' => $exists]);
+    }
+
+    public function passwordForm(): string
+    {
+        return view('layout', [
+            'title' => 'Change password',
+            'content' => view('change_password', ['changed' => $this->request->getGet('changed') === '1']),
+        ]);
+    }
+
+    public function changePassword(): RedirectResponse|ResponseInterface
+    {
+        $result = $this->store()->changePassword(
+            $this->actorId(),
+            $this->request->getPost('current_password'),
+            $this->request->getPost('password'),
+            $this->request->getPost('password_confirmation'),
+        );
+        if ($result === 'changed') {
+            $version = (new \App\Authentication\ShadowUserStore(db_connect()))->currentSessionVersion($this->actorId());
+            if ($version === null) {
+                return $this->response->setStatusCode(503)->setJSON(['error' => 'password_unavailable']);
+            }
+            service('session')->set('sessionVersion', $version);
+
+            return redirect()->to('/change-password?changed=1');
+        }
+
+        return match ($result) {
+            'invalid', 'invalid_current' => $this->response->setStatusCode(422)->setJSON(['error' => $result]),
+            'unchanged' => $this->response->setStatusCode(409)->setJSON(['error' => 'password_unchanged']),
+            default => $this->response->setStatusCode(503)->setJSON(['error' => 'password_unavailable']),
+        };
+    }
+
+    public function history(string $rawId, string $rawPage = '1'): string
+    {
+        $id = $this->positiveInteger($rawId);
+        $page = $this->positiveInteger($rawPage);
+        $rows = $id === null || $page === null ? null : $this->store()->history($this->role(), $this->branch(), $id, $page);
+        if ($rows === null) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return view('layout', [
+            'title' => 'Login history',
+            'content' => view('login_history', ['rows' => $rows, 'userId' => $id, 'page' => $page]),
+        ]);
+    }
+
+    public function ownHistory(): string
+    {
+        return $this->history((string) $this->actorId());
+    }
+
+    public function branches(): ResponseInterface
+    {
+        return $this->response->setJSON(['branches' => $this->store()->branches($this->role(), $this->branch())]);
+    }
+
+    public function books(): ResponseInterface
+    {
+        $raw = $this->request->getGet('branch_id');
+        $branchId = is_string($raw) ? $this->positiveInteger($raw) : null;
+        $rows = $branchId === null ? null : $this->store()->books($this->role(), $this->branch(), $branchId);
+
+        return $rows === null
+            ? $this->response->setStatusCode(404)->setJSON(['error' => 'branch_not_found'])
+            : $this->response->setJSON(['books' => $rows]);
+    }
+
+    /** @param array<string, mixed>|null $row */
+    private function render(?array $row): string
+    {
+        $rawSearch = $this->request->getGet('search');
+        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+
+        return view('layout', [
+            'title' => 'Users',
+            'content' => view('users', [
+                'rows' => $this->store()->all($this->role(), $this->branch(), $search),
+                'row' => $row,
+                'search' => $search,
+                'actorRole' => $this->role(),
+                'actorBranch' => $this->branch(),
+            ]),
+        ]);
+    }
+
+    private function save(?int $id): RedirectResponse|ResponseInterface
+    {
+        $result = $this->store()->save($this->actorId(), $this->role(), $this->branch(), $id, $this->request->getPost());
+
+        return match ($result) {
+            'created', 'updated' => redirect()->to('/users'),
+            'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_user']),
+            'duplicate' => $this->response->setStatusCode(409)->setJSON(['error' => 'duplicate_user']),
+            'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'user_not_found']),
+            default => $this->response->setStatusCode(503)->setJSON(['error' => 'user_unavailable']),
+        };
+    }
+
+    private function store(): UserStore
+    {
+        return new UserStore(db_connect());
+    }
+
+    private function actorId(): int
+    {
+        return (int) service('session')->get('userId');
+    }
+
+    private function role(): int
+    {
+        return (int) service('session')->get('role');
+    }
+
+    private function branch(): ?int
+    {
+        $value = service('session')->get('BranchID');
+
+        return $value === null ? null : (int) $value;
+    }
+
+    private function positiveInteger(string $value): ?int
+    {
+        return preg_match('/\A[1-9][0-9]*\z/D', $value) === 1 ? (int) $value : null;
+    }
+}

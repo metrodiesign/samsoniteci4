@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import http.cookiejar
 import json
@@ -13,6 +14,7 @@ import secrets
 import subprocess
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
 from html.parser import HTMLParser
 
@@ -20,6 +22,9 @@ from html.parser import HTMLParser
 CI3_ROOT = pathlib.Path("/Users/king_developer/Desktop/Project/samsoniteci3")
 LOCK_PATH = pathlib.Path("/private/tmp/wp00c-report-tracking.lock")
 BASE_URL = "http://127.0.0.1:18404/"
+DATABASE_NAME = ""
+EXPECTED_TABLE_COUNT = 31
+TARGET = "ci3"
 DB_CONTAINER = "samsonitetracking-ci4-migration-db-1"
 WEB_CONTAINER = "samsonitetracking-ci4-migration-web-1"
 EXPECTED_PIN = "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6"
@@ -51,12 +56,15 @@ def db(sql: str) -> str:
         [
             "docker",
             "exec",
+            "-e",
+            f"WP00C_DATABASE={DATABASE_NAME}",
             "-i",
             DB_CONTAINER,
             "sh",
             "-lc",
+            'database_name="${WP00C_DATABASE:-$MARIADB_DATABASE}"; '
             'exec mariadb --batch --raw --skip-column-names -u"$MARIADB_USER" '
-            '-p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"',
+            '-p"$MARIADB_PASSWORD" "$database_name"',
         ],
         input_text=sql,
     )
@@ -68,7 +76,9 @@ def db_quote(value: str) -> str:
 
 def table_checksums() -> dict[str, str]:
     tables = db("SHOW TABLES;").splitlines()
-    if len(tables) != 31 or any(re.fullmatch(r"[A-Za-z0-9_]+", table) is None for table in tables):
+    if len(tables) != EXPECTED_TABLE_COUNT or any(
+        re.fullmatch(r"[A-Za-z0-9_]+", table) is None for table in tables
+    ):
         raise AssertionError(f"unexpected table inventory: {len(tables)}")
     checksums: dict[str, str] = {}
     for table in tables:
@@ -118,6 +128,22 @@ class ReportTableParser(HTMLParser):
             self.cell_parts.append(data)
 
 
+class CsrfParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.fields: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "input":
+            return
+
+        attributes = dict(attrs)
+        name = attributes.get("name")
+        value = attributes.get("value")
+        if isinstance(name, str) and name.startswith("csrf_") and isinstance(value, str):
+            self.fields[name] = value
+
+
 def parse_rows(html: str) -> list[list[str]]:
     parser = ReportTableParser()
     parser.feed(html)
@@ -131,19 +157,42 @@ def opener() -> urllib.request.OpenerDirector:
     return result
 
 
+def get(client: urllib.request.OpenerDirector, path: str) -> tuple[int, str, str]:
+    request = urllib.request.Request(urllib.parse.urljoin(BASE_URL, path), method="GET")
+    try:
+        with client.open(request, timeout=20) as response:
+            return response.status, response.geturl(), response.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.geturl(), exc.read().decode("utf-8", "replace")
+
+
 def post(client: urllib.request.OpenerDirector, path: str, data: dict[str, str]) -> tuple[int, str, str]:
     request = urllib.request.Request(
         urllib.parse.urljoin(BASE_URL, path),
         data=urllib.parse.urlencode(data).encode(),
         method="POST",
     )
-    with client.open(request, timeout=20) as response:
-        return response.status, response.geturl(), response.read().decode("utf-8", "replace")
+    try:
+        with client.open(request, timeout=20) as response:
+            return response.status, response.geturl(), response.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.geturl(), exc.read().decode("utf-8", "replace")
+
+
+def csrf_fields(html: str) -> dict[str, str]:
+    parser = CsrfParser()
+    parser.feed(html)
+    return parser.fields
 
 
 def login(username: str, password: str) -> urllib.request.OpenerDirector:
     client = opener()
-    status, url, body = post(client, "loginMe", {"username": username, "password": password})
+    login_status, _, login_html = get(client, "login")
+    if login_status != 200:
+        raise AssertionError(f"login page failed for {username}: status={login_status}")
+    payload = {"username": username, "password": password}
+    payload.update(csrf_fields(login_html))
+    status, url, body = post(client, "loginMe", payload)
     if status != 200 or not url.rstrip("/").endswith("/dashboard") or "SYNTHETIC" not in body:
         raise AssertionError(f"login failed for {username}: status={status} url={url}")
     return client
@@ -160,12 +209,19 @@ def report_case(
     sdate: str = "01/08/2026",
     edate: str = "31/08/2026",
 ) -> dict[str, object]:
+    preflight_status, _, preflight_html = get(client, path)
+    if preflight_status != 200:
+        raise AssertionError(f"{case} preflight failed: status={preflight_status} path={path}")
+    payload = {"status_id": status_id, "searchText": search, "sdate": sdate, "edate": edate}
+    payload.update(csrf_fields(preflight_html))
     status, url, html = post(
         client,
         path,
-        {"status_id": status_id, "searchText": search, "sdate": sdate, "edate": edate},
+        payload,
     )
     errors = [marker for marker in ERROR_MARKERS if marker.lower() in html.lower()]
+    if TARGET == "ci4" and "ReportTrackingListingTest" in html:
+        errors.append("legacy Test page/menu reference")
     rows = parse_rows(html)
     tracks = [row[7] if len(row) >= 23 else row[6] for row in rows]
     if status != 200 or "/login" in url or errors or tracks != expected_tracks:
@@ -185,6 +241,17 @@ def report_case(
 
 
 def main() -> int:
+    global BASE_URL, DATABASE_NAME, EXPECTED_TABLE_COUNT, TARGET
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", choices=("ci3", "ci4"), default="ci3")
+    args = parser.parse_args()
+    TARGET = args.target
+    if TARGET == "ci4":
+        BASE_URL = "http://127.0.0.1:18405/"
+        DATABASE_NAME = "samsonite_ci4"
+        EXPECTED_TABLE_COUNT = 36
+
     # ponytail: one local runtime exists; split lock per runtime only when parallel runtimes exist.
     lock_fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     lock_file = os.fdopen(lock_fd, "r+")
@@ -199,6 +266,25 @@ def main() -> int:
         raise AssertionError(f"CI3 source identity mismatch: pin={pin} dirty={bool(dirty)}")
 
     initial_checksums = table_checksums()
+    ci4_hashes: dict[str, str] = {}
+    if TARGET == "ci4":
+        target_mutation_rows = db(
+            "SELECT "
+            "(SELECT COUNT(*) FROM ci4_rate_limit_buckets) + "
+            "(SELECT COUNT(*) FROM ci4_password_reset_tokens) + "
+            "(SELECT COUNT(*) FROM ci4_delivery_intents);"
+        )
+        if target_mutation_rows != "0":
+            raise AssertionError("CI4 target mutation tables must be empty before comparator")
+        ci4_hashes = dict(
+            line.split("\t", 1)
+            for line in db(
+                "SELECT id,password_hash FROM ci4_users "
+                "WHERE id IN (9001,9002,9003) AND is_active=1 ORDER BY id;"
+            ).splitlines()
+        )
+        if len(ci4_hashes) != 3:
+            raise AssertionError("CI4 imported synthetic users missing")
     original_hashes = dict(
         line.split("\t", 1)
         for line in db("SELECT userId,password FROM tbl_users WHERE userId IN (9001,9002,9003) ORDER BY userId;").splitlines()
@@ -216,6 +302,11 @@ def main() -> int:
 
     try:
         db(f"UPDATE tbl_users SET password={db_quote(password_hash)} WHERE userId IN (9001,9002,9003);")
+        if TARGET == "ci4":
+            db(
+                f"UPDATE ci4_users SET password_hash={db_quote(password_hash)} "
+                "WHERE id IN (9001,9002,9003) AND is_active=1;"
+            )
         admin = login("wp00c-admin", password)
         branch_a = login("wp00c-a", password)
         branch_b = login("wp00c-b", password)
@@ -227,7 +318,18 @@ def main() -> int:
         branch_one = [f"WP00C-TRACK-{number:03d}" for number in range(6, 0, -1)]
         branch_two = [f"WP00C-TRACK-{number:03d}" for number in range(9, 6, -1)]
 
-        for route, prefix in (("ReportTrackingListingTest", "test"), ("ReportTrackingListing", "main")):
+        test_route_absent = False
+        if TARGET == "ci3":
+            routes = (("ReportTrackingListingTest", "test"), ("ReportTrackingListing", "main"))
+        else:
+            for test_route in ("ReportTrackingListingTest", "Order/ReportTrackingListingTest"):
+                status, _, _ = get(admin, test_route)
+                if status != 404:
+                    raise AssertionError(f"CI4 legacy Test route is exposed: {test_route} status={status}")
+            test_route_absent = True
+            routes = (("Order/ReportTrackingListing", "main"),)
+
+        for route, prefix in routes:
             results.extend(
                 [
                     report_case(admin, f"{prefix}-empty", route, all_tracks),
@@ -237,15 +339,16 @@ def main() -> int:
                 ]
             )
 
+        main_route = "ReportTrackingListing" if TARGET == "ci3" else "Order/ReportTrackingListing"
         results.extend(
             [
-                report_case(admin, "main-search", "ReportTrackingListing", ["WP00C-TRACK-004"], search="WP00C-TRACK-004"),
-                report_case(admin, "main-date", "ReportTrackingListing", ["WP00C-TRACK-005", "WP00C-TRACK-004", "WP00C-TRACK-003"], sdate="03/08/2026", edate="05/08/2026"),
-                report_case(admin, "main-route-branch-1", "ReportTrackingListing/0/1", branch_one),
-                report_case(admin, "main-route-branch-2", "ReportTrackingListing/0/2", branch_two),
-                report_case(admin, "main-no-real-pagination", "ReportTrackingListing/25/1", branch_one),
-                report_case(branch_a, "main-session-branch-1", "ReportTrackingListing", branch_one),
-                report_case(branch_b, "main-session-branch-2", "ReportTrackingListing", branch_two),
+                report_case(admin, "main-search", main_route, ["WP00C-TRACK-004"], search="WP00C-TRACK-004"),
+                report_case(admin, "main-date", main_route, ["WP00C-TRACK-005", "WP00C-TRACK-004", "WP00C-TRACK-003"], sdate="03/08/2026", edate="05/08/2026"),
+                report_case(admin, "main-route-branch-1", f"{main_route}/0/1", branch_one),
+                report_case(admin, "main-route-branch-2", f"{main_route}/0/2", branch_two),
+                report_case(admin, "main-no-real-pagination", f"{main_route}/25/1", branch_one),
+                report_case(branch_a, "main-session-branch-1", main_route, branch_one),
+                report_case(branch_b, "main-session-branch-2", main_route, branch_two),
             ]
         )
 
@@ -264,9 +367,13 @@ def main() -> int:
 
         output = {
             "verdict": "PASS",
+            "target": TARGET,
             "ci3_pin": pin,
-            "image": "samsonitetracking-ci3:ee1c95e",
+            "image": "samsonitetracking-ci3:ee1c95e"
+            if TARGET == "ci3"
+            else "samsonitetracking-ci4:4.7.4-php8.5.7",
             "cases": ["RPT-TRACKING-TEST-001", "RPT-TRACKING-001"],
+            "test_route_absent": test_route_absent,
             "requests": len(results),
             "results": [{key: value for key, value in result.items() if key != "row_by_track"} for result in results],
             "database_tables": len(before_reports),
@@ -278,10 +385,20 @@ def main() -> int:
             f"UPDATE tbl_users SET password={db_quote(password_hash)} WHERE userId={int(user_id)}"
             for user_id, password_hash in original_hashes.items()
         )
+        if TARGET == "ci4":
+            restore += ";" + ";".join(
+                f"UPDATE ci4_users SET password_hash={db_quote(password_hash)} WHERE id={int(user_id)}"
+                for user_id, password_hash in ci4_hashes.items()
+            )
         db(
             restore
             + f";DELETE FROM tbl_last_login WHERE id>{last_login_max} AND userId IN (9001,9002,9003) "
             + f"AND agentString={db_quote(USER_AGENT)};"
+            + (
+                ";DELETE FROM ci4_rate_limit_buckets;"
+                if TARGET == "ci4"
+                else ""
+            )
         )
         final_checksums = table_checksums()
         if initial_checksums != final_checksums:

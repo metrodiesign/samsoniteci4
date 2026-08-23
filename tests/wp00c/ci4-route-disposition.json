@@ -1,0 +1,1429 @@
+{
+  "ci3_commit": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "routes": [
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 41,
+      "replacement": "/tracking",
+      "route": "default_controller",
+      "status": "mapped",
+      "target": "track"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 42,
+      "replacement": "HTTP 404",
+      "route": "404_override",
+      "status": "mapped",
+      "target": "error"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 47,
+      "replacement": "/loginMe",
+      "route": "loginMe",
+      "status": "mapped",
+      "target": "login/loginMe"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 48,
+      "replacement": "/dashboard",
+      "route": "dashboard",
+      "status": "mapped",
+      "target": "user"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 49,
+      "replacement": "/logout",
+      "route": "logout",
+      "status": "mapped",
+      "target": "user/logout"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 50,
+      "replacement": "/users",
+      "route": "userListing",
+      "status": "mapped",
+      "target": "user/userListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 51,
+      "replacement": "/users",
+      "route": "userListing/(:num)",
+      "status": "mapped",
+      "target": "user/userListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 52,
+      "replacement": "/users",
+      "route": "addNew",
+      "status": "mapped",
+      "target": "user/addNew"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 54,
+      "replacement": "/users",
+      "route": "addNewUser",
+      "status": "mapped",
+      "target": "user/addNewUser"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 55,
+      "replacement": "/users",
+      "route": "editOld",
+      "status": "mapped",
+      "target": "user/editOld"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 56,
+      "replacement": "/users",
+      "route": "editOld/(:num)",
+      "status": "mapped",
+      "target": "user/editOld/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 57,
+      "replacement": "/users",
+      "route": "editUser",
+      "status": "mapped",
+      "target": "user/editUser"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 58,
+      "replacement": "/users",
+      "route": "deleteUser",
+      "status": "mapped",
+      "target": "user/deleteUser"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 59,
+      "replacement": "/change-password",
+      "route": "loadChangePass",
+      "status": "mapped",
+      "target": "user/loadChangePass"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 60,
+      "replacement": "/change-password",
+      "route": "changePassword",
+      "status": "mapped",
+      "target": "user/changePassword"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 61,
+      "replacement": "HTTP 404",
+      "route": "pageNotFound",
+      "status": "mapped",
+      "target": "user/pageNotFound"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 62,
+      "replacement": "/users",
+      "route": "checkEmailExists",
+      "status": "mapped",
+      "target": "user/checkEmailExists"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 63,
+      "replacement": "/users/{id}/history",
+      "route": "login-history",
+      "status": "mapped",
+      "target": "user/loginHistoy"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 64,
+      "replacement": "/users/{id}/history",
+      "route": "login-history/(:num)",
+      "status": "mapped",
+      "target": "user/loginHistoy/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 65,
+      "replacement": "/users/{id}/history",
+      "route": "login-history/(:num)/(:num)",
+      "status": "mapped",
+      "target": "user/loginHistoy/$1/$2"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 67,
+      "replacement": "/password-reset/request|complete",
+      "route": "forgotPassword",
+      "status": "mapped",
+      "target": "login/forgotPassword"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 68,
+      "replacement": "/password-reset/request|complete",
+      "route": "resetPasswordUser",
+      "status": "mapped",
+      "target": "login/resetPasswordUser"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 69,
+      "replacement": "/password-reset/request|complete",
+      "route": "resetPasswordConfirmUser",
+      "status": "mapped",
+      "target": "login/resetPasswordConfirmUser"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 70,
+      "replacement": "/password-reset/request|complete",
+      "route": "resetPasswordConfirmUser/(:any)",
+      "status": "mapped",
+      "target": "login/resetPasswordConfirmUser/$1"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 71,
+      "replacement": "/password-reset/request|complete",
+      "route": "resetPasswordConfirmUser/(:any)/(:any)",
+      "status": "mapped",
+      "target": "login/resetPasswordConfirmUser/$1/$2"
+    },
+    {
+      "decision": "REPLACE_AND_REBASELINE",
+      "line": 72,
+      "replacement": "/password-reset/request|complete",
+      "route": "createPasswordUser",
+      "status": "mapped",
+      "target": "login/createPasswordUser"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 74,
+      "replacement": "/master/branch",
+      "route": "branchListing",
+      "status": "mapped",
+      "target": "branch/branchListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 75,
+      "replacement": "/master/branch",
+      "route": "branchListing/(:num)",
+      "status": "mapped",
+      "target": "branch/branchListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 76,
+      "replacement": "/master/branch",
+      "route": "BranchNew",
+      "status": "mapped",
+      "target": "branch/addNew"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 78,
+      "replacement": "/master/branch",
+      "route": "addNewBranch",
+      "status": "mapped",
+      "target": "branch/addNewBranch"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 79,
+      "replacement": "/master/branch",
+      "route": "editBranchOld",
+      "status": "mapped",
+      "target": "branch/editBranchOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 80,
+      "replacement": "/master/branch",
+      "route": "editBranchOld/(:num)",
+      "status": "mapped",
+      "target": "branch/editBranchOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 81,
+      "replacement": "/master/branch",
+      "route": "editBranch",
+      "status": "mapped",
+      "target": "branch/editBranch"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 82,
+      "replacement": "/master/branch",
+      "route": "deleteBranch",
+      "status": "mapped",
+      "target": "branch/deleteBranch"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 84,
+      "replacement": "/master/branchtype",
+      "route": "branchtypeListing",
+      "status": "mapped",
+      "target": "branchtype/branchtypeListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 85,
+      "replacement": "/master/branchtype",
+      "route": "branchtypeListing/(:num)",
+      "status": "mapped",
+      "target": "branchtype/branchtypeListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 86,
+      "replacement": "/master/branchtype",
+      "route": "add_new_branchtype",
+      "status": "mapped",
+      "target": "branchtype/add_new_branchtype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 88,
+      "replacement": "/master/branchtype",
+      "route": "addNewBranchtype",
+      "status": "mapped",
+      "target": "branchtype/addNewBranchtype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 89,
+      "replacement": "/master/branchtype",
+      "route": "editBranchtypeOld",
+      "status": "mapped",
+      "target": "branchtype/editBranchtypeOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 90,
+      "replacement": "/master/branchtype",
+      "route": "editBranchtypeOld/(:num)",
+      "status": "mapped",
+      "target": "branchtype/editBranchtypeOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 91,
+      "replacement": "/master/branchtype",
+      "route": "editBranchtype",
+      "status": "mapped",
+      "target": "branchtype/editBranchtype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 92,
+      "replacement": "/master/branchtype",
+      "route": "deleteBranchtype",
+      "status": "mapped",
+      "target": "branchtype/deleteBranchtype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 94,
+      "replacement": "/master/statustype",
+      "route": "statustypeListing",
+      "status": "mapped",
+      "target": "statustype/statustypeListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 95,
+      "replacement": "/master/statustype",
+      "route": "statustypeListing/(:num)",
+      "status": "mapped",
+      "target": "statustype/statustypeListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 96,
+      "replacement": "/master/statustype",
+      "route": "add_new_statustype",
+      "status": "mapped",
+      "target": "statustype/add_new_statustype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 98,
+      "replacement": "/master/statustype",
+      "route": "addNewStatustype",
+      "status": "mapped",
+      "target": "statustype/addNewStatustype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 99,
+      "replacement": "/master/statustype",
+      "route": "editStatustypeOld",
+      "status": "mapped",
+      "target": "statustype/editStatustypeOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 100,
+      "replacement": "/master/statustype",
+      "route": "editStatustypeOld/(:num)",
+      "status": "mapped",
+      "target": "statustype/editStatustypeOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 101,
+      "replacement": "/master/statustype",
+      "route": "editStatustype",
+      "status": "mapped",
+      "target": "statustype/editStatustype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 102,
+      "replacement": "/master/statustype",
+      "route": "deleteStatustype",
+      "status": "mapped",
+      "target": "statustype/deleteStatustype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 104,
+      "replacement": "/master/producttype",
+      "route": "producttypeListing",
+      "status": "mapped",
+      "target": "producttype/producttypeListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 105,
+      "replacement": "/master/producttype",
+      "route": "producttypeListing/(:num)",
+      "status": "mapped",
+      "target": "producttype/producttypeListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 106,
+      "replacement": "/master/producttype",
+      "route": "add_new_producttype",
+      "status": "mapped",
+      "target": "producttype/add_new_producttype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 108,
+      "replacement": "/master/producttype",
+      "route": "addNewProducttype",
+      "status": "mapped",
+      "target": "producttype/addNewProducttype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 109,
+      "replacement": "/master/producttype",
+      "route": "editProducttypeOld",
+      "status": "mapped",
+      "target": "producttype/editProducttypeOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 110,
+      "replacement": "/master/producttype",
+      "route": "editProducttypeOld/(:num)",
+      "status": "mapped",
+      "target": "producttype/editProducttypeOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 111,
+      "replacement": "/master/producttype",
+      "route": "editProducttype",
+      "status": "mapped",
+      "target": "producttype/editProducttype"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 112,
+      "replacement": "/master/producttype",
+      "route": "deleteProducttype",
+      "status": "mapped",
+      "target": "producttype/deleteProducttype"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 114,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListing",
+      "status": "mapped",
+      "target": "order/ReportTrackingListing"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 115,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListing/(:num)",
+      "status": "mapped",
+      "target": "order/ReportTrackingListing/$1"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 116,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListing/(:num)/(:num)",
+      "status": "mapped",
+      "target": "order/ReportTrackingListing/$1/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 117,
+      "replacement": "/orders",
+      "route": "TrackingListing",
+      "status": "mapped",
+      "target": "order/TrackingListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 118,
+      "replacement": "/orders",
+      "route": "TrackingListing/(:num)",
+      "status": "mapped",
+      "target": "order/TrackingListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 120,
+      "replacement": "/orders",
+      "route": "TrackingcloseListing",
+      "status": "mapped",
+      "target": "order/TrackingcloseListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 121,
+      "replacement": "/orders",
+      "route": "TrackingcloseListing/(:num)",
+      "status": "mapped",
+      "target": "order/TrackingcloseListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 123,
+      "replacement": "/orders",
+      "route": "TrackingreturnListing",
+      "status": "mapped",
+      "target": "order/TrackingreturnListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 124,
+      "replacement": "/orders",
+      "route": "TrackingreturnListing/(:num)",
+      "status": "mapped",
+      "target": "order/TrackingreturnListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 126,
+      "replacement": "/orders",
+      "route": "TrackingcompleteListing",
+      "status": "mapped",
+      "target": "order/TrackingcompleteListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 127,
+      "replacement": "/orders",
+      "route": "TrackingcompleteListing/(:num)",
+      "status": "mapped",
+      "target": "order/TrackingcompleteListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 129,
+      "replacement": "/orders",
+      "route": "TrackingCompletedListing",
+      "status": "mapped",
+      "target": "order/TrackingCompletedListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 130,
+      "replacement": "/orders",
+      "route": "TrackingCompletedListing/(:num)",
+      "status": "mapped",
+      "target": "order/TrackingCompletedListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 132,
+      "replacement": "/orders",
+      "route": "sendorderListing",
+      "status": "mapped",
+      "target": "order/sendorderListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 133,
+      "replacement": "/orders",
+      "route": "sendorderListing/(:num)",
+      "status": "mapped",
+      "target": "order/sendorderListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 134,
+      "replacement": "/orders",
+      "route": "sendorderUpdate",
+      "status": "mapped",
+      "target": "order/sendorderUpdate"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 136,
+      "replacement": "/orders",
+      "route": "sendorderUpdateStatus",
+      "status": "mapped",
+      "target": "order/sendorderUpdateStatus"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 137,
+      "replacement": "/orders",
+      "route": "sendorder_deliver",
+      "status": "mapped",
+      "target": "order/sendorder_deliver"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 139,
+      "replacement": "/orders",
+      "route": "ordersListing",
+      "status": "mapped",
+      "target": "order/ordersListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 140,
+      "replacement": "/orders",
+      "route": "ordersListing/(:num)",
+      "status": "mapped",
+      "target": "order/ordersListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 141,
+      "replacement": "/orders/new",
+      "route": "Orders",
+      "status": "mapped",
+      "target": "order/Orders"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 143,
+      "replacement": "/orders/new",
+      "route": "addNewOrders",
+      "status": "mapped",
+      "target": "order/addNewOrders"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 144,
+      "replacement": "/orders",
+      "route": "editOrdersOld",
+      "status": "mapped",
+      "target": "order/editOrdersOld"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 145,
+      "replacement": "/orders",
+      "route": "editOrdersOld/(:num)",
+      "status": "mapped",
+      "target": "order/editOrdersOld/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 146,
+      "replacement": "/orders",
+      "route": "OrderPrint/(:num)",
+      "status": "mapped",
+      "target": "order/OrderPrint/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 147,
+      "replacement": "/orders",
+      "route": "editOrders",
+      "status": "mapped",
+      "target": "order/editOrders"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 148,
+      "replacement": "/orders",
+      "route": "deleteOrders",
+      "status": "mapped",
+      "target": "order/deleteOrders"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 150,
+      "replacement": "/master/book",
+      "route": "bookListing",
+      "status": "mapped",
+      "target": "book/bookListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 151,
+      "replacement": "/master/book",
+      "route": "bookListing/(:num)",
+      "status": "mapped",
+      "target": "order/bookListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 152,
+      "replacement": "/master/book",
+      "route": "BookNew",
+      "status": "mapped",
+      "target": "book/BookNew"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 154,
+      "replacement": "/master/book",
+      "route": "addNewBook",
+      "status": "mapped",
+      "target": "book/addNewBook"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 155,
+      "replacement": "/master/book",
+      "route": "editBookOld",
+      "status": "mapped",
+      "target": "book/editBookOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 156,
+      "replacement": "/master/book",
+      "route": "editBookOld/(:num)",
+      "status": "mapped",
+      "target": "book/editBookOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 157,
+      "replacement": "/master/book",
+      "route": "editBook",
+      "status": "mapped",
+      "target": "book/editBook"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 158,
+      "replacement": "/master/book",
+      "route": "deleteBook",
+      "status": "mapped",
+      "target": "book/deleteBook"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 160,
+      "replacement": "/imports/status",
+      "route": "UploadexcelListing",
+      "status": "mapped",
+      "target": "upload_excel/UploadexcelListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 161,
+      "replacement": "/imports/status",
+      "route": "ExcelDataAdd",
+      "status": "mapped",
+      "target": "upload_excel/ExcelDataAdd"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 162,
+      "replacement": "/imports/status",
+      "route": "ExcelConfirm",
+      "status": "mapped",
+      "target": "upload_excel/ExcelConfirm"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 164,
+      "replacement": "/imports/new-order",
+      "route": "UploadneworderexcelListing",
+      "status": "mapped",
+      "target": "upload_excel/UploadneworderexcelListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 165,
+      "replacement": "/imports/new-order",
+      "route": "ExcelNewOrderDataAdd",
+      "status": "mapped",
+      "target": "upload_excel/ExcelNewOrderDataAdd"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 166,
+      "replacement": "/imports/new-order",
+      "route": "ExcelNewOrderConfirm",
+      "status": "mapped",
+      "target": "upload_excel/ExcelNewOrderConfirm"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 168,
+      "replacement": "/master/brand",
+      "route": "brandListing",
+      "status": "mapped",
+      "target": "brand/brandListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 169,
+      "replacement": "/master/brand",
+      "route": "brandListing/(:num)",
+      "status": "mapped",
+      "target": "brand/brandListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 170,
+      "replacement": "/master/brand",
+      "route": "add_new_brand",
+      "status": "mapped",
+      "target": "brand/add_new_brand"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 172,
+      "replacement": "/master/brand",
+      "route": "addNewBrand",
+      "status": "mapped",
+      "target": "brand/addNewBrand"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 173,
+      "replacement": "/master/brand",
+      "route": "editBrandOld",
+      "status": "mapped",
+      "target": "brand/editBrandOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 174,
+      "replacement": "/master/brand",
+      "route": "editBrandOld/(:num)",
+      "status": "mapped",
+      "target": "brand/editBrandOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 175,
+      "replacement": "/master/brand",
+      "route": "editBrand",
+      "status": "mapped",
+      "target": "brand/editBrand"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 176,
+      "replacement": "/master/brand",
+      "route": "deleteBrand",
+      "status": "mapped",
+      "target": "brand/deleteBrand"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 178,
+      "replacement": "/master/condition",
+      "route": "conditionListing",
+      "status": "mapped",
+      "target": "condition/conditionListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 179,
+      "replacement": "/master/condition",
+      "route": "conditionListing/(:num)",
+      "status": "mapped",
+      "target": "condition/conditionListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 180,
+      "replacement": "/master/condition",
+      "route": "add_new_condition",
+      "status": "mapped",
+      "target": "condition/add_new_Condition"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 182,
+      "replacement": "/master/condition",
+      "route": "addNewCondition",
+      "status": "mapped",
+      "target": "condition/addNewCondition"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 183,
+      "replacement": "/master/condition",
+      "route": "editConditionOld",
+      "status": "mapped",
+      "target": "condition/editConditionOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 184,
+      "replacement": "/master/condition",
+      "route": "editConditionOld/(:num)",
+      "status": "mapped",
+      "target": "condition/editConditionOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 185,
+      "replacement": "/master/condition",
+      "route": "editCondition",
+      "status": "mapped",
+      "target": "condition/editCondition"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 186,
+      "replacement": "/master/condition",
+      "route": "deleteCondition",
+      "status": "mapped",
+      "target": "condition/deleteCondition"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 188,
+      "replacement": "/master/estimateprice",
+      "route": "estimatepriceListing",
+      "status": "mapped",
+      "target": "estimateprice/estimatepriceListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 189,
+      "replacement": "/master/estimateprice",
+      "route": "estimatepriceListing/(:num)",
+      "status": "mapped",
+      "target": "estimateprice/estimatepriceListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 190,
+      "replacement": "/master/estimateprice",
+      "route": "add_new_estimateprice",
+      "status": "mapped",
+      "target": "estimateprice/add_new_estimateprice"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 192,
+      "replacement": "/master/estimateprice",
+      "route": "addNewEstimateprice",
+      "status": "mapped",
+      "target": "estimateprice/addNewEstimateprice"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 193,
+      "replacement": "/master/estimateprice",
+      "route": "editEstimatepriceOld",
+      "status": "mapped",
+      "target": "estimateprice/editEstimatepriceOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 194,
+      "replacement": "/master/estimateprice",
+      "route": "editEstimatepriceOld/(:num)",
+      "status": "mapped",
+      "target": "estimateprice/editEstimatepriceOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 195,
+      "replacement": "/master/estimateprice",
+      "route": "editEstimateprice",
+      "status": "mapped",
+      "target": "estimateprice/editEstimateprice"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 196,
+      "replacement": "/master/estimateprice",
+      "route": "deleteEstimateprice",
+      "status": "mapped",
+      "target": "estimateprice/deleteEstimateprice"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 198,
+      "replacement": "/master/fixed",
+      "route": "fixedListing",
+      "status": "mapped",
+      "target": "fixed/fixedListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 199,
+      "replacement": "/master/fixed",
+      "route": "fixedListing/(:num)",
+      "status": "mapped",
+      "target": "fixed/fixedListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 200,
+      "replacement": "/master/fixed",
+      "route": "add_new_fixed",
+      "status": "mapped",
+      "target": "fixed/add_new_fixed"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 202,
+      "replacement": "/master/fixed",
+      "route": "addNewFixed",
+      "status": "mapped",
+      "target": "fixed/addNewFixed"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 203,
+      "replacement": "/master/fixed",
+      "route": "editFixedOld",
+      "status": "mapped",
+      "target": "fixed/editFixedOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 204,
+      "replacement": "/master/fixed",
+      "route": "editFixedOld/(:num)",
+      "status": "mapped",
+      "target": "fixed/editFixedOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 205,
+      "replacement": "/master/fixed",
+      "route": "editFixed",
+      "status": "mapped",
+      "target": "fixed/editFixed"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 206,
+      "replacement": "/master/fixed",
+      "route": "deleteFixed",
+      "status": "mapped",
+      "target": "fixed/deleteFixed"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 208,
+      "replacement": "/master/provider",
+      "route": "providerListing",
+      "status": "mapped",
+      "target": "provider/providerListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 209,
+      "replacement": "/master/provider",
+      "route": "providerListing/(:num)",
+      "status": "mapped",
+      "target": "provider/providerListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 210,
+      "replacement": "/master/provider",
+      "route": "add_new_provider",
+      "status": "mapped",
+      "target": "provider/add_new_provider"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 212,
+      "replacement": "/master/provider",
+      "route": "addNewProvider",
+      "status": "mapped",
+      "target": "provider/addNewProvider"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 213,
+      "replacement": "/master/provider",
+      "route": "editProviderOld",
+      "status": "mapped",
+      "target": "provider/editProviderOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 214,
+      "replacement": "/master/provider",
+      "route": "editProviderOld/(:num)",
+      "status": "mapped",
+      "target": "provider/editProviderOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 215,
+      "replacement": "/master/provider",
+      "route": "editProvider",
+      "status": "mapped",
+      "target": "provider/editProvider"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 216,
+      "replacement": "/master/provider",
+      "route": "deleteProvider",
+      "status": "mapped",
+      "target": "provider/deleteProvider"
+    },
+    {
+      "decision": "Legacy target is broken; public exact-ID tracking replaces it.",
+      "line": 218,
+      "replacement": "",
+      "route": "rackstatus",
+      "status": "retired",
+      "target": "track/rackstatus"
+    },
+    {
+      "decision": "Legacy target is broken; public exact-ID tracking replaces it.",
+      "line": 219,
+      "replacement": "",
+      "route": "rackstatus/(:num)",
+      "status": "retired",
+      "target": "track/rackstatus/$1"
+    },
+    {
+      "decision": "Legacy target is broken; public exact-ID tracking replaces it.",
+      "line": 221,
+      "replacement": "",
+      "route": "rackstatus_th",
+      "status": "retired",
+      "target": "track_th/rackstatus"
+    },
+    {
+      "decision": "Legacy target is broken; public exact-ID tracking replaces it.",
+      "line": 222,
+      "replacement": "",
+      "route": "rackstatus_th/(:num)",
+      "status": "retired",
+      "target": "track_th/rackstatus/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 224,
+      "replacement": "/contact-list",
+      "route": "contactListing",
+      "status": "mapped",
+      "target": "user/contactListing"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 225,
+      "replacement": "/contact-list",
+      "route": "contactListing/(:num)",
+      "status": "mapped",
+      "target": "user/contactListing/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 226,
+      "replacement": "/contact",
+      "route": "contact",
+      "status": "mapped",
+      "target": "contact/index"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 227,
+      "replacement": "/contact",
+      "route": "contact/(:num)",
+      "status": "mapped",
+      "target": "contact/index/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 228,
+      "replacement": "/contact",
+      "route": "addContact",
+      "status": "mapped",
+      "target": "contact/addContact"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 230,
+      "replacement": "/contact-th",
+      "route": "contact_th",
+      "status": "mapped",
+      "target": "contact_th/index"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 231,
+      "replacement": "/contact-th",
+      "route": "contact_th/(:num)",
+      "status": "mapped",
+      "target": "contact_th/index/$1"
+    },
+    {
+      "decision": "PRESERVE",
+      "line": 232,
+      "replacement": "/contact-th",
+      "route": "addContact_th",
+      "status": "mapped",
+      "target": "contact_th/addContact"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 234,
+      "replacement": "/menu",
+      "route": "menuListing",
+      "status": "mapped",
+      "target": "menu/menuListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 235,
+      "replacement": "/menu",
+      "route": "menuListing/(:num)",
+      "status": "mapped",
+      "target": "menu/menuListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 236,
+      "replacement": "/menu",
+      "route": "addNewMenu",
+      "status": "mapped",
+      "target": "menu/addNewMenu"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 238,
+      "replacement": "/menu",
+      "route": "addMenu",
+      "status": "mapped",
+      "target": "menu/addMenu"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 239,
+      "replacement": "/menu",
+      "route": "editMunuOld",
+      "status": "mapped",
+      "target": "menu/editMunuOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 240,
+      "replacement": "/menu",
+      "route": "editMunuOld/(:num)",
+      "status": "mapped",
+      "target": "menu/editMunuOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 241,
+      "replacement": "/menu",
+      "route": "editMenu",
+      "status": "mapped",
+      "target": "menu/editMenu"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 243,
+      "replacement": "/rating/{trackID}",
+      "route": "rating",
+      "status": "mapped",
+      "target": "rating/index"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 244,
+      "replacement": "/rating/{trackID}",
+      "route": "rating/(:num)",
+      "status": "mapped",
+      "target": "rating/index/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 245,
+      "replacement": "/rating/{trackID}",
+      "route": "addRating",
+      "status": "mapped",
+      "target": "rating/addRating"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 247,
+      "replacement": "/backgrounds",
+      "route": "BackgroundListing",
+      "status": "mapped",
+      "target": "background_web/BackgroundListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 248,
+      "replacement": "/backgrounds",
+      "route": "BackgroundListing/(:num)",
+      "status": "mapped",
+      "target": "background_web/BackgroundListing/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 249,
+      "replacement": "/backgrounds",
+      "route": "BackgroundNew",
+      "status": "mapped",
+      "target": "background_web/BackgroundNew"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 250,
+      "replacement": "/backgrounds",
+      "route": "addBackground",
+      "status": "mapped",
+      "target": "background_web/addBackground"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 251,
+      "replacement": "/backgrounds",
+      "route": "editBackgroundOld",
+      "status": "mapped",
+      "target": "background_web/editBackgroundOld"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 252,
+      "replacement": "/backgrounds",
+      "route": "editBackgroundOld/(:num)",
+      "status": "mapped",
+      "target": "background_web/editBackgroundOld/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 253,
+      "replacement": "/backgrounds",
+      "route": "editBackground",
+      "status": "mapped",
+      "target": "background_web/editBackground"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 254,
+      "replacement": "/backgrounds",
+      "route": "deleteBackground",
+      "status": "mapped",
+      "target": "background_web/deleteBackground"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 256,
+      "replacement": "/reportsummary",
+      "route": "reportsummary",
+      "status": "mapped",
+      "target": "order/reportsummary"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 257,
+      "replacement": "/reportsummary",
+      "route": "reportsummary/(:num)",
+      "status": "mapped",
+      "target": "order/reportsummary/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 258,
+      "replacement": "/reportsummary",
+      "route": "reportsummary/(:num)/(:num)",
+      "status": "mapped",
+      "target": "order/reportsummary/$1/$1"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 260,
+      "replacement": "/imports/price",
+      "route": "UploadexcelpriceListing",
+      "status": "mapped",
+      "target": "upload_excel/UploadexcelpriceListing"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 261,
+      "replacement": "/imports/price",
+      "route": "ExcelPriceDataAdd",
+      "status": "mapped",
+      "target": "upload_excel/ExcelPriceDataAdd"
+    },
+    {
+      "decision": "CORRECT_AND_REBASELINE",
+      "line": 262,
+      "replacement": "/imports/price",
+      "route": "ExcelPriceConfirm",
+      "status": "mapped",
+      "target": "upload_excel/ExcelPriceConfirm"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 264,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListingTest",
+      "status": "mapped",
+      "target": "order/ReportTrackingListingTest"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 265,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListingTest/(:num)",
+      "status": "mapped",
+      "target": "order/ReportTrackingListingTest/$1"
+    },
+    {
+      "decision": "CONSOLIDATE",
+      "line": 266,
+      "replacement": "/Order/ReportTrackingListing",
+      "route": "ReportTrackingListingTest/(:num)/(:num)",
+      "status": "mapped",
+      "target": "order/ReportTrackingListingTest/$1/$1"
+    }
+  ]
+}
