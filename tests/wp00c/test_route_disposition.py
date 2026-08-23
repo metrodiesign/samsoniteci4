@@ -1,14 +1,16 @@
 import json
+import os
 import pathlib
 import subprocess
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-CI3 = ROOT.parent / "samsoniteci3"
+CI3 = pathlib.Path(os.environ.get("CI3_SOURCE_ROOT", ROOT.parent / "samsoniteci3"))
 
 
 class RouteDispositionTest(unittest.TestCase):
+    @unittest.skipUnless((CI3 / ".git").exists(), "CI3 source checkout unavailable (e.g. CI runner)")
     def test_snapshot_matches_active_ci3_pin_and_all_routes_are_classified(self):
         result = subprocess.run(
             ["python3", str(ROOT / "scripts/wp00c-route-disposition.py"), "--source-root", str(CI3)],
