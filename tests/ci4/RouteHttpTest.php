@@ -51,6 +51,56 @@ final class RouteHttpTest extends CIUnitTestCase
         self::assertFalse(config('Routing')->autoRoute);
     }
 
+    public function testEveryMappedCi3ReplacementResolvesToADefinedCi4Route(): void
+    {
+        $path = ROOTPATH . 'tests/wp00c/ci4-route-disposition.json';
+        $payload = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $unresolved = [];
+        foreach ($payload['routes'] as $row) {
+            if ($row['status'] !== 'mapped' || $row['replacement'] === 'HTTP 404') {
+                continue;
+            }
+            foreach ($this->replacementPaths($row['replacement']) as $candidate) {
+                if (! $this->routeIsDefined($candidate)) {
+                    $unresolved[] = $row['route'] . ' -> ' . $candidate;
+                }
+            }
+        }
+        self::assertSame([], array_values(array_unique($unresolved)));
+    }
+
+    /** @return list<string> */
+    private function replacementPaths(string $replacement): array
+    {
+        if (str_contains($replacement, '|')) {
+            [$base, $tail] = [dirname($replacement), basename($replacement)];
+
+            return array_map(static fn (string $leaf): string => $base . '/' . $leaf, explode('|', $tail));
+        }
+
+        return [strtr($replacement, ['{trackID}' => 'TRK1', '{id}' => '1'])];
+    }
+
+    private function routeIsDefined(string $path): bool
+    {
+        $collection = service('routes');
+        foreach (['GET', 'POST'] as $verb) {
+            // Router's constructor resets the collection verb from the request,
+            // so the override must come after construction.
+            $router = new \CodeIgniter\Router\Router($collection, service('request'));
+            $collection->setHTTPVerb($verb);
+            try {
+                $router->handle(ltrim($path, '/'));
+
+                return true;
+            } catch (PageNotFoundException) {
+                // try the next verb
+            }
+        }
+
+        return false;
+    }
+
     public function testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers(): void
     {
         foreach (['/wp00c-missing-route', '/menu/deleteUser', '/menu/changePassword', '/order/do_upload_multi', '/Order/ReportTrackingListingTest'] as $path) {
