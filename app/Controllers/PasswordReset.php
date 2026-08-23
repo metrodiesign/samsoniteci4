@@ -8,7 +8,6 @@ use App\Authentication\PasswordResetWorkflow;
 use App\Authentication\ResetRequestWorkflow;
 use CodeIgniter\HTTP\ResponseInterface;
 use DateTimeImmutable;
-use DateTimeZone;
 use JsonException;
 use Throwable;
 
@@ -55,7 +54,7 @@ final class PasswordReset extends BaseController
                 ->setJSON(['error' => 'invalid_request']);
         }
 
-        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now');
 
         try {
             $retryAfter = $this->requestRateLimitRetryAfter($email, $now);
@@ -139,7 +138,7 @@ final class PasswordReset extends BaseController
                 ->setJSON(['error' => 'invalid_password']);
         }
 
-        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now');
 
         try {
             $retryAfter = $this->completeRateLimitRetryAfter($email, $now);

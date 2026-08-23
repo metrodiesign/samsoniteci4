@@ -44,8 +44,8 @@ final class ContactSubmissionWorkflow
             return 'duplicate';
         }
 
-        $timestamp = ($now ?? new DateTimeImmutable('now', new DateTimeZone('UTC')))
-            ->setTimezone(new DateTimeZone('UTC'))
+        $timestamp = ($now ?? new DateTimeImmutable('now'))
+            ->setTimezone(new DateTimeZone(date_default_timezone_get()))
             ->format('Y-m-d H:i:s');
         $this->db->transBegin();
         try {

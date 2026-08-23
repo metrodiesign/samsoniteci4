@@ -26,8 +26,8 @@ final class ResetTokenFactoryTest extends CIUnitTestCase
             $issued->hash(),
         );
         self::assertSame('01010101010101010101010101010101', $issued->requestId());
-        self::assertSame('2026-08-22T09:00:00+00:00', $issued->createdAt()->format(DATE_ATOM));
-        self::assertSame('2026-08-22T09:30:00+00:00', $issued->expiresAt()->format(DATE_ATOM));
+        self::assertSame('2026-08-22T16:00:00+07:00', $issued->createdAt()->format(DATE_ATOM));
+        self::assertSame('2026-08-22T16:30:00+07:00', $issued->expiresAt()->format(DATE_ATOM));
         self::assertNotSame($issued->token(), $issued->hash());
     }
 

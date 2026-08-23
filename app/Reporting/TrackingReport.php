@@ -183,7 +183,7 @@ final class TrackingReport
             throw new InvalidArgumentException("Invalid {$label}.");
         }
 
-        $date   = DateTimeImmutable::createFromFormat('!d/m/Y', $value, new DateTimeZone('UTC'));
+        $date   = DateTimeImmutable::createFromFormat('!d/m/Y', $value, new DateTimeZone(date_default_timezone_get()));
         $errors = DateTimeImmutable::getLastErrors();
         if (
             $date === false

@@ -5,7 +5,6 @@ namespace App\Orders;
 use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Encryption\EncrypterInterface;
 use DateTimeImmutable;
-use DateTimeZone;
 use DomainException;
 use InvalidArgumentException;
 use RuntimeException;
@@ -30,7 +29,7 @@ final class OrderCreationWorkflow
             throw new DomainException('Duplicate order submission.');
         }
 
-        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now');
         $timestamp = $now->format('Y-m-d H:i:s');
         $this->db->transBegin();
         try {

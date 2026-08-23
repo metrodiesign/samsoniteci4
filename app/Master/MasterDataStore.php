@@ -4,7 +4,6 @@ namespace App\Master;
 
 use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
-use DateTimeZone;
 
 final class MasterDataStore
 {
@@ -68,7 +67,7 @@ final class MasterDataStore
             return 'duplicate';
         }
 
-        $timestamp = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+        $timestamp = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         if ($id === null) {
             $values['cdate'] = $timestamp;
 

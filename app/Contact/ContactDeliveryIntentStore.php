@@ -154,6 +154,6 @@ final class ContactDeliveryIntentStore
 
     private function timestamp(DateTimeImmutable $time): string
     {
-        return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        return $time->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
     }
 }

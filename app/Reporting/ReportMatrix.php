@@ -162,7 +162,7 @@ final class ReportMatrix
         if (! is_string($value) || strlen($value) !== 10) {
             throw new InvalidArgumentException('Invalid ' . $label . '.');
         }
-        $date = DateTimeImmutable::createFromFormat('!d/m/Y', $value, new DateTimeZone('UTC'));
+        $date = DateTimeImmutable::createFromFormat('!d/m/Y', $value, new DateTimeZone(date_default_timezone_get()));
         $errors = DateTimeImmutable::getLastErrors();
         if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
             || $date->format('d/m/Y') !== $value) {

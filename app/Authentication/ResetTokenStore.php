@@ -153,7 +153,7 @@ final class ResetTokenStore
     private function timestamp(DateTimeImmutable $time): string
     {
         return $time
-            ->setTimezone(new DateTimeZone('UTC'))
+            ->setTimezone(new DateTimeZone(date_default_timezone_get()))
             ->format('Y-m-d H:i:s');
     }
 }

@@ -10,7 +10,6 @@ use Closure;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use DateTimeImmutable;
-use DateTimeZone;
 use Throwable;
 
 final class ResetDeliveryWork extends BaseCommand
@@ -47,7 +46,7 @@ final class ResetDeliveryWork extends BaseCommand
         }
 
         try {
-            $now      = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+            $now      = new DateTimeImmutable('now');
             $store    = new ResetDeliveryIntentStore(db_connect(), service('encrypter'));
             $released = $store->releaseStale($now->modify('-15 minutes'), $now);
             $ratePruned = (new AtomicRateLimiter(db_connect()))->pruneExpired($now);

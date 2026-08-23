@@ -7,7 +7,7 @@ $formatDate = static function (mixed $value): string {
 
     $timestamp = strtotime($value);
 
-    return $timestamp === false ? '' : gmdate('d/m/Y', $timestamp);
+    return $timestamp === false ? '' : date('d/m/Y', $timestamp);
 };
 $formPath = $branchId === null
     ? 'Order/ReportTrackingListing'

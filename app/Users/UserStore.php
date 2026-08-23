@@ -87,7 +87,7 @@ final class UserStore
 
         $password = $values['password'];
         unset($values['password']);
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
             if ($id === null) {
@@ -148,7 +148,7 @@ final class UserStore
         }
         $this->db->transBegin();
         try {
-            $timestamp = gmdate('Y-m-d H:i:s');
+            $timestamp = date('Y-m-d H:i:s');
             if (! $this->db->table('tbl_users')->where('userId', $id)->where('isDeleted', 0)->update([
                 'isDeleted' => 1, 'updatedBy' => $actorId, 'updatedDtm' => $timestamp,
             ])) {
@@ -189,7 +189,7 @@ final class UserStore
         $this->db->transBegin();
         try {
             if (! $this->db->table('tbl_users')->where('userId', $userId)->where('isDeleted', 0)->update([
-                'password' => $hash, 'updatedBy' => $userId, 'updatedDtm' => gmdate('Y-m-d H:i:s'),
+                'password' => $hash, 'updatedBy' => $userId, 'updatedDtm' => date('Y-m-d H:i:s'),
             ]) || ! $shadow->replacePasswordAndRevokeSessions($userId, $hash)
                 || ! $this->db->transCommit()) {
                 throw new \RuntimeException('Unable to change password.');

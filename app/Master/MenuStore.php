@@ -76,7 +76,7 @@ final class MenuStore
         }
         $values = ['name' => $name, 'group_type' => implode(',', $normalized)];
         if ($id === null) {
-            $values['cdate'] = gmdate('Y-m-d H:i:s');
+            $values['cdate'] = date('Y-m-d H:i:s');
 
             return $this->db->table('group_menu')->insert($values) ? 'created' : 'failed';
         }

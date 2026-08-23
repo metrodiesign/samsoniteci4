@@ -43,7 +43,7 @@ final class BackgroundStore
                 return 'invalid';
             }
         }
-        $values = ['status' => $status, 'date' => gmdate('Y-m-d H:i:s'), ...$images];
+        $values = ['status' => $status, 'date' => date('Y-m-d H:i:s'), ...$images];
         if ($id === null) {
             return $this->db->table('tbl_background_web')->insert($values) ? 'created' : 'failed';
         }

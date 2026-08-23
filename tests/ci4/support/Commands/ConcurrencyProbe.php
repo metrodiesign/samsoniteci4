@@ -11,7 +11,6 @@ use App\Orders\OrderCreationWorkflow;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use DateTimeImmutable;
-use DateTimeZone;
 use RuntimeException;
 
 final class ConcurrencyProbe extends BaseCommand
@@ -151,7 +150,7 @@ final class ConcurrencyProbe extends BaseCommand
         $tracks = array_column($orders, 'trackID');
         $logs = $db->table('status_log')->countAllResults();
         $intents = $db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults();
-        $period = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('ym');
+        $period = (new DateTimeImmutable('now'))->format('ym');
         $expected = ["G{$period}0042", "G{$period}0043", "G{$period}0044"];
         if ($tracks !== $expected || count(array_unique($tracks)) !== 3 || $logs !== 2 || $intents !== 2) {
             throw new RuntimeException('Order concurrency invariant failed.');
@@ -186,7 +185,7 @@ final class ConcurrencyProbe extends BaseCommand
             'original_action_status' => 1,
         ];
         $batch = str_repeat('c', 32);
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         if (! $db->table('ci4_import_batches')->insert([
             'batch_id' => $batch, 'kind' => 'price', 'owner_user_id' => self::USER_ID,
             'owner_branch_id' => 1, 'state' => 'previewed', 'file_sha256' => str_repeat('d', 64),
@@ -268,7 +267,7 @@ final class ConcurrencyProbe extends BaseCommand
                 'request_id' => (int) $order['request_id'], 'track_id' => $order['trackID'],
                 'original_action_status' => 1,
             ];
-            $timestamp = gmdate('Y-m-d H:i:s');
+            $timestamp = date('Y-m-d H:i:s');
             if (! $db->table('ci4_import_batches')->insert([
                 'batch_id' => $batch, 'kind' => 'price', 'owner_user_id' => $owner,
                 'owner_branch_id' => $branch, 'state' => 'previewed', 'file_sha256' => str_repeat('f', 64),
@@ -333,7 +332,7 @@ final class ConcurrencyProbe extends BaseCommand
 
     private function now(): DateTimeImmutable
     {
-        return new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        return new DateTimeImmutable('now');
     }
 
     private function waitForBarrier(): void

@@ -7,7 +7,6 @@ use App\Authentication\LoginService;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 use DateTimeImmutable;
-use DateTimeZone;
 use Throwable;
 
 final class Login extends BaseController
@@ -37,7 +36,7 @@ final class Login extends BaseController
             return $this->failedLogin();
         }
 
-        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now');
 
         try {
             $limiter   = new AtomicRateLimiter(db_connect());

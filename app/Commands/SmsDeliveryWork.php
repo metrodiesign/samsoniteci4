@@ -9,7 +9,6 @@ use Closure;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use DateTimeImmutable;
-use DateTimeZone;
 use Throwable;
 
 final class SmsDeliveryWork extends BaseCommand
@@ -34,7 +33,7 @@ final class SmsDeliveryWork extends BaseCommand
             return EXIT_ERROR;
         }
         try {
-            $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+            $now = new DateTimeImmutable('now');
             $store = new SmsDeliveryIntentStore(db_connect(), service('encrypter'));
             $released = $store->releaseStale($now->modify('-15 minutes'), $now);
             $transport = new LoopbackSmsTransport();

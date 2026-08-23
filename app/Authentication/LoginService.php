@@ -52,7 +52,7 @@ final class LoginService
             ->getRowArray();
         $lastLogin = is_string($lastRow['createdDtm'] ?? null)
             ? $lastRow['createdDtm']
-            : gmdate('Y-m-d H:i:s');
+            : date('Y-m-d H:i:s');
         $session = [
             'userId'         => $userId,
             'role'           => (int) $row['role_id'],
@@ -78,7 +78,7 @@ final class LoginService
             'userAgent'   => 'Browser',
             'agentString' => substr($agentString, 0, 1024),
             'platform'    => 'Unknown',
-            'createdDtm'  => gmdate('Y-m-d H:i:s'),
+            'createdDtm'  => date('Y-m-d H:i:s'),
         ]);
 
         if (! $inserted) {

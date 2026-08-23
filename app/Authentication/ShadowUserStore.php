@@ -29,7 +29,7 @@ final class ShadowUserStore
             throw new InvalidArgumentException('Invalid shadow user.');
         }
 
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         $inserted  = $this->db->table(self::TABLE)->insert([
             'email'           => $email,
             'password_hash'   => $passwordHash,
@@ -89,7 +89,7 @@ final class ShadowUserStore
             ->where('id', $userId)
             ->get()
             ->getRowArray();
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
 
         if ($row === null) {
             $inserted = $this->db->table(self::TABLE)->insert([
@@ -236,7 +236,7 @@ final class ShadowUserStore
         $updated = $this->db->table(self::TABLE)
             ->set('password_hash', $passwordHash)
             ->set('session_version', 'session_version + 1', false)
-            ->set('updated_at', gmdate('Y-m-d H:i:s'))
+            ->set('updated_at', date('Y-m-d H:i:s'))
             ->where('id', $userId)
             ->where('is_active', 1)
             ->update();

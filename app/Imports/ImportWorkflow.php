@@ -48,7 +48,7 @@ final class ImportWorkflow
                 'payload_ciphertext' => base64_encode($this->encrypter->encrypt(json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))),
             ];
         }
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
             if (! $this->db->table('ci4_import_batches')->insert([
@@ -88,7 +88,7 @@ final class ImportWorkflow
             return 'conflict';
         }
 
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
             $claimed = $owned($this->db->table('ci4_import_batches'))

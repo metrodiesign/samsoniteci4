@@ -31,8 +31,8 @@ final class AtomicRateLimiter
         $requestCount = $this->increment(
             $bucketKey,
             $window,
-            gmdate('Y-m-d H:i:s', $expiresAt),
-            $now->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s', $expiresAt),
+            $now->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s'),
         );
 
         return $requestCount <= $capacity ? null : max(1, $expiresAt - $timestamp);
@@ -41,7 +41,7 @@ final class AtomicRateLimiter
     public function pruneExpired(DateTimeImmutable $before): int
     {
         $deleted = $this->db->table('ci4_rate_limit_buckets')
-            ->where('expires_at <', $before->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'))
+            ->where('expires_at <', $before->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s'))
             ->delete();
 
         if (! $deleted) {

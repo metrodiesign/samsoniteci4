@@ -36,7 +36,7 @@ final class ResetTokenFactory
             throw new RuntimeException('Reset request ID generator must return 16 bytes.');
         }
 
-        $createdAt = $now->setTimezone(new DateTimeZone('UTC'));
+        $createdAt = $now->setTimezone(new DateTimeZone(date_default_timezone_get()));
         $token     = bin2hex($bytes);
 
         return new IssuedResetToken(

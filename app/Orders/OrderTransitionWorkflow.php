@@ -44,7 +44,7 @@ final class OrderTransitionWorkflow
             }
         }
 
-        $timestamp = gmdate('Y-m-d H:i:s');
+        $timestamp = date('Y-m-d H:i:s');
         $this->db->transBegin();
         try {
             foreach ($rows as $row) {
