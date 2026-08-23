@@ -106,6 +106,16 @@ for command in validate seed verify clean; do
 done
 pass "WP-00C catalog, synthetic fixture kit and fail-closed closure gate"
 
+ci3_source_root=${CI3_SOURCE_ROOT:-$ROOT/../samsoniteci3}
+if [ -d "$ci3_source_root/.git" ]; then
+  CI3_SOURCE_ROOT="$ci3_source_root" php scripts/check-function-disposition.php \
+    outputs/diagrams/2026-08-22_function-disposition-evidence_v3.md >/dev/null \
+    || fail "function disposition ledger reconciliation failed"
+  pass "function disposition ledger (WP-01I)"
+else
+  pass "function disposition ledger skipped: CI3 checkout unavailable"
+fi
+
 grep -Fq \
   'WP00C_CURRENT_CI3_STATE="ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6 0"' \
   db/dbctl.sh \
