@@ -25,7 +25,7 @@ final class Rating extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return view('layout', [
+        return view('layout_public', [
             'title'   => 'Service rating',
             'content' => view('rating', [
                 'requestId' => (int) $order['request_id'],

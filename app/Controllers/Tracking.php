@@ -39,19 +39,30 @@ final class Tracking extends BaseController
     /** @param list<array{status_id: int, status_name: string, status_name_th: string, occurred_at: string}> $timeline */
     private function render(string $language, string $trackId, array $timeline): string
     {
-        $prefix = $timeline === [] ? 'image_track_' : 'image_trackstatus_';
-        $suffix = $language === 'th' ? '_th' : '';
+        $suffix      = $language === 'th' ? '_th' : '';
         $backgrounds = new BackgroundStore(db_connect());
 
-        return view('layout', [
-            'title'   => $language === 'th' ? 'ติดตามงานซ่อม' : 'Repair tracking',
-            'content' => view('tracking', [
-                'language' => $language,
-                'timeline' => $timeline,
-                'trackId'  => $trackId,
-                'backgroundImage' => $backgrounds->published($prefix . 'laptop' . $suffix),
-                'backgroundImageMobile' => $backgrounds->published($prefix . 'mobile' . $suffix),
-            ]),
+        if ($timeline === []) {
+            $content = view('tracking_form', [
+                'language'              => $language,
+                'trackId'               => $trackId,
+                'backgroundImage'       => $backgrounds->published('image_track_laptop' . $suffix),
+                'backgroundImageMobile' => $backgrounds->published('image_track_mobile' . $suffix),
+            ]);
+        } else {
+            $content = view('tracking_result', [
+                'language'              => $language,
+                'trackId'               => $trackId,
+                'timeline'              => $timeline,
+                'backgroundImage'       => $backgrounds->published('image_trackstatus_laptop' . $suffix),
+                'backgroundImageMobile' => $backgrounds->published('image_trackstatus_mobile' . $suffix),
+            ]);
+        }
+
+        return view('layout_public', [
+            'title'    => $language === 'th' ? 'ติดตามงานซ่อม' : 'Repair tracking',
+            'language' => $language,
+            'content'  => $content,
         ]);
     }
 }
