@@ -172,6 +172,19 @@ final class ReportHttpTest extends CIUnitTestCase
         }
     }
 
+    public function testExportRaisesMemoryLimitToConfiguredCeiling(): void
+    {
+        $original = ini_get('memory_limit');
+        ini_set('memory_limit', '512M');
+        try {
+            $response = $this->withSession($this->session(2, 2, 1))->get('/reports/tracking/export');
+            $response->assertStatus(200);
+            self::assertSame('8048M', ini_get('memory_limit'));
+        } finally {
+            ini_set('memory_limit', $original);
+        }
+    }
+
     public function testReportEdgesRejectBadDatesLargeSearchAndCrossBranchWithoutDataLeak(): void
     {
         $invalidDate = $this->withSession($this->session(1, 1, null))->post('/reportsummary', [

@@ -98,6 +98,11 @@ final class Reports extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
         $branchId = $this->branchScope();
+        // Parity with CI3 report export, which raises memory_limit before pulling rows
+        // (application/controllers/Order.php:446 / User.php:444 -> ini_set('memory_limit', '8048M')).
+        if (ini_set('memory_limit', '8048M') === false) {
+            log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
+        }
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
