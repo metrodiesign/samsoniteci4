@@ -28,12 +28,15 @@ final class OrderHttpTest extends CIUnitTestCase
         $encryption->key = str_repeat("\x40", 32);
         Services::injectMock('encrypter', Services::encrypter($encryption, false));
         foreach ([
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailTypeId INTEGER, detailBrandId INTEGER, detailCondition VARCHAR(250), detailEstimatePrice VARCHAR(250), detailFixed VARCHAR(250), detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100) NOT NULL, action_id INTEGER, update_id INTEGER, cdate DATETIME NOT NULL',
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250) NOT NULL, status_name_th VARCHAR(250)',
             'provider' => 'provider_id INTEGER PRIMARY KEY, provider_name VARCHAR(250) NOT NULL',
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250) NOT NULL',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250) NOT NULL',
+            'condition' => 'condition_id INTEGER PRIMARY KEY, condition_details VARCHAR(250) NOT NULL',
+            'estimateprice' => 'estimateprice_id INTEGER PRIMARY KEY, estimateprice_details VARCHAR(250) NOT NULL',
+            'fixed' => 'fixed_id INTEGER PRIMARY KEY, fixed_details VARCHAR(250) NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER NOT NULL, branch_user_name VARCHAR(100), branch_name VARCHAR(250) NOT NULL, default_suffix VARCHAR(10), book_order VARCHAR(10), customer_ref VARCHAR(50)',
             'tracking_status' => 'status_id INTEGER PRIMARY KEY, description_th VARCHAR(250)',
             'uploadstaus' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, tracking_id VARCHAR(100), Telephone VARCHAR(100), tracking_status INTEGER, cdate DATETIME',
@@ -57,6 +60,19 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('brand')->insert(['brand_id' => 1, 'brand_details' => 'BRAND A']);
         $this->db->table('type')->insert(['type_id' => 1, 'type_details' => 'TYPE A']);
         $this->db->table('provider')->insert(['provider_id' => 1, 'provider_name' => 'PROVIDER A']);
+        $this->db->table('condition')->insertBatch([
+            ['condition_id' => 1, 'condition_details' => 'CONDITION ONE'],
+            ['condition_id' => 2, 'condition_details' => 'CONDITION TWO'],
+            ['condition_id' => 3, 'condition_details' => 'CONDITION THREE'],
+        ]);
+        $this->db->table('estimateprice')->insertBatch([
+            ['estimateprice_id' => 1, 'estimateprice_details' => 'ESTIMATE ONE'],
+            ['estimateprice_id' => 2, 'estimateprice_details' => 'ESTIMATE TWO'],
+        ]);
+        $this->db->table('fixed')->insertBatch([
+            ['fixed_id' => 1, 'fixed_details' => 'FIXED ONE'],
+            ['fixed_id' => 2, 'fixed_details' => 'FIXED TWO'],
+        ]);
         for ($status = 1; $status <= 8; $status++) {
             $this->db->table('statusaction')->insert(['status_id' => $status, 'status_name' => 'STATUS ' . $status, 'status_name_th' => 'สถานะ ' . $status]);
             $this->db->table('request_order')->insert([
@@ -606,6 +622,113 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->postTransition('/orders/91001/delete', [])->assertStatus(204);
         self::assertSame(8, (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'));
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testPrintRendersFullCi3FormFieldsWithoutStatusLabel(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 92010, 'requestDate' => '2026-08-10 00:00:00',
+            'trackID' => 'WPA26080110', 'orderID' => 'O110', 'orderIDShow' => 'WPC/110',
+            'customerFullname' => 'PRINT CUSTOMER', 'customerTel' => '0812345678',
+            'customerTel2' => '0898887777', 'customerEmail' => 'print@example.invalid',
+            'detailAgent' => '1', 'detailTypeId' => 1, 'detailBrandId' => 1,
+            'detailDatePurchase' => '0000-00-00 00:00:00', 'detailSKUName' => 'BAG <SPORT>',
+            'detailNumberWaranty' => 'WRT-123',
+            'detailCondition' => '1|2', 'detailConditionOther' => 'EXTRA HANDLE CRACK',
+            'detailEstimatePrice' => '2', 'detailFixed' => '1',
+            'detailEquipment' => 'CHARGER AND STRAP', 'detailNote' => 'PRINT NOTE',
+            'detailImage' => str_repeat('e', 32) . '.png|legacy.jpg',
+            'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 3,
+            'create_by_user' => '9002',
+        ]);
+
+        $print = $this->withSession($this->session(2, 2, 1))->get('/orders/92010/print');
+        $print->assertStatus(200);
+        $body = $print->getBody();
+
+        // AC-1: CI3 labels and the URGENT banner (detailAgent=1). Thai text is asserted through the DOM
+        // parser (assertSee) because the rendered body carries Thai as numeric HTML entities.
+        $print->assertSee('TRACK ID/เลขติดตาม');
+        $print->assertSee('URGENT/ซ่อมด่วน');
+        self::assertStringContainsString('WPA26080110', $body);
+        // Master-resolved brand/type names plus a condition label from the catalogue.
+        self::assertStringContainsString('BRAND A', $body);
+        self::assertStringContainsString('TYPE A', $body);
+        self::assertStringContainsString('CONDITION ONE', $body);
+
+        // AC-2: pipe-separated ids 1 and 2 are checked, id 3 is not, and the "other" free text shows.
+        self::assertStringContainsString('value="1" disabled checked', $body);
+        self::assertStringContainsString('value="2" disabled checked', $body);
+        self::assertStringContainsString('value="3" disabled>', $body);
+        self::assertStringContainsString('EXTRA HANDLE CRACK', $body);
+
+        // AC-1: only the 32hex .png image is emitted; the legacy name is skipped, not rendered broken.
+        self::assertStringContainsString('src="/order-image/' . str_repeat('e', 32) . '.png"', $body);
+        self::assertStringNotContainsString('legacy.jpg', $body);
+
+        // AC-1: the CI3 form never printed a status label, so the CI4 view must not either.
+        self::assertStringNotContainsString('Status', $body);
+
+        // AC-3: 0000-00-00 purchase date blanks out; the valid request date renders dd/mm/YYYY (CE).
+        self::assertStringNotContainsString('00/00/0000', $body);
+        self::assertStringContainsString('10/08/2026', $body);
+
+        // Block 15 reads detailNumberWaranty directly (not warantyType).
+        $print->assertSee('มี WRT-123');
+
+        // AC-5: DB values pass through esc(); the A4 page and self-hiding print button are present.
+        self::assertStringContainsString('BAG &lt;SPORT&gt;', $body);
+        self::assertStringNotContainsString('BAG <SPORT>', $body);
+        self::assertStringContainsString('size: A4', $body);
+        self::assertStringContainsString('window.print()', $body);
+    }
+
+    public function testOrderImageServesPngForAuthedUserAndRejectsAdversarialNames(): void
+    {
+        $directory = WRITEPATH . 'uploads/orders';
+        if (! is_dir($directory)) {
+            mkdir($directory, 0750, true);
+        }
+        $name = str_repeat('a', 32) . '.png';
+        $path = $directory . '/' . $name;
+        file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
+        $session = $this->session(2, 2, 1);
+
+        try {
+            // AC-4: an authenticated read serves the PNG bytes.
+            $served = $this->withSession($session)->get('/order-image/' . $name);
+            $served->assertStatus(200);
+            $served->assertHeader('Content-Type', 'image/png');
+
+            // AC-3 adversarial rows 2-5: wrong extension, wrong length, uppercase, and trailing-byte
+            // smuggling are all rejected by the anchored [a-f0-9]{32}\.png regex before any file read.
+            foreach ([
+                str_repeat('a', 32) . '.php',
+                str_repeat('a', 31) . '.png',
+                str_repeat('a', 33) . '.png',
+                str_repeat('A', 32) . '.png',
+                str_repeat('a', 32) . '.png.jpg',
+            ] as $bad) {
+                $this->withSession($session)->get('/order-image/' . $bad)->assertStatus(404);
+            }
+
+            // AC-3 adversarial row 1: a slash-bearing traversal never matches (:segment); the router
+            // answers 404 before the controller (assertStatus response or PageNotFoundException).
+            try {
+                $this->withSession($session)->get('/order-image/..%2f..%2fetc%2fpasswd')->assertStatus(404);
+            } catch (PageNotFoundException $exception) {
+                self::assertSame(404, $exception->getCode());
+            }
+
+            // AC-3: a well-formed name with no file on disk is still 404.
+            $this->withSession($session)->get('/order-image/' . str_repeat('b', 32) . '.png')->assertStatus(404);
+
+            // AC-3 adversarial row 6 + gate is load-bearing: an unauthenticated request (empty session)
+            // is answered by web-auth with 401 even though the PNG exists on disk (never reaches file).
+            $this->withSession([])->get('/order-image/' . $name)->assertStatus(401);
+        } finally {
+            @unlink($path);
+        }
     }
 
     /** @param array<string, mixed> $payload */
