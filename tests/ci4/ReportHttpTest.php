@@ -124,6 +124,34 @@ final class ReportHttpTest extends CIUnitTestCase
         $filtered->assertSee('100.00%');
     }
 
+    public function testNonRatingReportsDefaultToLastMonthWhenDatesOmitted(): void
+    {
+        // Bucket 3 (status 5 + date_complete) is empty in the base fixture, so these two rows are isolated.
+        $near = $this->order(201, 1, 5, 1, 1);
+        $near['requestDate'] = (new \DateTimeImmutable('today'))->modify('-1 day')->format('Y-m-d H:i:s');
+        $near['date_complete'] = $near['requestDate'];
+        $near['trackID'] = 'WP06A-NEAR';
+        $this->db->table('request_order')->insert($near);
+
+        $far = $this->order(202, 1, 5, 1, 1);
+        $far['requestDate'] = (new \DateTimeImmutable('today'))->modify('-40 days')->format('Y-m-d H:i:s');
+        $far['date_complete'] = $far['requestDate'];
+        $far['trackID'] = 'WP06A-FAR';
+        $this->db->table('request_order')->insert($far);
+
+        $response = $this->withSession($this->session(2, 2, 1))->get('/user/report_total_job_pending');
+        $response->assertStatus(200);
+        // The 1-day-old row is within the default one-month window, the 40-day-old row is not: bucket 3 counts 1.
+        self::assertStringContainsString(
+            '<td data-col="Detail">Pending for customer to pick up</td><td data-col="Job">1</td>',
+            $response->getBody(),
+        );
+        // The defaulted range is echoed back into the filter form.
+        $today = new \DateTimeImmutable('today');
+        self::assertStringContainsString('value="' . $today->modify('-1 month')->format('d/m/Y') . '"', $response->getBody());
+        self::assertStringContainsString('value="' . $today->format('d/m/Y') . '"', $response->getBody());
+    }
+
     public function testSummaryOmitsMissingMasterAndAppliesBranchStatusBrandTypeFilters(): void
     {
         $all = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
@@ -237,6 +265,99 @@ final class ReportHttpTest extends CIUnitTestCase
         $filteredSecond->assertSee('1 matching order(s)');
         $filteredSecond->assertSee('WP00C-PAGE-010');
         $filteredSecond->assertDontSee('WP00C-PAGE-110');
+    }
+
+    public function testInProgressAverageRouteRendersGenericViewWithThaiBucketsAndTwoDecimalPercent(): void
+    {
+        // Branch 1 fixture: status 1=1, status 2=2 (order id 9 shares status 2), 3=1, 4=1, 5=0; total 5.
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_average', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $response->assertStatus(200);
+        // The view emits Thai labels as numeric HTML entities; decode so assertions read as real Thai.
+        $body = html_entity_decode($response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Generic view emits each bucket as data-col cells with the CI3 Thai label and number_format job count.
+        self::assertStringContainsString(
+            '<td data-col="Detail">เปิดงานซ่อม รอศูนย์บริการมารับ</td><td data-col="Job">1</td>',
+            $body,
+        );
+        // Order id 9 (branch 1, status 2) is counted: this kind has no INNER JOIN, so status 2 = 2 jobs.
+        self::assertStringContainsString(
+            '<td data-col="Detail">สินค้าจัดส่งเข้าศูนย์บริการ</td><td data-col="Job">2</td>',
+            $body,
+        );
+        // Percent is number_format(p, 2): 40.00% (not round's "40"); the TOTAL row sums to 100.00%.
+        self::assertStringContainsString('40.00%', $body);
+        self::assertStringContainsString('100.00%', $body);
+    }
+
+    public function testInProgressStatusFilterAcceptsArrayAndCsvIdentically(): void
+    {
+        // status 2 -> order id 2, status 4 -> order id 4 (both branch 1, date_complete NULL).
+        $array = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
+        ]);
+        $csv = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => '2,4',
+        ]);
+
+        foreach ([$array, $csv] as $response) {
+            $response->assertStatus(200);
+            $response->assertSee('WP00C-REPORT-002');
+            $response->assertSee('WP00C-REPORT-004');
+            $response->assertDontSee('WP00C-REPORT-001');
+            $response->assertDontSee('WP00C-REPORT-003');
+            $response->assertDontSee('WP00C-REPORT-005');
+        }
+    }
+
+    public function testInProgressExportLinkCarriesStatusIdAndExportMatchesScreen(): void
+    {
+        $page = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
+        ]);
+        $page->assertStatus(200);
+        // Export link carries the active status filter (comma percent-encoded by http_build_query).
+        self::assertStringContainsString('/reports/in-progress/export', $page->getBody());
+        self::assertStringContainsString('status_id=2%2C4', $page->getBody());
+
+        // Export returns the same filtered rows as the screen, with screen column names as XLS headers.
+        $export = $this->withSession($this->session(1, 1, null))
+            ->get('/reports/in-progress/export?start_date=01/08/2026&end_date=31/08/2026&status_id=2,4');
+        $export->assertStatus(200);
+        $export->assertSee('WP00C-REPORT-002');
+        $export->assertSee('WP00C-REPORT-004');
+        $export->assertDontSee('WP00C-REPORT-001');
+        $export->assertDontSee('WP00C-REPORT-003');
+        self::assertStringContainsString('Request Date', $export->getBody());
+    }
+
+    public function testJobsByDayRouteRendersGridWithScopedBucketColumns(): void
+    {
+        // Base fixture is all waranty_cmg 'IN' (excluded); add one completed UNW job in branch 1,
+        // brand 1 x type 1, diff 31 days (date_repair -> date_complete) -> the 31-45 column.
+        $job = $this->order(300, 1, 1, 1, 1);
+        $job['trackID'] = 'WP06A-BYDAY';
+        $job['requestDate'] = '2026-08-10 10:00:00';
+        $job['waranty_cmg'] = 'UNW';
+        $job['date_repair'] = '2026-08-01 00:00:00';
+        $job['date_repair_waranty'] = null;
+        $job['date_complete'] = '2026-09-01 00:00:00';
+        $this->db->table('request_order')->insert($job);
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $response->assertStatus(200);
+        // Generic view emits the CI3 bucket columns as data-col cells; the single job counts in 31-45.
+        self::assertStringContainsString('data-col="31-45"', $response->getBody());
+        self::assertStringContainsString('<td data-col="31-45">1</td>', $response->getBody());
+        $response->assertDontSee('WP00C-REPORT-005');
     }
 
     /** @return array<string, int|string|null> */

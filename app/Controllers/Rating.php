@@ -18,7 +18,7 @@ final class Rating extends BaseController
         $order = db_connect()->table('request_order')
             ->select(['request_id', 'trackID'])
             ->where('trackID', $trackId)
-            ->where('action_status', 5)
+            ->whereIn('action_status', [5, 7])
             ->get()
             ->getRowArray();
         if ($order === null) {

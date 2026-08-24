@@ -34,12 +34,12 @@ final class RatingWorkflow
         }
 
         $order = $this->db->table('request_order')
-            ->select(['request_id', 'branchID'])
+            ->select(['request_id', 'branchID', 'action_status'])
             ->where('request_id', $requestId)
             ->where('trackID', $trackId)
             ->get()
             ->getRowArray();
-        if ($order === null) {
+        if ($order === null || ! in_array((int) $order['action_status'], [5, 7], true)) {
             return 'not_found';
         }
 
@@ -53,19 +53,21 @@ final class RatingWorkflow
 
                 return 'duplicate';
             }
-            $updated = $this->db->table('request_order')
-                ->where('request_id', $requestId)
-                ->where('trackID', $trackId)
-                ->where('action_status', 5)
-                ->update([
-                    'action_status'      => 7,
-                    'date_complete'      => $timestamp,
-                    'date_update_status' => $timestamp,
-                ]);
-            if (! $updated || $this->db->affectedRows() !== 1) {
-                $this->db->transRollback();
+            if ((int) $order['action_status'] === 5) {
+                $updated = $this->db->table('request_order')
+                    ->where('request_id', $requestId)
+                    ->where('trackID', $trackId)
+                    ->where('action_status', 5)
+                    ->update([
+                        'action_status'      => 7,
+                        'date_complete'      => $timestamp,
+                        'date_update_status' => $timestamp,
+                    ]);
+                if (! $updated || $this->db->affectedRows() !== 1) {
+                    $this->db->transRollback();
 
-                return 'duplicate';
+                    return 'duplicate';
+                }
             }
 
             $rows = [];

@@ -7,6 +7,7 @@ use App\Reporting\ReportMatrix;
 use App\Reporting\TrackingReport;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
+use DateTimeImmutable;
 use InvalidArgumentException;
 
 final class Reports extends BaseController
@@ -25,12 +26,16 @@ final class Reports extends BaseController
         $branchId = $this->branchScope();
         $start = $this->input('start_date');
         $end = $this->input('end_date');
+        if ($kind !== 'ratings') {
+            [$start, $end] = $this->defaultRange($start, $end);
+        }
+        $statusId = $kind === 'in-progress' ? $this->normalizeStatusIds($this->input('status_id')) : '';
         $error = null;
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = $kind === 'ratings'
                 ? $matrix->ratings($start, $end, $branchId)
-                : $matrix->matrix($kind, $start, $end, $branchId);
+                : $matrix->matrix($kind, $start, $end, $branchId, $statusId);
         } catch (InvalidArgumentException $exception) {
             $rows = [];
             $error = $exception->getMessage();
@@ -41,6 +46,7 @@ final class Reports extends BaseController
                 'branchId' => $branchId, 'endDate' => is_string($end) ? $end : '', 'error' => $error,
                 'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
                 'startDate' => is_string($start) ? $start : '',
+                'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
             ]),
         ]);
 
@@ -103,6 +109,7 @@ final class Reports extends BaseController
         if (ini_set('memory_limit', '8048M') === false) {
             log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
         }
+        [$inProgressStart, $inProgressEnd] = $this->defaultRange($this->input('start_date'), $this->input('end_date'));
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
@@ -115,7 +122,7 @@ final class Reports extends BaseController
                     $this->input('status_id'), $this->input('detailBrandId'), $this->input('detailTypeId'), $branchId,
                 ),
                 'ratings' => $matrix->ratings($this->input('start_date'), $this->input('end_date'), $branchId),
-                'in-progress' => $matrix->matrix('in-progress', $this->input('start_date'), $this->input('end_date'), $branchId),
+                'in-progress' => $matrix->matrix('in-progress', $inProgressStart, $inProgressEnd, $branchId, $this->normalizeStatusIds($this->input('status_id'))),
             };
         } catch (InvalidArgumentException $exception) {
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
@@ -131,6 +138,44 @@ final class Reports extends BaseController
     public function legacyExport(string $type, string ...$ignored): ResponseInterface
     {
         return $this->export($type);
+    }
+
+    /**
+     * CI3 parity: when a date field is omitted, default the range to the last month
+     * (start = today minus one month, end = today) before filtering.
+     *
+     * @return array{string, string}
+     */
+    private function defaultRange(mixed $start, mixed $end): array
+    {
+        $today = new DateTimeImmutable('today');
+
+        return [
+            is_string($start) && $start !== '' ? $start : $today->modify('-1 month')->format('d/m/Y'),
+            is_string($end) && $end !== '' ? $end : $today->format('d/m/Y'),
+        ];
+    }
+
+    /**
+     * CI3 parity: the in-progress filter accepts status_id as either a CSV string or a
+     * status_id[] array; collapse both to a CSV string before parsing (decision 6).
+     */
+    private function normalizeStatusIds(mixed $value): string
+    {
+        if (is_array($value)) {
+            return implode(',', array_map(static fn (mixed $id): string => is_scalar($id) ? (string) $id : '', $value));
+        }
+
+        return is_string($value) ? $value : '';
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    private function statusOptions(): array
+    {
+        return db_connect()->table('statusaction')
+            ->select('status_id, status_name_th')
+            ->where('status_id >=', 1)->where('status_id <=', 5)
+            ->orderBy('status_id', 'ASC')->get()->getResultArray();
     }
 
     private function branchScope(?string $routeBranchId = null): ?int
