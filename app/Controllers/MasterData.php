@@ -144,18 +144,15 @@ final class MasterData extends BaseController
             }
         }
 
-        return view('layout', [
-            'title'   => 'Master data: ' . $type,
-            'content' => view('master_data', [
-                'definition' => $definition,
-                'rows'       => $store->all($type, $search, $page),
-                'row'        => $row,
-                'search'     => $search,
-                'type'       => $type,
-                'page'       => $page,
-                'fkOptions'  => $fkOptions,
-            ]),
-        ]);
+        return $this->layout('Master data: ' . $type, view('master_data', [
+            'definition' => $definition,
+            'rows'       => $store->all($type, $search, $page),
+            'row'        => $row,
+            'search'     => $search,
+            'type'       => $type,
+            'page'       => $page,
+            'fkOptions'  => $fkOptions,
+        ]));
     }
 
     private function positiveInteger(mixed $value): ?int

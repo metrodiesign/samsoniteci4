@@ -57,29 +57,23 @@ final class Order extends BaseController
             $rows,
         ));
 
-        return view('layout', [
-            'title' => (self::PROFILES[$status]['title'] ?? ('Orders status ' . $status)),
-            'content' => view('orders', [
-                'rows' => $rows,
-                'status' => $status, 'page' => $page, 'search' => $search,
-                'profile' => self::PROFILES[$status] ?? null,
-                'statusUpdates' => $statusUpdates,
-                'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
-                'providers' => $db->table('provider')
-                    ->select('provider_id, provider_name')
-                    ->orderBy('provider_id', 'ASC')
-                    ->get()
-                    ->getResultArray(),
-            ]),
-        ]);
+        return $this->layout((self::PROFILES[$status]['title'] ?? ('Orders status ' . $status)), view('orders', [
+            'rows' => $rows,
+            'status' => $status, 'page' => $page, 'search' => $search,
+            'profile' => self::PROFILES[$status] ?? null,
+            'statusUpdates' => $statusUpdates,
+            'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
+            'providers' => $db->table('provider')
+                ->select('provider_id, provider_name')
+                ->orderBy('provider_id', 'ASC')
+                ->get()
+                ->getResultArray(),
+        ]));
     }
 
     public function newOrder(): string
     {
-        return view('layout', [
-            'title' => 'New repair order',
-            'content' => view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->formMasterData()),
-        ]);
+        return $this->layout('New repair order', view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->formMasterData()));
     }
 
     public function create(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
@@ -164,7 +158,7 @@ final class Order extends BaseController
     {
         $row = $this->accessibleOrder($rawId);
 
-        return view('layout', ['title' => 'Edit order', 'content' => view('order_edit', ['row' => $row] + $this->formMasterData())]);
+        return $this->layout('Edit order', view('order_edit', ['row' => $row] + $this->formMasterData()));
     }
 
     public function print(string $rawId): string
@@ -376,14 +370,12 @@ final class Order extends BaseController
             'rows'             => $rows,
             'searchText'       => is_string($searchText) ? $searchText : '',
             'selectedStatusIds' => $report->parseStatusIds($rawStatusIds),
+            'showCmg'          => service('session')->get('BranchID') === null,
             'startDate'        => is_string($startDate) ? $startDate : '',
             'endDate'          => is_string($endDate) ? $endDate : '',
             'statuses'         => $report->statuses(),
         ]);
-        $html = view('layout', [
-            'title'   => 'Report Tracking',
-            'content' => $content,
-        ]);
+        $html = $this->layout('Report Tracking', $content);
 
         return $error === null
             ? $html

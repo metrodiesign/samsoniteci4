@@ -33,10 +33,7 @@ final class PasswordReset extends BaseController
 
     public function forgotForm(): string
     {
-        return view('layout', [
-            'title'   => 'Forgot password',
-            'content' => view('forgot_password'),
-        ]);
+        return $this->layout('Forgot password', view('forgot_password'));
     }
 
     public function resetForm(): string
@@ -47,10 +44,7 @@ final class PasswordReset extends BaseController
             $token = '';
         }
 
-        return view('layout', [
-            'title'   => 'Reset password',
-            'content' => view('reset_password', ['token' => $token]),
-        ]);
+        return $this->layout('Reset password', view('reset_password', ['token' => $token]));
     }
 
     public function requestReset(): ResponseInterface

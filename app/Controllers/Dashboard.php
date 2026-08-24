@@ -20,15 +20,12 @@ final class Dashboard extends BaseController
                 ->where('branches.branch_id', $branchId)->get()->getRowArray();
         }
 
-        return view('layout', [
-            'title'   => 'Dashboard',
-            'content' => view('dashboard', [
-                'counts' => $counts,
-                'name'   => (string) $session->get('name'),
-                'branchName' => (string) ($branch['branch_name'] ?? ''),
-                'background' => $this->safeBackground($branch['branch_type_image'] ?? null),
-            ]),
-        ]);
+        return $this->layout('Dashboard', view('dashboard', [
+            'counts' => $counts,
+            'name'   => (string) $session->get('name'),
+            'branchName' => (string) ($branch['branch_name'] ?? ''),
+            'background' => $this->safeBackground($branch['branch_type_image'] ?? null),
+        ]));
     }
 
     private function safeBackground(mixed $value): string

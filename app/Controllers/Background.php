@@ -81,14 +81,11 @@ final class Background extends BaseController
     /** @param array<string, mixed>|null $row */
     private function render(?array $row): string
     {
-        return view('layout', [
-            'title' => 'Website backgrounds',
-            'content' => view('background', [
-                'fields' => BackgroundStore::FIELDS,
-                'rows' => (new BackgroundStore(db_connect()))->all(),
-                'row' => $row,
-            ]),
-        ]);
+        return $this->layout('Website backgrounds', view('background', [
+            'fields' => BackgroundStore::FIELDS,
+            'rows' => (new BackgroundStore(db_connect()))->all(),
+            'row' => $row,
+        ]));
     }
 
     private function save(?int $id): RedirectResponse|ResponseInterface

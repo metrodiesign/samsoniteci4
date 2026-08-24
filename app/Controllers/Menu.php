@@ -51,10 +51,7 @@ final class Menu extends BaseController
     {
         $store = new MenuStore(db_connect());
 
-        return view('layout', [
-            'title' => 'Menu groups',
-            'content' => view('menu', ['rows' => $store->all($search), 'row' => $row, 'menuGroups' => $store->menuGroups(), 'search' => $search]),
-        ]);
+        return $this->layout('Menu groups', view('menu', ['rows' => $store->all($search), 'row' => $row, 'menuGroups' => $store->menuGroups(), 'search' => $search]));
     }
 
     private function searchTerm(): string

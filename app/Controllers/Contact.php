@@ -54,13 +54,10 @@ final class Contact extends BaseController
                 ->groupEnd();
         }
 
-        return view('layout', [
-            'title'   => 'Contact messages',
-            'content' => view('contact_listing', [
-                'contacts' => $query->get()->getResultArray(),
-                'search'   => $search,
-            ]),
-        ]);
+        return $this->layout('Contact messages', view('contact_listing', [
+            'contacts' => $query->get()->getResultArray(),
+            'search'   => $search,
+        ]));
     }
 
     private function submitLanguage(string $language): RedirectResponse|ResponseInterface

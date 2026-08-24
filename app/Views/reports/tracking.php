@@ -1,5 +1,7 @@
 <?php
-$showCmg = service('session')->get('BranchID') === null;
+/**
+ * @var bool $showCmg
+ */
 $formatDate = static function (mixed $value): string {
     if (! is_string($value) || $value === '') {
         return '';

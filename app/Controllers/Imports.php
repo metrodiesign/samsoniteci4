@@ -13,7 +13,7 @@ final class Imports extends BaseController
     {
         $this->assertKind($kind);
 
-        return view('layout', ['title' => 'Import ' . $kind, 'content' => view('import_form', ['kind' => $kind])]);
+        return $this->layout('Import ' . $kind, view('import_form', ['kind' => $kind]));
     }
 
     public function preview(string $kind): string|ResponseInterface
@@ -48,10 +48,7 @@ final class Imports extends BaseController
             return $this->response->setStatusCode(503)->setJSON(['error' => 'import_unavailable']);
         }
 
-        return view('layout', [
-            'title' => 'Import preview',
-            'content' => view('import_preview', ['kind' => $kind, ...$preview]),
-        ]);
+        return $this->layout('Import preview', view('import_preview', ['kind' => $kind, ...$preview]));
     }
 
     public function confirm(string $kind, string $batchId): ResponseInterface
