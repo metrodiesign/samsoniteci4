@@ -135,8 +135,13 @@ final class ConcurrencyProbe extends BaseCommand
                 'brand_id' => '1',
                 'branch_id' => '1',
                 'note' => 'Concurrency probe',
+                'detail_sku_name' => 'PROBE BAG',
+                'create_by_user' => 'PROBE RECEIVER',
+                'condition' => ['1'],
+                'estimateprice' => ['1'],
+                'fixed' => ['1'],
             ],
-            null,
+            [],
         );
         CLI::write('ORDER_CREATED ' . $trackId);
 
