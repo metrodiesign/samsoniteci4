@@ -104,6 +104,27 @@ final class MenuHttpTest extends CIUnitTestCase
         $branch->assertDontSee('ADMIN MASTER LINK');
     }
 
+    public function testAnonymousLayoutRendersNoNavigationAndNeedsNoMenuTables(): void
+    {
+        // AC-2 / AC-5: an unauthenticated page that uses the layout must render no
+        // navigation and must not depend on the menu tables. Drop them first so a
+        // page that still returns 200 proves the anonymous path never queries them.
+        foreach (['tbl_menu', 'group_menu'] as $table) {
+            $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
+            $this->db->query("DROP TABLE IF EXISTS {$name}");
+        }
+        $this->db->resetDataCache();
+
+        $page = $this->get('/login');
+        $page->assertStatus(200);
+        $body = $page->getBody();
+        // Mutation-check target: layout.php `if ($isLoggedIn)` gate. If removed, the
+        // <nav> block renders for anonymous users and these assertions go red.
+        self::assertStringNotContainsString('<nav', $body);
+        self::assertStringNotContainsString('Main navigation', $body);
+        self::assertStringNotContainsString('Sign out', $body);
+    }
+
     /** @param array<string, mixed> $payload */
     private function postAsAdmin(string $path, array $payload)
     {

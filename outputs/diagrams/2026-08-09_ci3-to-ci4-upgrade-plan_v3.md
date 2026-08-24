@@ -371,6 +371,10 @@ flowchart TD
 | WP-03D Password reset | random one-time token hash + expiry + throttle + audit | expired/replayed/brute-force tests และ no-token logs ผ่าน | Engineering/Security | email sandbox |
 | WP-03E View boundary | controller supplies data; view ไม่เรียก model/session policy โดยตรง โดย UX/UI เดิมไม่เปลี่ยน | migrate 70 coupled views/19 direct-model-call views พร้อม escape tests และ paired visual/interaction comparison ที่ไม่มี unapproved difference | Engineering/QA | approved UX/UI snapshots + pinned browser/viewport |
 
+> เชิงอรรถ WP-03E (2026-08-24): ตัวเลข "70 coupled / 19 direct-model" ใน column Verify มาจาก snapshot ก่อน
+> CI3 repin เป็น `ee1c95e` — ไม่แก้ cell. ตัวเลขที่นับสดบน pin ปัจจุบันคือ 53 coupled / 14 direct-model
+> (นิยาม coupled ต่างจากเลขเก่า) ดู `../reference/2026-08-24_wp03e-view-boundary-rebaseline_v1.md`.
+
 ### Phase 4–6: Core transaction, import และ report
 
 | Work package | Deliverable | Verify | Owner role | Dependency |

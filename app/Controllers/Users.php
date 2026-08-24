@@ -69,10 +69,7 @@ final class Users extends BaseController
 
     public function passwordForm(): string
     {
-        return view('layout', [
-            'title' => 'Change password',
-            'content' => view('change_password', ['changed' => $this->request->getGet('changed') === '1']),
-        ]);
+        return $this->layout('Change password', view('change_password', ['changed' => $this->request->getGet('changed') === '1']));
     }
 
     public function changePassword(): RedirectResponse|ResponseInterface
@@ -109,10 +106,7 @@ final class Users extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return view('layout', [
-            'title' => 'Login history',
-            'content' => view('login_history', ['rows' => $rows, 'userId' => $id, 'page' => $page]),
-        ]);
+        return $this->layout('Login history', view('login_history', ['rows' => $rows, 'userId' => $id, 'page' => $page]));
     }
 
     public function ownHistory(): string
@@ -142,16 +136,13 @@ final class Users extends BaseController
         $rawSearch = $this->request->getGet('search');
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
 
-        return view('layout', [
-            'title' => 'Users',
-            'content' => view('users', [
-                'rows' => $this->store()->all($this->role(), $this->branch(), $search),
-                'row' => $row,
-                'search' => $search,
-                'actorRole' => $this->role(),
-                'actorBranch' => $this->branch(),
-            ]),
-        ]);
+        return $this->layout('Users', view('users', [
+            'rows' => $this->store()->all($this->role(), $this->branch(), $search),
+            'row' => $row,
+            'search' => $search,
+            'actorRole' => $this->role(),
+            'actorBranch' => $this->branch(),
+        ]));
     }
 
     private function save(?int $id): RedirectResponse|ResponseInterface

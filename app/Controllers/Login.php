@@ -13,12 +13,9 @@ final class Login extends BaseController
 {
     public function index(): string
     {
-        return view('layout', [
-            'title'   => 'Sign in',
-            'content' => view('login', [
-                'error' => service('session')->getFlashdata('login_error'),
-            ]),
-        ]);
+        return $this->layout('Sign in', view('login', [
+            'error' => service('session')->getFlashdata('login_error'),
+        ]));
     }
 
     public function authenticate(): RedirectResponse|ResponseInterface
@@ -52,10 +49,7 @@ final class Login extends BaseController
                 return $this->response
                     ->setHeader('Retry-After', (string) $retryAfter)
                     ->setStatusCode(429)
-                    ->setBody(view('layout', [
-                        'title'   => 'Sign in',
-                        'content' => view('login', ['error' => 'Unable to sign in. Try again later.']),
-                    ]));
+                    ->setBody($this->layout('Sign in', view('login', ['error' => 'Unable to sign in. Try again later.'])));
             }
 
             $sessionData = (new LoginService(db_connect()))->authenticate(
@@ -71,10 +65,7 @@ final class Login extends BaseController
 
             return $this->response
                 ->setStatusCode(503)
-                ->setBody(view('layout', [
-                    'title'   => 'Sign in',
-                    'content' => view('login', ['error' => 'Sign-in service is unavailable.']),
-                ]));
+                ->setBody($this->layout('Sign in', view('login', ['error' => 'Sign-in service is unavailable.'])));
         }
 
         if ($sessionData === null) {

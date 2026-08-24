@@ -344,6 +344,12 @@ Transaction boundary, idempotency, retry และ partial-failure behavior ย�
 | Delete AJAX success check ใช้ assignment | `if (data.status = true)` 19 จุด | UI แสดง success แม้ server คืน failure; baseline ต้องยืนยันจาก DB ไม่ใช่ alert |
 | Header/layout ซ้ำหลายไฟล์ | `header.php`, `header_order.php`, `header_report.php`, `header_th.php` | menu/permission/UI fix อาจ drift; target ใช้ layout/partial เดียวตามความต่างจริง |
 
+> หมายเหตุ rebaseline (2026-08-24): ตัวเลข 70 view files / 19 files ในสองแถวบนเป็นบันทึกประวัติของ snapshot
+> ที่อ่านจาก working tree ก่อน CI3 repin เป็น `ee1c95e` (PR #3, 2026-08-21) — คงไว้ตามเดิม ไม่แก้.
+> ตัวเลขที่นับสดบน pin ปัจจุบัน (`ee1c95e`) คือ direct-model-call 14 ไฟล์ / 30 จุด และ coupled 53 ไฟล์ / 268
+> จุด (นิยาม coupled ของสองชุดต่างกัน ดูรายละเอียดในเอกสาร) — ดู
+> `../reference/2026-08-24_wp03e-view-boundary-rebaseline_v1.md`.
+
 ตัวอย่าง model calls ใน view: `includes/header.php:82-204`, `tracking/report_tracking.php:346-354`, `tracking/reportsummary.php:371-379`. ตัวอย่าง unescaped PII: `tracking/print_order.php:481-499`, `master/contactlist.php:51-55`.
 
 ---

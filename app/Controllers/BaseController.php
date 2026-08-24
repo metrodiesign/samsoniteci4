@@ -42,4 +42,19 @@ abstract class BaseController extends Controller
         // Preload any models, libraries, etc, here.
         // $this->session = service('session');
     }
+
+    protected function layout(string $title, string $content): string
+    {
+        $session = service('session');
+        $isLoggedIn = $session->get('isLoggedIn') === true;
+
+        return view('layout', [
+            'title'      => $title,
+            'content'    => $content,
+            'isLoggedIn' => $isLoggedIn,
+            'menuItems'  => $isLoggedIn
+                ? (new \App\Master\MenuStore(db_connect()))->visible((int) $session->get('GroupID'))
+                : [],
+        ]);
+    }
 }

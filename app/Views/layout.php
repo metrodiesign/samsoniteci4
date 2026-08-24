@@ -1,7 +1,10 @@
 <?php
-$menuItems = service('session')->get('isLoggedIn') === true
-    ? (new \App\Master\MenuStore(db_connect()))->visible((int) service('session')->get('GroupID'))
-    : [];
+/**
+ * @var string $title
+ * @var string $content
+ * @var bool $isLoggedIn
+ * @var list<array<string, mixed>> $menuItems
+ */
 ?>
 <!doctype html>
 <html lang="en">
@@ -44,7 +47,7 @@ $menuItems = service('session')->get('isLoggedIn') === true
 <body>
 <header>
     <a href="<?= site_url('dashboard') ?>"><strong>Samsonite Tracking</strong></a>
-    <?php if (service('session')->get('isLoggedIn') === true): ?>
+    <?php if ($isLoggedIn): ?>
         <nav aria-label="Main navigation">
             <a href="<?= site_url('dashboard') ?>">Dashboard</a>
             <a href="<?= site_url('Order/ReportTrackingListing') ?>">Report Tracking</a>

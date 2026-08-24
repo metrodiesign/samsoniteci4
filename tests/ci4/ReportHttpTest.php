@@ -426,6 +426,17 @@ final class ReportHttpTest extends CIUnitTestCase
         $response->assertDontSee('WP00C-REPORT-005');
     }
 
+    public function testTrackingCmgColumnShownOnlyForCentralActor(): void
+    {
+        $central = $this->withSession($this->session(1, 1, null))->get('/ReportTrackingListing');
+        $central->assertStatus(200);
+        $central->assertSee('CMG TotalDay');
+
+        $branch = $this->withSession($this->session(2, 2, 1))->get('/ReportTrackingListing/0/1');
+        $branch->assertStatus(200);
+        $branch->assertDontSee('CMG TotalDay');
+    }
+
     /** @return array<string, int|string|null> */
     private function order(int $id, int $branch, int $status, int $brand, int $type): array
     {

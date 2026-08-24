@@ -38,15 +38,12 @@ final class Reports extends BaseController
             $rows = [];
             $error = $exception->getMessage();
         }
-        $html = view('layout', [
-            'title' => self::HEADINGS[$kind],
-            'content' => view('reports/matrix', [
-                'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
-                'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
-                'startDate' => $start,
-                'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
-            ]),
-        ]);
+        $html = $this->layout(self::HEADINGS[$kind], view('reports/matrix', [
+            'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
+            'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
+            'startDate' => $start,
+            'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
+        ]));
 
         return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
     }
@@ -78,20 +75,17 @@ final class Reports extends BaseController
         }
         $db = db_connect();
         $role = (int) service('session')->get('role');
-        $html = view('layout', [
-            'title' => 'Report summary',
-            'content' => view('reports/summary', [
-                'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name')->orderBy('branch_id')->get()->getResultArray() : [],
-                'branchId' => $branchId,
-                'brands' => $db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray(),
-                'error' => $error,
-                'filters' => array_map(static fn (mixed $value): string => is_string($value) ? $value : '', $filters),
-                'page' => (int) $page,
-                'rows' => $rows,
-                'statuses' => $db->table('statusaction')->select('status_id, status_name')->orderBy('status_id')->get()->getResultArray(),
-                'types' => $db->table('type')->select('type_id, type_details')->orderBy('type_id')->get()->getResultArray(),
-            ]),
-        ]);
+        $html = $this->layout('Report summary', view('reports/summary', [
+            'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name')->orderBy('branch_id')->get()->getResultArray() : [],
+            'branchId' => $branchId,
+            'brands' => $db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray(),
+            'error' => $error,
+            'filters' => array_map(static fn (mixed $value): string => is_string($value) ? $value : '', $filters),
+            'page' => (int) $page,
+            'rows' => $rows,
+            'statuses' => $db->table('statusaction')->select('status_id, status_name')->orderBy('status_id')->get()->getResultArray(),
+            'types' => $db->table('type')->select('type_id, type_details')->orderBy('type_id')->get()->getResultArray(),
+        ]));
 
         return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
     }
