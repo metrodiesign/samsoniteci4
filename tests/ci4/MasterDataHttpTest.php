@@ -3,6 +3,7 @@
 namespace Tests\Ci4;
 
 use App\Authentication\ShadowUserStore;
+use App\Master\MasterDataStore;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
@@ -28,6 +29,47 @@ final class MasterDataHttpTest extends CIUnitTestCase
             1,
             null,
         );
+    }
+
+    public function testMasterDataSearchMatchesJoinedAndExtraColumnsWithoutLeak(): void
+    {
+        $store = new MasterDataStore($this->db);
+
+        // branch: joined branch_type_details and local default_suffix are searchable (AC-6).
+        $this->db->table('branch_type')->insert([
+            'branch_type_id' => 7, 'branch_type_details' => 'BTYPE ZED', 'cdate' => '2026-08-22 09:00:00',
+        ]);
+        $this->db->table('branch')->insert([
+            'branch_id' => 3, 'branch_type' => 7, 'branch_name' => 'BR NORTH',
+            'branch_details' => 'D', 'default_suffix' => 'ZSUF', 'book_order' => 'A',
+            'cdate' => '2026-08-22 09:00:00',
+        ]);
+        foreach (['BTYPE ZED', 'ZSUF'] as $term) {
+            $rows = $store->all('branch', $term);
+            self::assertCount(1, $rows, $term);
+            self::assertSame(3, (int) $rows[0]['branch_id'], $term);
+            // AC-8: joined columns do not leak into the result shape.
+            self::assertArrayNotHasKey('branch_type_details', $rows[0], $term);
+        }
+
+        // statustype: description_th is searchable alongside the label description_en (AC-6).
+        $this->db->table('tracking_status')->insert([
+            'status_id' => 5, 'description_th' => 'THAI ZED', 'description_en' => 'EN ZED',
+            'success' => 1, 'cdate' => '2026-08-22 09:00:00',
+        ]);
+        $statusRows = $store->all('statustype', 'THAI ZED');
+        self::assertCount(1, $statusRows);
+        self::assertSame(5, (int) $statusRows[0]['status_id']);
+
+        // book: joined branch_name is searchable (AC-6).
+        $this->db->table('book')->insert([
+            'book_id' => 9, 'branch_id' => 3, 'book_detail' => 'ZBK', 'status' => 1,
+            'bunber_limit' => 1, 'cdate' => '2026-08-22 09:00:00',
+        ]);
+        $bookRows = $store->all('book', 'BR NORTH');
+        self::assertCount(1, $bookRows);
+        self::assertSame(9, (int) $bookRows[0]['book_id']);
+        self::assertArrayNotHasKey('branch_name', $bookRows[0]);
     }
 
     public function testAllTenMasterTypesSupportValidatedCrudAndRejectDuplicates(): void

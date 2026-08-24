@@ -113,6 +113,28 @@ final class OrderHttpTest extends CIUnitTestCase
         $injection->assertDontSee('WP00C-TRACK-002');
     }
 
+    public function testOrderListingSearchMatchesParityFieldsAndDropsExtras(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->db->table('request_order')->where('request_id', 91002)->update([
+            'detailSKUName' => 'ZZSKU002', 'orderID' => 'ZZORD002',
+            'orderIDShow' => 'ZZSHOW002', 'customerTel' => '027619999',
+        ]);
+
+        // AC-1: detailSKUName, branch_name (join) and status_name (join) each return the row.
+        // AC-3: orderID returns the row.
+        foreach (['ZZSKU002', 'BRANCH A', 'STATUS 2', 'ZZORD002'] as $term) {
+            $hit = $this->withSession($admin)->get('/orders?status=2&search=' . rawurlencode($term));
+            $hit->assertSee('WP00C-TRACK-002');
+        }
+
+        // AC-2: customerTel and orderIDShow are no longer searchable on this page.
+        foreach (['027619999', 'ZZSHOW002'] as $term) {
+            $miss = $this->withSession($admin)->get('/orders?status=2&search=' . rawurlencode($term));
+            $miss->assertDontSee('WP00C-TRACK-002');
+        }
+    }
+
     public function testLifecycleQueuesExposeBrowserFormsForNormalTransitions(): void
     {
         $session = $this->session(2, 2, 1);

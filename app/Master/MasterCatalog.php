@@ -52,10 +52,12 @@ final class MasterCatalog
         ],
     ];
 
-    /** @var array<string, array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}> */
+    /** @var array<string, array{table: string, pk: string, label: string, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}> */
     private const DEFINITIONS = [
         'branch' => [
             'table' => 'branch', 'pk' => 'branch_id', 'label' => 'branch_name',
+            'searchColumns' => ['branch.branch_name', 'branch_type.branch_type_details', 'branch.default_suffix'],
+            'searchJoins' => [['table' => 'branch_type', 'on' => 'branch_type.branch_type_id = branch.branch_type']],
             'fields' => [
                 'branch_type' => ['kind' => 'int', 'required' => true, 'fk' => 'branchtype'],
                 'branch_user_name' => ['kind' => 'string', 'max' => 100],
@@ -72,6 +74,7 @@ final class MasterCatalog
         ],
         'statustype' => [
             'table' => 'tracking_status', 'pk' => 'status_id', 'label' => 'description_en',
+            'searchColumns' => ['description_en', 'description_th'],
             'fields' => [
                 'description_th' => ['kind' => 'string', 'max' => 250, 'required' => true],
                 'description_en' => ['kind' => 'string', 'max' => 250, 'required' => true],
@@ -84,6 +87,8 @@ final class MasterCatalog
         ],
         'book' => [
             'table' => 'book', 'pk' => 'book_id', 'label' => 'book_detail',
+            'searchColumns' => ['book.book_detail', 'branch.branch_name'],
+            'searchJoins' => [['table' => 'branch', 'on' => 'branch.branch_id = book.branch_id']],
             'fields' => [
                 'branch_id' => ['kind' => 'int', 'required' => true, 'fk' => 'branch'],
                 'book_detail' => ['kind' => 'string', 'max' => 3, 'required' => true],
@@ -117,7 +122,7 @@ final class MasterCatalog
         ],
     ];
 
-    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}|null */
+    /** @return array{table: string, pk: string, label: string, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>}|null */
     public static function definition(string $type): ?array
     {
         return self::DEFINITIONS[$type] ?? null;

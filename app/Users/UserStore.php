@@ -25,7 +25,7 @@ final class UserStore
             $query->where('branch_id', $actorBranch);
         }
         if ($search !== '') {
-            $query->groupStart()->like('name', $search)->orLike('email', $search)->orLike('username', $search)->groupEnd();
+            $query->groupStart()->like('name', $search)->orLike('email', $search)->orLike('mobile', $search)->groupEnd();
         }
 
         return $query->get()->getResultArray();
