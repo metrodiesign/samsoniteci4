@@ -1,6 +1,9 @@
 <?php
 /**
  * @var string $submissionId
+ * @var list<array<string, mixed>> $types
+ * @var list<array<string, mixed>> $brands
+ * @var list<array<string, mixed>> $branches
  * @var list<array<string, mixed>> $conditions
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
@@ -12,6 +15,16 @@ $checks = static function (array $items, string $name, string $idKey, string $la
             . esc((string) $item[$labelKey]) . '</label> ';
     }
 };
+
+$select = static function (string $name, array $items, string $idKey, string $labelKey, string $current): void {
+    echo '<select id="order-' . esc($name) . '" name="' . esc($name) . '">';
+    foreach ($items as $item) {
+        $value = (string) $item[$idKey];
+        echo '<option value="' . esc($value) . '"' . ($value === $current ? ' selected' : '') . '>'
+            . esc((string) $item[$labelKey]) . '</option>';
+    }
+    echo '</select>';
+};
 ?>
 <section aria-labelledby="order-new-title">
     <h1 id="order-new-title">New repair order</h1>
@@ -21,10 +34,19 @@ $checks = static function (array $items, string $name, string $idKey, string $la
 
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"> Urgent/ซ่อมด่วน</label>
 
-        <?php foreach (['number_id', 'order_id', 'book_id', 'customer_name', 'customer_tel', 'customer_email', 'type_id', 'brand_id', 'branch_id', 'note'] as $field): ?>
+        <?php foreach (['number_id', 'order_id', 'book_id', 'customer_name', 'customer_tel', 'customer_email', 'note'] as $field): ?>
             <label for="order-<?= esc($field) ?>"><?= esc($field) ?></label>
-            <input id="order-<?= esc($field) ?>" name="<?= esc($field) ?>" <?= in_array($field, ['type_id', 'brand_id', 'branch_id'], true) ? 'type="number"' : '' ?>>
+            <input id="order-<?= esc($field) ?>" name="<?= esc($field) ?>">
         <?php endforeach ?>
+
+        <label for="order-type_id">CATEGORY/ประเภท</label>
+        <?php $select('type_id', $types, 'type_id', 'type_details', '') ?>
+
+        <label for="order-brand_id">BRAND/ยี่ห้อ</label>
+        <?php $select('brand_id', $brands, 'brand_id', 'brand_details', '') ?>
+
+        <label for="order-branch_id">สาขา</label>
+        <?php $select('branch_id', $branches, 'branch_id', 'branch_name', '') ?>
 
         <label for="order-customer_tel2">MOBILE TEL 2/เบอร์โทรศัพท์ลูกค้า2</label>
         <input id="order-customer_tel2" name="customer_tel2">

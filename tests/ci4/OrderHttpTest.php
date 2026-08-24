@@ -765,16 +765,20 @@ final class OrderHttpTest extends CIUnitTestCase
         $print->assertSee('WP00C-TRACK-001');
         $print->assertSee('CUSTOMER 1');
 
+        service('superglobals')->setFilesArray([]);
         $edit = [
             'customer_name' => 'EDITED CUSTOMER', 'customer_tel' => '1111111111',
             'customer_email' => 'edited@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'note' => 'Edited note', 'action_status' => '7',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
         ];
         $edit['csrf_test_name'] = service('security')->getHash();
         $this->withSession($this->session(2, 2, 1))->post('/orders/91001', $edit)
             ->assertRedirectTo('/orders?status=1');
         $row = $this->db->table('request_order')->where('request_id', 91001)->get()->getRowArray();
         self::assertSame('EDITED CUSTOMER', $row['customerFullname']);
+        // AC-6: action_status=7 in the post never changes the status (edit leaves the column out).
         self::assertSame(1, (int) $row['action_status']);
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
 
@@ -1125,6 +1129,323 @@ final class OrderHttpTest extends CIUnitTestCase
             }
             service('superglobals')->setFilesArray([]);
         }
+    }
+
+    public function testCreatedOrderReceiptFillsEveryDataDrivenBlockIncludingImage(): void
+    {
+        // AC-1 (closes the WP): one create->print roundtrip with every field and an image populated
+        // must leave no receipt block blank by accident.
+        $png = $this->imageFixture('png');
+        $this->setUploads([['tmp' => $png, 'name' => 'a.png', 'type' => 'image/png']]);
+        $payload = [
+            'submission_id' => str_repeat('2', 32), 'number_id' => '8001', 'order_id' => 'ORDER-8001',
+            'book_id' => 'WPA', 'customer_name' => 'RECEIPT CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_tel2' => '027619999', 'customer_email' => 'receipt@example.invalid',
+            'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'RECEIPT NOTE',
+            'detail_agent' => '1', 'detail_date_purchase' => '15/01/2026',
+            'detail_sku_name' => 'CABIN SPINNER', 'waranty_type' => '1', 'detail_number_waranty' => 'WRT-777',
+            'condition' => ['1', '2'], 'condition_other' => 'HANDLE CRACK',
+            'estimateprice' => ['2'], 'estimateprice_other' => 'PRICE NOTE',
+            'fixed' => ['1'], 'fixed_other' => 'FIXED NOTE',
+            'detail_equipment' => 'CHARGER AND STRAP', 'create_by_user' => 'RECEIVER NAME',
+        ];
+        try {
+            $this->postOrder($payload, false)->assertRedirect();
+            $order = $this->db->table('request_order')->where('customerFullname', 'RECEIPT CUSTOMER')->get()->getRowArray();
+            self::assertNotNull($order);
+            $image = (string) $order['detailImage'];
+            self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $image);
+
+            $print = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $order['request_id'] . '/print');
+            $print->assertStatus(200);
+            $body = $print->getBody();
+            // Always-present blocks (2, 3, 4, 5, 6, 7, 10, 11, 18, 21) driven by the row + master data.
+            self::assertStringContainsString((string) $order['trackID'], $body);         // block 2
+            self::assertStringContainsString('WPA/8001', $body);                          // block 3 (orderIDShow)
+            self::assertStringContainsString('RECEIPT CUSTOMER', $body);                  // block 5
+            self::assertStringContainsString('receipt@example.invalid', $body);           // block 6
+            self::assertStringContainsString('0000000000', $body);                        // block 7
+            self::assertStringContainsString('TYPE A', $body);                            // block 10
+            self::assertStringContainsString('BRAND A', $body);                           // block 11
+            self::assertStringContainsString('RECEIPT NOTE', $body);                      // block 18
+            self::assertStringContainsString('BRANCH A', $body);                          // block 21 (branch header, session branch 1)
+            // Blocks the WP set out to un-blank (1, 8, 9, 12, 13, 14, 15, 16, 17, 19, 20).
+            $print->assertSee('URGENT/ซ่อมด่วน');                                        // block 1
+            self::assertStringContainsString('027619999', $body);                        // block 8
+            self::assertStringContainsString('15/01/2026', $body);                       // block 9
+            self::assertStringContainsString('CABIN SPINNER', $body);                    // block 12
+            $print->assertSee('มี WRT-777');                                             // block 13
+            self::assertStringContainsString('value="1" disabled checked', $body);       // block 14
+            self::assertStringContainsString('HANDLE CRACK', $body);                      // block 14 (other)
+            self::assertStringContainsString('PRICE NOTE', $body);                        // block 15
+            self::assertStringContainsString('FIXED NOTE', $body);                        // block 16
+            self::assertStringContainsString('CHARGER AND STRAP', $body);                // block 17
+            self::assertStringContainsString('RECEIVER NAME', $body);                    // block 19
+            self::assertStringContainsString('src="/order-image/' . $image . '"', $body); // block 20
+        } finally {
+            if (isset($order['detailImage'])) {
+                @unlink(WRITEPATH . 'uploads/orders/' . $order['detailImage']);
+            }
+            @unlink($png);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testEditReplacesEveryEditableFieldAndPrintReflectsNewValues(): void
+    {
+        // AC-2: a second type/brand so the edit can move both off their seeded values.
+        $this->db->table('type')->insert(['type_id' => 2, 'type_details' => 'TYPE B']);
+        $this->db->table('brand')->insert(['brand_id' => 2, 'brand_details' => 'BRAND B']);
+        $this->db->table('condition')->insert(['condition_id' => 4, 'condition_details' => 'CONDITION FOUR']);
+        $this->seedFullOrder(93001);
+
+        $this->postEdit(93001, $this->editPayload([
+            'customer_name' => 'ROUNDTRIP CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_tel2' => '027619999', 'customer_email' => 'roundtrip@example.invalid',
+            'type_id' => '2', 'brand_id' => '2', 'note' => 'ROUNDTRIP NOTE',
+            'detail_agent' => '1', 'detail_date_purchase' => '15/01/2026',
+            'detail_sku_name' => 'ROUNDTRIP SKU', 'waranty_type' => '1', 'detail_number_waranty' => 'WRT-999',
+            'condition' => ['2', '4'], 'condition_other' => 'ROUNDTRIP CONDITION OTHER',
+            'estimateprice' => ['2'], 'estimateprice_other' => 'ROUNDTRIP ESTIMATE OTHER',
+            'fixed' => ['2'], 'fixed_other' => 'ROUNDTRIP FIXED OTHER',
+            'detail_equipment' => 'ROUNDTRIP EQUIPMENT', 'create_by_user' => 'ROUNDTRIP RECEIVER',
+        ]))->assertRedirectTo('/orders?status=1');
+
+        $order = $this->db->table('request_order')->where('request_id', 93001)->get()->getRowArray();
+        self::assertSame('ROUNDTRIP CUSTOMER', (string) $order['customerFullname']);
+        self::assertSame('0000000000', (string) $order['customerTel']);
+        self::assertSame('027619999', (string) $order['customerTel2']);
+        self::assertSame(2, (int) $order['detailTypeId']);
+        self::assertSame(2, (int) $order['detailBrandId']);
+        self::assertSame(1, (int) $order['detailAgent']);
+        self::assertSame('2026-01-15 00:00:00', (string) $order['detailDatePurchase']);
+        self::assertSame('ROUNDTRIP SKU', (string) $order['detailSKUName']);
+        self::assertSame(1, (int) $order['warantyType']);
+        self::assertSame('WRT-999', (string) $order['detailNumberWaranty']);
+        self::assertSame('2|4', (string) $order['detailCondition']);
+        self::assertSame('2', (string) $order['detailEstimatePrice']);
+        self::assertSame('2', (string) $order['detailFixed']);
+        self::assertSame('ROUNDTRIP EQUIPMENT', (string) $order['detailEquipment']);
+        self::assertSame('ROUNDTRIP RECEIVER', (string) $order['create_by_user']);
+        // Immutable columns stay put (design §6): branch and status are never rewritten by edit.
+        self::assertSame(1, (int) $order['branchID']);
+        self::assertSame(1, (int) $order['action_status']);
+
+        $print = $this->withSession($this->session(2, 2, 1))->get('/orders/93001/print');
+        $print->assertStatus(200);
+        $body = $print->getBody();
+        self::assertStringContainsString('ROUNDTRIP CUSTOMER', $body);
+        self::assertStringContainsString('TYPE B', $body);
+        self::assertStringContainsString('BRAND B', $body);
+        self::assertStringContainsString('ROUNDTRIP SKU', $body);
+        self::assertStringContainsString('15/01/2026', $body);
+        $print->assertSee('มี WRT-999');
+        self::assertStringContainsString('CONDITION FOUR', $body);
+        self::assertStringContainsString('ROUNDTRIP EQUIPMENT', $body);
+        self::assertStringNotContainsString('SEED CUSTOMER', $body);
+    }
+
+    public function testEditWithoutUploadKeepsExistingImage(): void
+    {
+        // AC-3: an edit that attaches no file must leave detailImage exactly as it was on disk and in
+        // the column (mutation 1 nulls it out -> this assertion goes red).
+        $created = $this->createOrderWithImage(str_repeat('3', 32));
+        $existing = (string) $created['detailImage'];
+        self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $existing);
+        self::assertFileExists(WRITEPATH . 'uploads/orders/' . $existing);
+        try {
+            $this->postEdit((int) $created['request_id'], $this->editPayload(['customer_name' => 'IMG KEEP CUSTOMER']))
+                ->assertRedirectTo('/orders?status=1');
+
+            $order = $this->db->table('request_order')->where('request_id', (int) $created['request_id'])->get()->getRowArray();
+            self::assertSame('IMG KEEP CUSTOMER', (string) $order['customerFullname']);
+            self::assertSame($existing, (string) $order['detailImage']);
+            self::assertFileExists(WRITEPATH . 'uploads/orders/' . $existing);
+        } finally {
+            @unlink(WRITEPATH . 'uploads/orders/' . $existing);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testEditWithNewImagesReplacesTheWholeSetAndKeepsOldFileOnDisk(): void
+    {
+        // AC-4: attaching new files replaces the whole detailImage set; the old name leaves the column
+        // (mutation 2 appends instead -> count stays 2 and old-name-absent both go red) but its file
+        // stays on disk (design §6: never delete the previous file).
+        $created = $this->createOrderWithImage(str_repeat('4', 32));
+        $oldName = (string) $created['detailImage'];
+        self::assertFileExists(WRITEPATH . 'uploads/orders/' . $oldName);
+
+        $png = $this->imageFixture('png');
+        $jpg = $this->imageFixture('jpeg');
+        $this->setUploads([
+            ['tmp' => $png, 'name' => 'x.png', 'type' => 'image/png'],
+            ['tmp' => $jpg, 'name' => 'y.jpg', 'type' => 'image/jpeg'],
+        ]);
+        $newNames = [];
+        try {
+            $this->postEdit((int) $created['request_id'], $this->editPayload(['customer_name' => 'IMG SWAP CUSTOMER']), false)
+                ->assertRedirectTo('/orders?status=1');
+
+            $order = $this->db->table('request_order')->where('request_id', (int) $created['request_id'])->get()->getRowArray();
+            $newNames = explode('|', (string) $order['detailImage']);
+            self::assertCount(2, $newNames);
+            self::assertNotContains($oldName, $newNames);
+            foreach ($newNames as $name) {
+                self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $name);
+                self::assertFileExists(WRITEPATH . 'uploads/orders/' . $name);
+            }
+            // The replaced file is intentionally left on disk.
+            self::assertFileExists(WRITEPATH . 'uploads/orders/' . $oldName);
+        } finally {
+            @unlink(WRITEPATH . 'uploads/orders/' . $oldName);
+            foreach ($newNames as $name) {
+                @unlink(WRITEPATH . 'uploads/orders/' . $name);
+            }
+            @unlink($png);
+            @unlink($jpg);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testEditImageFailureLeavesRowAndDiskUntouched(): void
+    {
+        // AC-5: a file failing mid-upload returns 422, removes the images already stored this request,
+        // and leaves the existing detailImage (and every other column) exactly as it was.
+        $created = $this->createOrderWithImage(str_repeat('5', 32));
+        $oldName = (string) $created['detailImage'];
+        self::assertFileExists(WRITEPATH . 'uploads/orders/' . $oldName);
+
+        $png     = $this->imageFixture('png');
+        $corrupt = $this->corruptPngFixture();
+        $this->setUploads([
+            ['tmp' => $png, 'name' => 'a.png', 'type' => 'image/png'],
+            ['tmp' => $corrupt, 'name' => 'b.png', 'type' => 'image/png'],
+        ]);
+        $before = $this->orderImagesOnDisk();
+        try {
+            $this->postEdit((int) $created['request_id'], $this->editPayload(['customer_name' => 'SHOULD NOT APPLY']), false)
+                ->assertStatus(422);
+
+            $order = $this->db->table('request_order')->where('request_id', (int) $created['request_id'])->get()->getRowArray();
+            // The whole edit rolled back: detailImage and the customer name keep their pre-edit values.
+            self::assertSame($oldName, (string) $order['detailImage']);
+            self::assertSame('SEED CUSTOMER', (string) $order['customerFullname']);
+            self::assertFileExists(WRITEPATH . 'uploads/orders/' . $oldName);
+            $after = $this->orderImagesOnDisk();
+            sort($before);
+            sort($after);
+            self::assertSame($before, $after);
+        } finally {
+            @unlink(WRITEPATH . 'uploads/orders/' . $oldName);
+            @unlink($png);
+            @unlink($corrupt);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testEditRejectsAdversarialFieldPayloadsWithoutChangingRow(): void
+    {
+        // AC-7: the same validation surface as create rejects bad edits with 422 and no row change.
+        $this->seedFullOrder(93007);
+        foreach ([
+            'catalogue unknown id' => ['condition' => ['99999']],
+            'catalogue empty'      => ['condition' => []],
+            'catalogue missing'    => ['condition' => null],
+            'purchase impossible day' => ['detail_date_purchase' => '31/02/2026'],
+            'tel2 with dashes'     => ['customer_tel2' => '08-1234-5678'],
+            'sku empty'            => ['detail_sku_name' => ''],
+            'waranty out of set'   => ['waranty_type' => '2'],
+            'create_by empty'      => ['create_by_user' => ''],
+        ] as $label => $override) {
+            $payload = $this->editPayload(['customer_name' => 'ADV EDIT CUSTOMER']);
+            foreach ($override as $key => $value) {
+                if ($value === null) {
+                    unset($payload[$key]);
+                } else {
+                    $payload[$key] = $value;
+                }
+            }
+            $this->postEdit(93007, $payload)->assertStatus(422);
+            self::assertSame('SEED CUSTOMER', (string) $this->db->table('request_order')
+                ->where('request_id', 93007)->get()->getRow('customerFullname'), $label);
+        }
+    }
+
+    /**
+     * Seed a status-1 order in branch 1 with every column populated so an edit has real values to
+     * change; overrides win over the defaults.
+     *
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private function seedFullOrder(int $id, array $overrides = []): array
+    {
+        $this->db->table('request_order')->insert(array_merge([
+            'request_id' => $id, 'requestDate' => '2026-08-20 00:00:00',
+            'trackID' => 'WPA2608' . str_pad((string) ($id % 10000), 4, '0', STR_PAD_LEFT),
+            'numberID' => 'N' . $id, 'orderID' => 'O' . $id, 'orderIDShow' => 'WPA/' . $id, 'bookID' => 'WPA',
+            'customerFullname' => 'SEED CUSTOMER', 'customerTel' => '0000000000', 'customerTel2' => '',
+            'customerEmail' => 'seed@example.invalid', 'detailTypeId' => 1, 'detailBrandId' => 1,
+            'detailAgent' => '0', 'detailSKUName' => 'SEED BAG', 'warantyType' => 0,
+            'detailNumberWaranty' => '', 'detailDatePurchase' => '0000-00-00 00:00:00',
+            'detailCondition' => '1', 'detailConditionOther' => '', 'detailEstimatePrice' => '1',
+            'detailEstimatePriceOther' => '', 'detailFixed' => '1', 'detailFixedOther' => '',
+            'detailEquipment' => '', 'create_by_user' => 'SEED RECEIVER', 'detailNote' => 'SEED NOTE',
+            'detailImage' => null, 'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 1,
+        ], $overrides));
+
+        return $this->db->table('request_order')->where('request_id', $id)->get()->getRowArray() ?? [];
+    }
+
+    /** POST-create a branch-1 order carrying exactly one stored image; returns the persisted row. */
+    private function createOrderWithImage(string $submission): array
+    {
+        $png = $this->imageFixture('png');
+        $this->setUploads([['tmp' => $png, 'name' => 'seed.png', 'type' => 'image/png']]);
+        $numberId = 'IMG' . substr($submission, 0, 8);
+        $payload = [
+            'submission_id' => $submission, 'number_id' => $numberId,
+            'order_id' => 'ORDER-' . substr($submission, 0, 8), 'book_id' => 'WPA',
+            'customer_name' => 'SEED CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'seedimg@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'SEED NOTE',
+            'detail_sku_name' => 'SEED BAG', 'create_by_user' => 'SEED RECEIVER',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $this->postOrder($payload, false)->assertRedirect();
+        @unlink($png);
+        service('superglobals')->setFilesArray([]);
+
+        return $this->db->table('request_order')->where('numberID', $numberId)->get()->getRowArray() ?? [];
+    }
+
+    /**
+     * A full editable payload for POST /orders/{id}; overrides win, so a test only spells out the
+     * fields it wants to move.
+     *
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private function editPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'customer_name' => 'EDITED NAME', 'customer_tel' => '0000000000',
+            'customer_email' => 'edited@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'note' => 'Edited note', 'detail_sku_name' => 'EDITED BAG', 'create_by_user' => 'EDITED RECEIVER',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ], $overrides);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function postEdit(int $id, array $payload, bool $clearFiles = true)
+    {
+        if ($clearFiles) {
+            service('superglobals')->setFilesArray([]);
+        }
+        $payload['csrf_test_name'] = service('security')->getHash();
+
+        return $this->withSession($this->session(2, 2, 1))->post('/orders/' . $id, $payload);
     }
 
     /** A real image of the requested type written to a temp file via gd. */

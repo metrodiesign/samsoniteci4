@@ -101,34 +101,77 @@ final class OrderStore
         return $query->get()->getRowArray();
     }
 
-    /** @param array<string, mixed> $input */
-    public function edit(int $actorRole, ?int $actorBranch, int $id, array $input): string
+    /**
+     * Edit accepts the same field set as create (design §6) with the same validation rules. The
+     * immutable columns (trackID/orderID/orderIDShow/numberID/bookID/branchID/branch_type_id/
+     * action_status) are simply left out of the update. Images: no upload keeps the existing
+     * detailImage untouched, an upload replaces the whole set (the controller owns rollback).
+     *
+     * @param array<string, mixed> $input
+     * @param list<string> $imageNames
+     */
+    public function edit(int $actorRole, ?int $actorBranch, int $id, array $input, array $imageNames): string
     {
         if ($this->find($actorRole, $actorBranch, $id) === null) {
             return 'not_found';
         }
-        foreach (['customer_name', 'customer_tel', 'customer_email', 'note'] as $field) {
+        foreach (['customer_name', 'customer_tel', 'customer_email', 'note', 'detail_sku_name', 'create_by_user'] as $field) {
             if (! is_string($input[$field] ?? null)) {
                 return 'invalid';
             }
             $input[$field] = trim($input[$field]);
         }
+        foreach (['customer_tel2', 'condition_other', 'estimateprice_other', 'fixed_other', 'detail_equipment', 'detail_number_waranty'] as $field) {
+            $value = $input[$field] ?? '';
+            if (! is_string($value)) {
+                return 'invalid';
+            }
+            $input[$field] = trim($value);
+        }
         $typeId = $this->positiveInteger($input['type_id'] ?? null);
         $brandId = $this->positiveInteger($input['brand_id'] ?? null);
-        if ($input['customer_name'] === '' || mb_strlen($input['customer_name']) > 250
+        $warantyRaw = $input['waranty_type'] ?? '0';
+        $warantyType = in_array($warantyRaw, ['0', '1'], true) ? (int) $warantyRaw : null;
+        $numberWaranty = $warantyType === 1 ? $input['detail_number_waranty'] : '';
+        $datePurchase = $this->purchaseDate($input['detail_date_purchase'] ?? '');
+        $conditionIds = $this->catalogueIds($input['condition'] ?? null, 'condition', 'condition_id');
+        $estimatePriceIds = $this->catalogueIds($input['estimateprice'] ?? null, 'estimateprice', 'estimateprice_id');
+        $fixedIds = $this->catalogueIds($input['fixed'] ?? null, 'fixed', 'fixed_id');
+        if ($typeId === null || $brandId === null || $warantyType === null
+            || $datePurchase === null || $conditionIds === null || $estimatePriceIds === null || $fixedIds === null
+            || $input['customer_name'] === '' || mb_strlen($input['customer_name']) > 250
             || preg_match('/\A[0-9]{10,20}\z/D', $input['customer_tel']) !== 1
-            || ($input['customer_email'] !== '' && filter_var($input['customer_email'], FILTER_VALIDATE_EMAIL) === false)
-            || strlen($input['customer_email']) > 100 || mb_strlen($input['note']) > 4000
-            || $typeId === null || $brandId === null
+            || ($input['customer_tel2'] !== '' && preg_match('/\A[0-9]{1,20}\z/D', $input['customer_tel2']) !== 1)
+            || ($input['customer_email'] !== '' && (strlen($input['customer_email']) > 100 || filter_var($input['customer_email'], FILTER_VALIDATE_EMAIL) === false))
+            || $input['detail_sku_name'] === '' || mb_strlen($input['detail_sku_name']) > 100
+            || mb_strlen($numberWaranty) > 100
+            || mb_strlen($input['condition_other']) > 250
+            || mb_strlen($input['estimateprice_other']) > 250
+            || mb_strlen($input['fixed_other']) > 250
+            || mb_strlen($input['detail_equipment']) > 4000
+            || $input['create_by_user'] === '' || mb_strlen($input['create_by_user']) > 250
+            || mb_strlen($input['note']) > 4000
             || $this->db->table('type')->where('type_id', $typeId)->countAllResults() !== 1
             || $this->db->table('brand')->where('brand_id', $brandId)->countAllResults() !== 1) {
             return 'invalid';
         }
-        $updated = $this->db->table('request_order')->where('request_id', $id)->update([
+        $values = [
             'customerFullname' => $input['customer_name'], 'customerTel' => $input['customer_tel'],
-            'customerEmail' => strtolower($input['customer_email']), 'detailTypeId' => $typeId,
-            'detailBrandId' => $brandId, 'detailNote' => $input['note'],
-        ]);
+            'customerTel2' => $input['customer_tel2'], 'customerEmail' => strtolower($input['customer_email']),
+            'detailTypeId' => $typeId, 'detailBrandId' => $brandId,
+            'detailAgent' => ($input['detail_agent'] ?? null) === '1' ? 1 : 0,
+            'detailSKUName' => $input['detail_sku_name'], 'warantyType' => $warantyType,
+            'detailNumberWaranty' => $numberWaranty, 'detailDatePurchase' => $datePurchase,
+            'detailCondition' => $conditionIds, 'detailConditionOther' => $input['condition_other'],
+            'detailEstimatePrice' => $estimatePriceIds, 'detailEstimatePriceOther' => $input['estimateprice_other'],
+            'detailFixed' => $fixedIds, 'detailFixedOther' => $input['fixed_other'],
+            'detailEquipment' => $input['detail_equipment'], 'create_by_user' => $input['create_by_user'],
+            'detailNote' => $input['note'],
+        ];
+        if ($imageNames !== []) {
+            $values['detailImage'] = implode('|', $imageNames);
+        }
+        $updated = $this->db->table('request_order')->where('request_id', $id)->update($values);
 
         return $updated ? 'updated' : 'failed';
     }
@@ -148,6 +191,52 @@ final class OrderStore
             ->update(['action_status' => 8]);
 
         return $updated && $this->db->affectedRows() === 1 ? 'deleted' : 'conflict';
+    }
+
+    /**
+     * Empty stays the legacy zero date; otherwise parse dd/mm/yyyy strictly (round-trip guards the
+     * PHP overflow that turns 31/02 into 03/03). Malformed input returns null so the caller rejects.
+     */
+    private function purchaseDate(mixed $raw): ?string
+    {
+        if (! is_string($raw)) {
+            return null;
+        }
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '0000-00-00 00:00:00';
+        }
+        $date = \DateTimeImmutable::createFromFormat('!d/m/Y', $raw);
+        if ($date === false || $date->format('d/m/Y') !== $raw) {
+            return null;
+        }
+
+        return $date->format('Y-m-d 00:00:00');
+    }
+
+    /**
+     * Require at least one id, all present in the catalogue table, no duplicates (whereIn matches
+     * distinct rows, so its count only equals the raw id count when every id is real and unique);
+     * join in submission order for the print view, capped at the column width. null on any breach.
+     */
+    private function catalogueIds(mixed $raw, string $table, string $idColumn): ?string
+    {
+        if (! is_array($raw) || $raw === []) {
+            return null;
+        }
+        $ids = [];
+        foreach ($raw as $value) {
+            if (! is_string($value) || preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1) {
+                return null;
+            }
+            $ids[] = $value;
+        }
+        if ($this->db->table($table)->whereIn($idColumn, $ids)->countAllResults() !== count($ids)) {
+            return null;
+        }
+        $joined = implode('|', $ids);
+
+        return strlen($joined) > 250 ? null : $joined;
     }
 
     private function positiveInteger(mixed $value): ?int

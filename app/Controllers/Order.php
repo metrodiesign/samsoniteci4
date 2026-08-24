@@ -78,7 +78,7 @@ final class Order extends BaseController
     {
         return view('layout', [
             'title' => 'New repair order',
-            'content' => view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->checkboxCatalogues()),
+            'content' => view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->formMasterData()),
         ]);
     }
 
@@ -164,7 +164,7 @@ final class Order extends BaseController
     {
         $row = $this->accessibleOrder($rawId);
 
-        return view('layout', ['title' => 'Edit order', 'content' => view('order_edit', ['row' => $row])]);
+        return view('layout', ['title' => 'Edit order', 'content' => view('order_edit', ['row' => $row] + $this->formMasterData())]);
     }
 
     public function print(string $rawId): string
@@ -209,6 +209,26 @@ final class Order extends BaseController
     }
 
     /**
+     * Master lists the create and edit forms need to render their dropdowns and checkbox groups:
+     * the type/brand/branch catalogues plus the condition/estimateprice/fixed checkbox catalogues.
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function formMasterData(): array
+    {
+        $db = db_connect();
+
+        return [
+            'types' => $db->table('type')->select('type_id, type_details')
+                ->orderBy('type_id', 'ASC')->get()->getResultArray(),
+            'brands' => $db->table('brand')->select('brand_id, brand_details')
+                ->orderBy('brand_id', 'ASC')->get()->getResultArray(),
+            'branches' => $db->table('branch')->select('branch_id, branch_name')
+                ->orderBy('branch_id', 'ASC')->get()->getResultArray(),
+        ] + $this->checkboxCatalogues();
+    }
+
+    /**
      * The condition/estimateprice/fixed catalogues rendered as checkbox lists by both the print view
      * and the create form.
      *
@@ -232,19 +252,49 @@ final class Order extends BaseController
     {
         $id = preg_match('/\A[1-9][0-9]*\z/D', $rawId) === 1 ? (int) $rawId : 0;
         $session = service('session');
-        $result = (new OrderStore(db_connect()))->edit(
-            (int) $session->get('role'),
-            $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
-            $id,
-            $this->request->getPost(),
-        );
+        $files = new OrderImageStore(WRITEPATH . 'uploads/orders');
+        // The controller owns the newly stored names end to end, exactly like create(): every path
+        // that does not end in a successful update removes them so no orphan is left, while the
+        // existing detailImage on the row stays untouched unless the update replaces it.
+        $stored = [];
+        try {
+            $uploads = array_values(array_filter(
+                $this->request->getFileMultiple('detail_image') ?? [],
+                static fn (UploadedFile $file): bool => $file->getError() !== UPLOAD_ERR_NO_FILE,
+            ));
+            if (count($uploads) > OrderImageStore::MAX_FILES) {
+                throw new InvalidArgumentException('Too many order images');
+            }
+            foreach ($uploads as $upload) {
+                $stored[] = $files->store($upload);
+            }
+            $result = (new OrderStore(db_connect()))->edit(
+                (int) $session->get('role'),
+                $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
+                $id,
+                $this->request->getPost(),
+                $stored,
+            );
+            if ($result !== 'updated') {
+                $files->removeAll($stored);
+            }
 
-        return match ($result) {
-            'updated' => redirect()->to('/orders?status=1'),
-            'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_order']),
-            'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
-            default => $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']),
-        };
+            return match ($result) {
+                'updated' => redirect()->to('/orders?status=1'),
+                'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_order']),
+                'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
+                default => $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']),
+            };
+        } catch (InvalidArgumentException) {
+            $files->removeAll($stored);
+
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_order']);
+        } catch (Throwable $exception) {
+            $files->removeAll($stored);
+            log_message('error', 'Order edit unavailable: {exception}', ['exception' => $exception::class]);
+
+            return $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']);
+        }
     }
 
     public function delete(string $rawId): ResponseInterface
