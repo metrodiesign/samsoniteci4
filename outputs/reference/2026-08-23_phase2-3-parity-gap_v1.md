@@ -44,4 +44,41 @@
 ## หมายเหตุความคลาดเคลื่อนของ charter
 
 - Direct-model-call views นับได้ 14 ไฟล์/28 จุด แต่ charter ระบุ 19 — ต้อง reconcile ตอน implement WP-03E
+  (นับสดซ้ำ 2026-08-24 บน `ee1c95e` ด้วย pattern lowercase `_model` ได้ 14 ไฟล์/30 จุด — ต่างจาก 28
+  เดิมเล็กน้อยเพราะ pattern; ดู `2026-08-24_wp03e-view-boundary-rebaseline_v1.md`)
 - สถานะ "Phase 2-7 ยังไม่เริ่ม" ในเอกสารเก่ากว่าโค้ดจริง — vertical slices ของ Phase 2-3 ถูกสร้างไว้มากแล้วใน scaffold
+
+## สถานะ ณ 2026-08-24 (ตรวจซ้ำบน develop)
+
+ตรวจแต่ละ gap ในรายการ "Gap เรียงตามความเสี่ยง" จากโค้ดจริงบน `develop`:
+
+- **Gap 1 (WP-03D ไม่มีหน้าเว็บ forgot/reset)** — **ปิดแล้ว**: มี `app/Views/forgot_password.php` และ
+  `app/Views/reset_password.php` และ route `GET forgot-password` -> `PasswordReset::forgotForm`,
+  `GET reset-password` -> `PasswordReset::resetForm` (`app/Config/Routes.php:132-133`) พร้อม flow
+  `password-reset/csrf|request|complete` (`Routes.php:134-136`)
+- **Gap 2 (WP-03E public tracking views หายทั้งกลุ่ม)** — **ปิดแล้ว**: มี `app/Views/tracking_form.php`,
+  `app/Views/tracking_result.php` และ `app/Controllers/Tracking.php` พร้อม route `track`/`track_th`/
+  `tracking`/`tracking-th` + `tracking/(:segment)` / `tracking-th/(:segment)`
+  (`app/Config/Routes.php:8-13`); status-action listing รวมที่ `Order::listing` (`Routes.php:86-88`)
+- **Gap 3 (WP-02B validation-error UX คืน 422 JSON เปล่า)** — **ปิดแล้ว**: `Contact::renderInvalid()`
+  re-render ฟอร์มด้วย `values` (เทียบ `set_value`) + `errors` (เทียบ `validation_errors`) แล้วคืน
+  `setStatusCode(422)->setBody($html)` (`app/Controllers/Contact.php:123-137`); JSON เปล่าเหลือเฉพาะ
+  path invalid แข็ง (`invalidResponse()`)
+- **Gap 4 (WP-03D audit log)** — **ปิดแล้ว (สำหรับ password reset)**: มี `App\Authentication\ResetAuditLog`
+  + migration `CreatePasswordResetAudit` (`app/Database/Migrations/2026-08-23-093000_...php`) และ
+  `PasswordReset::audit()` เขียน log (`app/Controllers/PasswordReset.php:241-243`); ครอบด้วย test
+  `PasswordResetHttpTest::testResetRequestThrottleIsAudited`
+- **Gap 5 (Decision: role 3 write restriction)** — **ยังเปิด (decision)**: เป็น behavior change ที่ต้อง
+  Business approve + `CORRECT_AND_REBASELINE` record ตาม disposition doc ยังไม่มี approval — โค้ดบังคับ
+  deny-by-default แล้ว แต่ตัว decision ค้าง
+- **Gap 6 (WP-02A ปฏิทิน พ.ศ./ค.ศ.)** — **implement เป็น CI3 parity แล้ว แต่ decision format ยังเปิด**:
+  `app/Views/tracking_result.php:44` ใช้ `date('d/m/', $ts) . (date('Y', $ts) + 543)` ทั้ง EN/TH ตาม CI3
+  (comment ระบุ "CI3 parity: Buddhist-era year for both languages"); การตัดสินว่า EN ควรเป็น ค.ศ. หรือไม่
+  ยังเป็น business decision ที่ค้าง (ดู "คำถามที่ต้องการคำตอบ")
+- **Gap 7 (Test gap เล็ก)** — **ปิดเป็นส่วนใหญ่**: WP-03A มี `tests/ci4/SessionContractTest.php`,
+  WP-03C role matrix มี `tests/ci4/MasterDataRoleMatrixTest.php`
+
+แถว **WP-03E** (ตารางสรุปด้านบน): public tracking ปิดแล้ว (Gap 2); เหลือ view boundary (`app/Views/layout.php`
+ปิดใน task T1 ปัจจุบัน; พบจุดเพิ่ม `app/Views/reports/tracking.php:2` นอก scope T1) + paired visual/interaction
+comparison ที่รอ dependency "approved UX/UI snapshots + pinned browser/viewport" (ยังไม่มีใน `evidence/`) —
+รายละเอียดใน `2026-08-24_wp03e-view-boundary-rebaseline_v1.md`

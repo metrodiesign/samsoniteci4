@@ -143,8 +143,18 @@ Route runner พบ side-effect entries `58` explicit และ `3` implicit. �
 |---|---|
 | Disposition record | `PROPOSED_PENDING_APPROVAL` |
 | CI3 route/auth evidence | captured with known defects |
-| CI4 parity | not started |
+| CI4 parity | implemented + regression tested (D-SEC-001, D-AUTH-001) — ดู note ใต้ตาราง |
 | Mutation execution | not started; coverage contract defined |
+
+> อัปเดต 2026-08-24: implementation ฝั่ง CI4 ของ D-SEC-001/D-AUTH-001 ลงแล้วพร้อม regression test (ตัว
+> disposition record ยังเป็น `PROPOSED_PENDING_APPROVAL` — รอ approval ตาม "ลำดับถัดไป"):
+> - D-SEC-001 cross-branch IDOR: `tests/ci4/AuthorizationFilterTest.php::testCrossBranchObjectIsHiddenFromOperator`
+>   (`:255`), `::testCrossBranchWriteReturnsNotFoundAndLeavesDatabaseUnchanged` (`:303`),
+>   `tests/ci4/AuthorizationPolicyTest.php::testCrossBranchGuardUsesNotFoundResponse` (`:44`),
+>   `tests/ci4/OrderHttpTest.php::testPrintEditAndSoftDeletePreserveStatusLogAndDenyCrossBranch` (`:783`)
+> - D-AUTH-001 reset-token TTL + single use: `tests/ci4/ResetTokenStoreTest.php::testConsumeIsSingleUse`
+>   (`:41`), `::testExpiredWrongUserAndMalformedTokensAreDenied` (`:121`),
+>   `tests/ci4/PasswordResetHttpTest.php::testValidResetCompletesOnceAndReplayIsDenied` (`:156`)
 
 ลำดับถัดไป:
 
