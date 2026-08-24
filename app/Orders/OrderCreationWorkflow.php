@@ -16,10 +16,10 @@ final class OrderCreationWorkflow
     {
     }
 
-    /** @param array<string, mixed> $input */
-    public function create(int $actorId, int $actorRole, ?int $actorBranch, array $input, ?string $imageName): string
+    /** @param array<string, mixed> $input @param list<string> $imageNames */
+    public function create(int $actorId, int $actorRole, ?int $actorBranch, array $input, array $imageNames): string
     {
-        $values = $this->normalize($actorRole, $actorBranch, $input, $imageName);
+        $values = $this->normalize($actorRole, $actorBranch, $input, $imageNames);
         $suffix = (string) $values['trackSuffix'];
         unset($values['trackSuffix']);
         $submissionId = is_string($input['submission_id'] ?? null) ? $input['submission_id'] : '';
@@ -67,9 +67,14 @@ final class OrderCreationWorkflow
         }
     }
 
-    /** @param array<string, mixed> $input @return array<string, int|string|null> */
-    private function normalize(int $actorRole, ?int $actorBranch, array $input, ?string $imageName): array
+    /** @param array<string, mixed> $input @param list<string> $imageNames @return array<string, int|string|null> */
+    private function normalize(int $actorRole, ?int $actorBranch, array $input, array $imageNames): array
     {
+        foreach ($imageNames as $imageName) {
+            if (preg_match('/\A[a-f0-9]{32}\.png\z/D', $imageName) !== 1) {
+                throw new InvalidArgumentException('Invalid order image.');
+            }
+        }
         foreach (['number_id', 'order_id', 'book_id', 'customer_name', 'customer_tel', 'customer_email', 'note', 'detail_sku_name', 'create_by_user'] as $field) {
             if (! is_string($input[$field] ?? null)) {
                 throw new InvalidArgumentException('Invalid order field.');
@@ -111,7 +116,6 @@ final class OrderCreationWorkflow
             || mb_strlen($input['detail_equipment']) > 4000
             || $input['create_by_user'] === '' || mb_strlen($input['create_by_user']) > 250
             || mb_strlen($input['note']) > 4000
-            || ($imageName !== null && preg_match('/\A[a-f0-9]{32}\.png\z/D', $imageName) !== 1)
             || $this->db->table('type')->where('type_id', $typeId)->countAllResults() !== 1
             || $this->db->table('brand')->where('brand_id', $brandId)->countAllResults() !== 1) {
             throw new InvalidArgumentException('Invalid order.');
@@ -138,7 +142,7 @@ final class OrderCreationWorkflow
             'detailEstimatePrice' => $estimatePriceIds, 'detailEstimatePriceOther' => $input['estimateprice_other'],
             'detailFixed' => $fixedIds, 'detailFixedOther' => $input['fixed_other'],
             'detailEquipment' => $input['detail_equipment'], 'create_by_user' => $input['create_by_user'],
-            'detailNote' => $input['note'], 'detailImage' => $imageName,
+            'detailNote' => $input['note'], 'detailImage' => $imageNames === [] ? null : implode('|', $imageNames),
             'branchID' => $branchId, 'branch_type_id' => (int) $branch['branch_type'],
             'trackSuffix' => $suffix,
         ];

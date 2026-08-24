@@ -152,7 +152,7 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
             'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'Synthetic SMS',
             'detail_sku_name' => 'SMS BAG', 'create_by_user' => 'SMS RECEIVER',
             'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
-        ], null);
+        ], []);
 
         return new SmsDeliveryIntentStore($this->db, $this->encrypter);
     }

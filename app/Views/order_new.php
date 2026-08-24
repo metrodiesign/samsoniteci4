@@ -70,8 +70,8 @@ $checks = static function (array $items, string $name, string $idKey, string $la
         <label for="order-create_by_user">Created by/พนักงานผู้รับสินค้า</label>
         <input id="order-create_by_user" name="create_by_user">
 
-        <label for="order-image">Repair image</label>
-        <input id="order-image" name="detail_image" type="file" accept="image/png">
+        <label for="order-image">Repair image (up to 5)</label>
+        <input id="order-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple>
         <button type="submit">Create order</button>
     </form>
 </section>

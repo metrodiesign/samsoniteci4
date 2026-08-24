@@ -141,7 +141,7 @@ final class ConcurrencyProbe extends BaseCommand
                 'estimateprice' => ['1'],
                 'fixed' => ['1'],
             ],
-            null,
+            [],
         );
         CLI::write('ORDER_CREATED ' . $trackId);
 

@@ -336,13 +336,8 @@ final class OrderHttpTest extends CIUnitTestCase
 
     public function testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically(): void
     {
-        $png = tempnam(sys_get_temp_dir(), 'wp00c-order-');
-        self::assertIsString($png);
-        file_put_contents($png, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
-        service('superglobals')->setFilesArray(['detail_image' => [
-            'name' => 'repair.png', 'type' => 'image/png', 'tmp_name' => $png,
-            'error' => UPLOAD_ERR_OK, 'size' => filesize($png),
-        ]]);
+        $png = $this->imageFixture('png');
+        $this->setUploads([['tmp' => $png, 'name' => 'repair.png', 'type' => 'image/png']]);
         $payload = [
             'submission_id' => str_repeat('a', 32), 'number_id' => '1001', 'order_id' => 'ORDER-1001',
             'book_id' => 'WPA', 'customer_name' => 'NEW CUSTOMER', 'customer_tel' => '0000000000',
@@ -372,6 +367,8 @@ final class OrderHttpTest extends CIUnitTestCase
         // AC-5: the alternate telephone is stored on the order but never reaches the SMS intent.
         self::assertSame('027619999', (string) $order['customerTel2']);
         self::assertStringNotContainsString('027619999', (string) $intent['payload_ciphertext']);
+        @unlink(WRITEPATH . 'uploads/orders/' . $order['detailImage']);
+        @unlink($png);
         service('superglobals')->setFilesArray([]);
     }
 
@@ -391,12 +388,11 @@ final class OrderHttpTest extends CIUnitTestCase
         $bad = tempnam(sys_get_temp_dir(), 'wp00c-bad-order-');
         self::assertIsString($bad);
         file_put_contents($bad, '<?php echo "bad";');
-        service('superglobals')->setFilesArray(['detail_image' => [
-            'name' => 'repair.png', 'type' => 'image/png', 'tmp_name' => $bad,
-            'error' => UPLOAD_ERR_OK, 'size' => filesize($bad),
-        ]]);
+        $this->setUploads([['tmp' => $bad, 'name' => 'repair.png', 'type' => 'image/png']]);
         $this->postOrder($valid, false)->assertStatus(422);
         $this->assertCreateCounts(8, 0, 0);
+        @unlink($bad);
+        service('superglobals')->setFilesArray([]);
 
         $this->postOrder($valid)->assertRedirect();
         $this->assertCreateCounts(9, 1, 1);
@@ -479,6 +475,8 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame('0000-00-00 00:00:00', (string) $order['detailDatePurchase']);
         self::assertSame('', (string) $order['customerTel2']);
         self::assertSame('', (string) $order['detailConditionOther']);
+        // AC-7: no image attached leaves detailImage empty (stored NULL, print renders no <img>).
+        self::assertNull($order['detailImage']);
     }
 
     public function testCreateOrderBlanksWarantyNumberWhenTypeIsZero(): void
@@ -567,6 +565,9 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('name="detail_sku_name"', $body);
         self::assertStringContainsString('name="waranty_type"', $body);
         self::assertStringContainsString('name="create_by_user"', $body);
+        // T2: the repair-image input takes several files under the array name normalize() expects.
+        self::assertStringContainsString('name="detail_image[]"', $body);
+        self::assertStringContainsString('multiple', $body);
     }
 
     public function testNormalLifecycleWritesExactProviderDatesStatusesAndLogs(): void
@@ -897,6 +898,298 @@ final class OrderHttpTest extends CIUnitTestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function testCreateOrderStoresMultipleImagesConvertedToPngAndPrintsEachOne(): void
+    {
+        $png = $this->imageFixture('png');
+        $jpg = $this->imageFixture('jpeg');
+        $gif = $this->imageFixture('gif');
+        $this->setUploads([
+            ['tmp' => $png, 'name' => 'a.png', 'type' => 'image/png'],
+            ['tmp' => $jpg, 'name' => 'b.jpg', 'type' => 'image/jpeg'],
+            ['tmp' => $gif, 'name' => 'c.gif', 'type' => 'image/gif'],
+        ]);
+        $payload = [
+            'submission_id' => str_repeat('7', 32), 'number_id' => '6001', 'order_id' => 'ORDER-6001',
+            'book_id' => 'WPA', 'customer_name' => 'IMAGE CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'img@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $this->postOrder($payload, false)->assertRedirect();
+
+        $order = $this->db->table('request_order')->where('customerFullname', 'IMAGE CUSTOMER')->get()->getRowArray();
+        self::assertNotNull($order);
+        // AC-1: three pipe-joined 32hex.png names in the order they were attached.
+        $names = explode('|', (string) $order['detailImage']);
+        self::assertCount(3, $names);
+        try {
+            foreach ($names as $name) {
+                self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $name);
+                $path = WRITEPATH . 'uploads/orders/' . $name;
+                self::assertFileExists($path);
+                // AC-1 + mutation 2: every stored file is a real PNG, not the original jpeg/gif bytes.
+                $info = getimagesize($path);
+                self::assertIsArray($info);
+                self::assertSame('image/png', $info['mime']);
+            }
+
+            // AC-2: print emits one /order-image/<name> img per stored file and nothing else.
+            $print = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $order['request_id'] . '/print');
+            $print->assertStatus(200);
+            $body = $print->getBody();
+            foreach ($names as $name) {
+                self::assertStringContainsString('src="/order-image/' . $name . '"', $body);
+            }
+            self::assertSame(3, substr_count($body, 'src="/order-image/'));
+        } finally {
+            foreach ($names as $name) {
+                @unlink(WRITEPATH . 'uploads/orders/' . $name);
+            }
+            @unlink($png);
+            @unlink($jpg);
+            @unlink($gif);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testCreateOrderAcceptsImageByContentIgnoringClientExtension(): void
+    {
+        // Adversarial row 2: a real PNG announced as text/.txt is accepted on its bytes, not its name.
+        $png = $this->imageFixture('png');
+        $this->setUploads([['tmp' => $png, 'name' => 'note.txt', 'type' => 'text/plain']]);
+        $payload = [
+            'submission_id' => str_repeat('8', 32), 'number_id' => '6101', 'order_id' => 'ORDER-6101',
+            'book_id' => 'WPA', 'customer_name' => 'EXT CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'ext@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $stored = null;
+        try {
+            $this->postOrder($payload, false)->assertRedirect();
+            $order = $this->db->table('request_order')->where('customerFullname', 'EXT CUSTOMER')->get()->getRowArray();
+            self::assertNotNull($order);
+            $stored = (string) $order['detailImage'];
+            self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $stored);
+            self::assertFileExists(WRITEPATH . 'uploads/orders/' . $stored);
+        } finally {
+            if ($stored !== null) {
+                @unlink(WRITEPATH . 'uploads/orders/' . $stored);
+            }
+            @unlink($png);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testCreateOrderRemovesEarlierImagesWhenALaterFileFails(): void
+    {
+        // AC-3: two files store successfully, the third fails conversion; both stored files are removed
+        // (mutation 1: a removeAll that only deletes the first name leaves the second on disk).
+        $png1    = $this->imageFixture('png');
+        $png2    = $this->imageFixture('png');
+        $corrupt = $this->corruptPngFixture();
+        $this->setUploads([
+            ['tmp' => $png1, 'name' => 'a.png', 'type' => 'image/png'],
+            ['tmp' => $png2, 'name' => 'b.png', 'type' => 'image/png'],
+            ['tmp' => $corrupt, 'name' => 'c.png', 'type' => 'image/png'],
+        ]);
+        $payload = [
+            'submission_id' => str_repeat('9', 32), 'number_id' => '6201', 'order_id' => 'ORDER-6201',
+            'book_id' => 'WPA', 'customer_name' => 'ROLLBACK CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'rollback@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $before = $this->orderImagesOnDisk();
+        try {
+            $this->postOrder($payload, false)->assertStatus(422);
+            $this->assertCreateCounts(8, 0, 0);
+            $after = $this->orderImagesOnDisk();
+            sort($before);
+            sort($after);
+            self::assertSame($before, $after);
+        } finally {
+            @unlink($png1);
+            @unlink($png2);
+            @unlink($corrupt);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testCreateOrderRemovesAllImagesWhenWorkflowRejectsAfterUpload(): void
+    {
+        // AC-4: three valid images store in Phase A, then the workflow rejects the payload (a required
+        // T1 field is missing); every stored file is removed and no order row is written.
+        $png = $this->imageFixture('png');
+        $jpg = $this->imageFixture('jpeg');
+        $gif = $this->imageFixture('gif');
+        $this->setUploads([
+            ['tmp' => $png, 'name' => 'a.png', 'type' => 'image/png'],
+            ['tmp' => $jpg, 'name' => 'b.jpg', 'type' => 'image/jpeg'],
+            ['tmp' => $gif, 'name' => 'c.gif', 'type' => 'image/gif'],
+        ]);
+        $payload = [
+            'submission_id' => str_repeat('0', 32), 'number_id' => '6301', 'order_id' => 'ORDER-6301',
+            'book_id' => 'WPA', 'customer_name' => 'WORKFLOW FAIL CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'wf@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        // detail_sku_name intentionally omitted so the workflow throws after the images are on disk.
+        $before = $this->orderImagesOnDisk();
+        try {
+            $this->postOrder($payload, false)->assertStatus(422);
+            $this->assertCreateCounts(8, 0, 0);
+            $after = $this->orderImagesOnDisk();
+            sort($before);
+            sort($after);
+            self::assertSame($before, $after);
+        } finally {
+            @unlink($png);
+            @unlink($jpg);
+            @unlink($gif);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testCreateOrderRejectsAdversarialImageUploadsLeavingDiskClean(): void
+    {
+        $base = [
+            'submission_id' => str_repeat('a', 32), 'number_id' => '7000', 'order_id' => 'ORDER-7000',
+            'book_id' => 'WPA', 'customer_name' => 'ADV IMG CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'advimg@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $text = tempnam(sys_get_temp_dir(), 'wp04d-text-');
+        self::assertIsString($text);
+        file_put_contents($text, 'this is plain text, not an image');
+        $corrupt = $this->corruptPngFixture();
+        $big     = $this->imageFixture('png');
+        $wide    = $this->imageFixture('png', 5000, 100);
+        $six     = [];
+        for ($i = 0; $i < 6; $i++) {
+            $six[] = $this->imageFixture('png');
+        }
+        $webp = tempnam(sys_get_temp_dir(), 'wp04d-webp-');
+        self::assertIsString($webp);
+        file_put_contents($webp, "RIFF\x1a\x00\x00\x00WEBPVP8 " . str_repeat("\x00", 10));
+        $bmp = tempnam(sys_get_temp_dir(), 'wp04d-bmp-');
+        self::assertIsString($bmp);
+        file_put_contents($bmp, 'BM' . str_repeat("\x00", 62));
+        $svg = tempnam(sys_get_temp_dir(), 'wp04d-svg-');
+        self::assertIsString($svg);
+        file_put_contents($svg, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>');
+
+        // Every filename claims .png/image-png so only the file content can drive the rejection.
+        $cases = [
+            'text bytes named png (row 1)'  => [['tmp' => $text, 'name' => 'x.png', 'type' => 'image/png']],
+            'corrupt png body (row 3)'      => [['tmp' => $corrupt, 'name' => 'x.png', 'type' => 'image/png']],
+            'over 2MB (row 4)'              => [['tmp' => $big, 'name' => 'x.png', 'type' => 'image/png', 'size' => 2_097_153]],
+            'oversized dimensions (row 5)'  => [['tmp' => $wide, 'name' => 'x.png', 'type' => 'image/png']],
+            'sixth file over the cap (row 6)' => array_map(
+                static fn (string $p): array => ['tmp' => $p, 'name' => 'x.png', 'type' => 'image/png'],
+                $six,
+            ),
+            'webp disguised as png (row 7)' => [['tmp' => $webp, 'name' => 'x.png', 'type' => 'image/png']],
+            'bmp disguised as png (row 7)'  => [['tmp' => $bmp, 'name' => 'x.png', 'type' => 'image/png']],
+            'svg disguised as png (row 7)'  => [['tmp' => $svg, 'name' => 'x.png', 'type' => 'image/png']],
+        ];
+        try {
+            $index = 0;
+            foreach ($cases as $label => $specs) {
+                $this->setUploads($specs);
+                $payload                  = $base;
+                $payload['submission_id'] = md5($label);
+                $payload['number_id']     = '72' . $index;
+                $before                   = $this->orderImagesOnDisk();
+                // AC-5 (row 6) + AC-6: every disguised or oversized upload is 422 with no file left behind.
+                $this->postOrder($payload, false)->assertStatus(422);
+                $this->assertCreateCounts(8, 0, 0);
+                $after = $this->orderImagesOnDisk();
+                sort($before);
+                sort($after);
+                self::assertSame($before, $after, $label);
+                $index++;
+            }
+        } finally {
+            foreach ([$text, $corrupt, $big, $wide, $webp, $bmp, $svg, ...$six] as $tmp) {
+                @unlink($tmp);
+            }
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    /** A real image of the requested type written to a temp file via gd. */
+    private function imageFixture(string $type, int $width = 8, int $height = 8): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'wp04d-img-');
+        self::assertIsString($path);
+        $image = imagecreatetruecolor($width, $height);
+        self::assertNotFalse($image);
+        imagefilledrectangle($image, 0, 0, $width - 1, $height - 1, (int) imagecolorallocate($image, 12, 34, 56));
+        $written = match ($type) {
+            'png'  => imagepng($image, $path),
+            'jpeg' => imagejpeg($image, $path),
+            'gif'  => imagegif($image, $path),
+            default => self::fail('unknown fixture image type: ' . $type),
+        };
+        imagedestroy($image);
+        self::assertTrue($written);
+
+        return $path;
+    }
+
+    /** A file with an intact PNG signature and IHDR but truncated image data (imagecreatefrompng fails). */
+    private function corruptPngFixture(): string
+    {
+        $valid = $this->imageFixture('png', 16, 16);
+        $bytes = (string) file_get_contents($valid);
+        @unlink($valid);
+        $path = tempnam(sys_get_temp_dir(), 'wp04d-corrupt-');
+        self::assertIsString($path);
+        file_put_contents($path, substr($bytes, 0, 40));
+
+        return $path;
+    }
+
+    /**
+     * Register uploads in the multi-file $_FILES shape the detail_image[] form produces.
+     *
+     * @param list<array<string, mixed>> $specs each carries tmp (path) plus optional name/type/size/error
+     */
+    private function setUploads(array $specs): void
+    {
+        if ($specs === []) {
+            service('superglobals')->setFilesArray([]);
+
+            return;
+        }
+        $files = ['name' => [], 'type' => [], 'tmp_name' => [], 'error' => [], 'size' => []];
+        foreach ($specs as $spec) {
+            $tmp                 = (string) $spec['tmp'];
+            $files['name'][]     = (string) ($spec['name'] ?? 'upload.bin');
+            $files['type'][]     = (string) ($spec['type'] ?? 'application/octet-stream');
+            $files['tmp_name'][] = $tmp;
+            $files['error'][]    = (int) ($spec['error'] ?? UPLOAD_ERR_OK);
+            $files['size'][]     = (int) ($spec['size'] ?? (is_file($tmp) ? (int) filesize($tmp) : 0));
+        }
+        service('superglobals')->setFilesArray(['detail_image' => $files]);
+    }
+
+    /** @return list<string> absolute paths of every stored order image currently on disk */
+    private function orderImagesOnDisk(): array
+    {
+        $found = glob(WRITEPATH . 'uploads/orders/*');
+
+        return $found === false ? [] : $found;
     }
 
     /** @param array<string, mixed> $payload */

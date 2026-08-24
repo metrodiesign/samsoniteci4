@@ -5,10 +5,11 @@ namespace App\Controllers;
 use App\Authorization\AuthorizationPolicy;
 use App\Orders\OrderStore;
 use App\Orders\OrderCreationWorkflow;
+use App\Orders\OrderImageStore;
 use App\Orders\OrderTransitionWorkflow;
-use App\Master\BranchTypeImageStore;
 use App\Reporting\TrackingReport;
 use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\HTTP\Files\UploadedFile;
 use CodeIgniter\HTTP\ResponseInterface;
 use InvalidArgumentException;
 use DomainException;
@@ -83,15 +84,20 @@ final class Order extends BaseController
 
     public function create(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
-        $files = new BranchTypeImageStore(WRITEPATH . 'uploads/orders');
-        $imageName = null;
+        $files = new OrderImageStore(WRITEPATH . 'uploads/orders');
+        // The controller owns the stored-name list end to end (design §5.2): every failure path,
+        // in Phase A or the workflow's Phase B, removes exactly these names so no orphan is left.
+        $stored = [];
         try {
-            $image = $this->request->getFile('detail_image');
-            if ($image !== null && $image->getError() !== UPLOAD_ERR_NO_FILE) {
-                if (strtolower($image->getClientExtension()) !== 'png') {
-                    throw new InvalidArgumentException('Order image must use .png');
-                }
-                $imageName = $files->store($image);
+            $uploads = array_values(array_filter(
+                $this->request->getFileMultiple('detail_image') ?? [],
+                static fn (UploadedFile $file): bool => $file->getError() !== UPLOAD_ERR_NO_FILE,
+            ));
+            if (count($uploads) > OrderImageStore::MAX_FILES) {
+                throw new InvalidArgumentException('Too many order images');
+            }
+            foreach ($uploads as $upload) {
+                $stored[] = $files->store($upload);
             }
             $session = service('session');
             $trackId = (new OrderCreationWorkflow(db_connect(), service('encrypter')))->create(
@@ -99,20 +105,20 @@ final class Order extends BaseController
                 (int) $session->get('role'),
                 $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
                 $this->request->getPost(),
-                $imageName,
+                $stored,
             );
 
             return redirect()->to('/orders/new?created=' . rawurlencode($trackId));
         } catch (DomainException) {
-            $files->remove($imageName);
+            $files->removeAll($stored);
 
             return $this->response->setStatusCode(409)->setJSON(['error' => 'duplicate_order']);
         } catch (InvalidArgumentException) {
-            $files->remove($imageName);
+            $files->removeAll($stored);
 
             return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_order']);
         } catch (Throwable $exception) {
-            $files->remove($imageName);
+            $files->removeAll($stored);
             log_message('error', 'Order creation unavailable: {exception}', ['exception' => $exception::class]);
 
             return $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']);
