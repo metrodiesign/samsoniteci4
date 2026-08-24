@@ -50,41 +50,267 @@ final class ReportMatrix
     }
 
     /** @return list<array<string, int|string|null>> */
-    public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId): array
+    public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId, mixed $rawStatusIds = null): array
     {
         [$start, $end] = $this->dates($startDate, $endDate);
+        if ($kind === 'pending-total') {
+            return $this->pendingTotal($start, $end, $branchId);
+        }
         if ($kind === 'jobs-by-day') {
-            $query = $this->db->table('request_order')
-                ->select('DATE(requestDate) AS label, COUNT(*) AS total', false)
-                ->where('action_status >', 0);
-            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
-
-            return $query->groupBy('DATE(requestDate)', false)->orderBy('label', 'ASC')->get()->getResultArray();
+            return $this->jobsByDay($start, $end, $branchId);
         }
-        if (in_array($kind, ['pending', 'pending-total'], true)) {
-            $query = $this->db->table('request_order orders')
-                ->select('orders.action_status AS id, statuses.status_name AS label, COUNT(*) AS total', false)
-                ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
-                ->whereIn('orders.action_status', [1, 2, 3, 4]);
-            $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
-
-            return $query->groupBy(['orders.action_status', 'statuses.status_name'])
-                ->orderBy('orders.action_status', 'ASC')->get()->getResultArray();
+        if ($kind === 'pending') {
+            return $this->pending($start, $end, $branchId);
         }
-        if (in_array($kind, ['in-progress-average', 'in-progress'], true)) {
-            $query = $this->db->table('request_order')
-                ->select('request_id AS id, trackID AS label, requestDate, date_update_status, action_status')
-                ->whereIn('action_status', [2, 3]);
-            $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
-            $rows = $query->orderBy('request_id', 'ASC')->get()->getResultArray();
-            foreach ($rows as &$row) {
-                $row['total'] = $this->days($row['requestDate'], $row['date_update_status']);
-            }
-            unset($row);
-
-            return $rows;
+        if ($kind === 'in-progress-average') {
+            return $this->inProgressAverage($start, $end, $branchId);
+        }
+        if ($kind === 'in-progress') {
+            return $this->inProgress($start, $end, $branchId, $rawStatusIds);
         }
         throw new InvalidArgumentException('Unknown report.');
+    }
+
+    /** @return list<array<string, int|string>> */
+    private function pendingTotal(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $grouped = $this->db->table('request_order')
+            ->select('action_status, COUNT(*) AS total', false)
+            ->where('action_status >=', 1)->where('action_status <=', 4);
+        $this->scope($grouped, 'requestDate', 'branchID', $start, $end, $branchId);
+        $counts = [];
+        foreach ($grouped->groupBy('action_status')->get()->getResultArray() as $row) {
+            $counts[(int) $row['action_status']] = (int) $row['total'];
+        }
+        $waiting = $counts[1] ?? 0;
+        $working = ($counts[2] ?? 0) + ($counts[3] ?? 0) + ($counts[4] ?? 0);
+
+        $pendingQuery = $this->db->table('request_order')
+            ->where('action_status', 5)->where('date_complete IS NOT NULL', null, false);
+        $this->scope($pendingQuery, 'requestDate', 'branchID', $start, $end, $branchId);
+        $pending = $pendingQuery->countAllResults();
+
+        $total = $waiting + $working + $pending;
+        $sumPercent = 0.0;
+        $rows = [];
+        foreach ([
+            [1, 'Waiting for CMG to pick up', $waiting],
+            [2, 'Working in process - CMG', $working],
+            [3, 'Pending for customer to pick up', $pending],
+        ] as [$no, $detail, $count]) {
+            $percent = $total > 0 ? $count * 100 / $total : 0.0;
+            $sumPercent += $percent;
+            $rows[] = [
+                'No' => $no,
+                'Detail' => $detail,
+                'Job' => $count,
+                'Average (Percent)' => round($percent, 2) . '%',
+            ];
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'Detail' => '',
+            'Job' => number_format($total, 0),
+            'Average (Percent)' => number_format($sumPercent, 0) . '%',
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<array<string, int|string>> */
+    private function inProgressAverage(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $grouped = $this->db->table('request_order')
+            ->select('action_status, COUNT(*) AS total', false)
+            ->whereIn('action_status', [1, 2, 3, 4, 5]);
+        $this->scope($grouped, 'requestDate', 'branchID', $start, $end, $branchId);
+        $counts = [];
+        foreach ($grouped->groupBy('action_status')->get()->getResultArray() as $row) {
+            $counts[(int) $row['action_status']] = (int) $row['total'];
+        }
+        $total = array_sum($counts);
+
+        $sumPercent = 0.0;
+        $rows = [];
+        foreach ([
+            [1, 'เปิดงานซ่อม รอศูนย์บริการมารับ'],
+            [2, 'สินค้าจัดส่งเข้าศูนย์บริการ'],
+            [3, 'อยู่ระหว่างดำเนินการซ่อมสินค้า'],
+            [4, 'ซ่อมเสร็จเรียบร้อยแล้ว รอส่งกลับจุดรับบริการ'],
+            [5, 'สินค้าถึงจุดรับบริการ รอลูกค้ามารับ'],
+        ] as [$no, $detail]) {
+            $count = $counts[$no] ?? 0;
+            $percent = $total > 0 ? $count * 100 / $total : 0.0;
+            $sumPercent += $percent;
+            $rows[] = [
+                'No' => $no,
+                'Detail' => $detail,
+                'Job' => number_format($count, 0),
+                'Average (Percent)' => number_format($percent, 2) . '%',
+            ];
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'Detail' => '',
+            'Job' => number_format($total, 0),
+            'Average (Percent)' => number_format($sumPercent, 2) . '%',
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    private function pending(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $query = $this->db->table('request_order orders')
+            ->select('orders.request_id, orders.trackID, orders.orderIDShow, orders.customerTel, orders.date_repair, statuses.status_name_th', false)
+            ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'inner')
+            ->where('orders.date_complete', null)
+            ->orderBy('orders.date_repair', 'ASC')->orderBy('orders.request_id', 'ASC');
+        $this->scope($query, 'orders.date_repair', 'orders.branchID', $start, $end, $branchId);
+
+        $today = new DateTimeImmutable('today');
+        $rows = [];
+        $sumDay = 0;
+        $no = 1;
+        foreach ($query->get()->getResultArray() as $record) {
+            $repair = (string) $record['date_repair'];
+            $day = $this->dateDiff($today, $repair);
+            $sumDay += $day ?? 0;
+            $rows[] = [
+                'No' => $no,
+                'trackID' => $record['trackID'],
+                'Status' => $record['status_name_th'],
+                'เล่มที่/เลขที่' => $record['orderIDShow'],
+                'เบอร์มือถือลูกค้า' => $record['customerTel'],
+                'วันที่ส่งซ่อม' => $repair === '' ? '' : (new DateTimeImmutable($repair))->format('d/m/Y'),
+                'Day' => $day,
+            ];
+            $no++;
+        }
+        $rows[] = [
+            'No' => 'TOTAL',
+            'trackID' => number_format($sumDay, 0),
+            'Status' => '',
+            'เล่มที่/เลขที่' => '',
+            'เบอร์มือถือลูกค้า' => '',
+            'วันที่ส่งซ่อม' => '',
+            'Day' => '',
+        ];
+
+        return $rows;
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    private function inProgress(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId, mixed $rawStatusIds): array
+    {
+        $query = $this->db->table('request_order orders')
+            ->select('orders.request_id, orders.trackID, orders.orderIDShow, orders.customerFullname, orders.customerTel, orders.requestDate, statuses.status_name_th, branches.branch_name', false)
+            ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'inner')
+            ->join('branch branches', 'branches.branch_id = orders.branchID', 'left')
+            ->where('orders.date_complete', null)
+            ->orderBy('orders.requestDate', 'ASC')->orderBy('orders.request_id', 'ASC');
+        $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
+        $statusIds = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
+        if ($statusIds !== []) {
+            $query->whereIn('orders.action_status', $statusIds);
+        }
+
+        $today = new DateTimeImmutable('today');
+        $rows = [];
+        $no = 1;
+        foreach ($query->get()->getResultArray() as $record) {
+            $requestDate = (string) $record['requestDate'];
+            $day = $this->dateDiff($today, $requestDate);
+            $rows[] = [
+                'No' => $no,
+                'Status' => $record['status_name_th'],
+                'Track Id' => $record['trackID'],
+                'Order Id' => $record['orderIDShow'],
+                'Branch Name' => $record['branch_name'],
+                'Full Name' => $record['customerFullname'],
+                'Tel' => $record['customerTel'],
+                'Request Date' => $requestDate === '' ? '' : (new DateTimeImmutable($requestDate))->format('d/m/Y'),
+                'Day' => number_format($day ?? 0, 0),
+            ];
+            $no++;
+        }
+
+        return $rows;
+    }
+
+    /** @return list<array<array-key, int|string>> */
+    private function jobsByDay(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
+    {
+        $query = $this->db->table('request_order')
+            ->select('detailBrandId, detailTypeId, waranty_cmg, date_repair, date_repair_waranty, date_complete')
+            ->where('date_complete IS NOT NULL', null, false)
+            ->where("UPPER(TRIM(waranty_cmg)) IN ('OUT', 'UNW', '')", null, false);
+        $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
+
+        $tallies = [];
+        foreach ($query->get()->getResultArray() as $record) {
+            $diff = match (strtoupper(trim((string) $record['waranty_cmg']))) {
+                'OUT'   => $this->dateDiff($record['date_complete'], $record['date_repair_waranty']),
+                default => $this->dateDiff($record['date_complete'], $record['date_repair']),
+            };
+            $column = $this->jobsByDayColumn($diff);
+            if ($column === null) {
+                continue;
+            }
+            $key = (int) $record['detailBrandId'] . '|' . (int) $record['detailTypeId'];
+            $tallies[$key][$column] = ($tallies[$key][$column] ?? 0) + 1;
+        }
+
+        $columns = ['0', '1-7', '8-30', '31-45', '> 45'];
+        $brands = $this->db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id', 'ASC')->get()->getResultArray();
+        $types = $this->db->table('type')->select('type_id, type_details')->orderBy('type_id', 'ASC')->get()->getResultArray();
+
+        $rows = [];
+        $totals = array_fill_keys($columns, 0);
+        foreach ($brands as $brand) {
+            foreach ($types as $type) {
+                $key = (int) $brand['brand_id'] . '|' . (int) $type['type_id'];
+                $row = ['Brand' => (string) $brand['brand_details'], 'Product Type' => (string) $type['type_details']];
+                foreach ($columns as $column) {
+                    $count = $tallies[$key][$column] ?? 0;
+                    $row[$column] = $count;
+                    $totals[$column] += $count;
+                }
+                $rows[] = $row;
+            }
+        }
+        $rows[] = ['Brand' => 'TOTAL', 'Product Type' => ''] + $totals;
+
+        $grandTotal = array_sum($totals);
+        foreach ([
+            ['Over all repair time 0-7 Days', $totals['0'] + $totals['1-7']],
+            ['Over all repair time 8-30 Days', $totals['8-30']],
+            ['Over all repair time 31-45 Days', $totals['31-45']],
+            ['Over all repair time >45 Days', $totals['> 45']],
+        ] as [$label, $numerator]) {
+            $percent = $grandTotal > 0 ? round($numerator * 100 / $grandTotal, 2) : 0;
+            $rows[] = [
+                'Brand' => $label,
+                'Product Type' => $percent . ' %',
+                '0' => '', '1-7' => '', '8-30' => '', '31-45' => '', '> 45' => '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function jobsByDayColumn(?int $diff): ?string
+    {
+        return match (true) {
+            $diff === null => null,
+            $diff === 0 => '0',
+            $diff > 0 && $diff < 8 => '1-7',
+            $diff > 7 && $diff < 31 => '8-30',
+            $diff > 30 && $diff < 46 => '31-45',
+            $diff > 45 => '> 45',
+            default => null,
+        };
     }
 
     /** @return list<array<string, int|float|string|null>> */
@@ -197,13 +423,30 @@ final class ReportMatrix
         }
     }
 
-    private function days(mixed $start, mixed $end): ?int
+    private function dateDiff(mixed $to, mixed $from): ?int
     {
-        if (! is_string($start) || ! is_string($end) || $start === '' || $end === '') {
+        $to = $this->toDate($to);
+        $from = $this->toDate($from);
+        if ($to === null || $from === null) {
             return null;
         }
-        $interval = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end));
+        $interval = $from->setTime(0, 0)->diff($to->setTime(0, 0));
 
-        return is_int($interval->days) ? ($interval->invert ? -$interval->days : $interval->days) : null;
+        return $interval->invert === 1 ? -$interval->days : $interval->days;
+    }
+
+    private function toDate(mixed $value): ?DateTimeImmutable
+    {
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+        try {
+            return new DateTimeImmutable($value);
+        } catch (\Exception) {
+            return null;
+        }
     }
 }

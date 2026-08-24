@@ -37,12 +37,6 @@ parameters:
 			path: app/Master/BranchTypeImageStore.php
 
 		-
-			message: '#^Call to function is_int\(\) with int will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 1
-			path: app/Reporting/ReportMatrix.php
-
-		-
 			message: '#^Parameter \#1 \$array of function array_values contains unresolvable type\.$#'
 			identifier: argument.unresolvableType
 			count: 1
