@@ -28,7 +28,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $encryption->key = str_repeat("\x40", 32);
         Services::injectMock('encrypter', Services::encrypter($encryption, false));
         foreach ([
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), warantyType INTEGER, detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100) NOT NULL, action_id INTEGER, update_id INTEGER, cdate DATETIME NOT NULL',
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250) NOT NULL, status_name_th VARCHAR(250)',
             'provider' => 'provider_id INTEGER PRIMARY KEY, provider_name VARCHAR(250) NOT NULL',
@@ -346,8 +346,11 @@ final class OrderHttpTest extends CIUnitTestCase
         $payload = [
             'submission_id' => str_repeat('a', 32), 'number_id' => '1001', 'order_id' => 'ORDER-1001',
             'book_id' => 'WPA', 'customer_name' => 'NEW CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_tel2' => '027619999',
             'customer_email' => 'customer@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
         ];
         $payload['csrf_test_name'] = service('security')->getHash();
         $created = $this->withSession($this->session(2, 2, 1))->post('/orders/new', $payload);
@@ -366,6 +369,9 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertNotNull($intent);
         self::assertSame('pending', $intent['status']);
         self::assertStringNotContainsString('0000000000', (string) $intent['payload_ciphertext']);
+        // AC-5: the alternate telephone is stored on the order but never reaches the SMS intent.
+        self::assertSame('027619999', (string) $order['customerTel2']);
+        self::assertStringNotContainsString('027619999', (string) $intent['payload_ciphertext']);
         service('superglobals')->setFilesArray([]);
     }
 
@@ -376,6 +382,8 @@ final class OrderHttpTest extends CIUnitTestCase
             'book_id' => 'WPA', 'customer_name' => 'VALID CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'customer@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
         ];
         $this->postOrder([...$valid, 'brand_id' => '999'])->assertStatus(422);
         $this->assertCreateCounts(8, 0, 0);
@@ -399,6 +407,166 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->postOrder([...$valid, 'submission_id' => str_repeat('d', 32), 'number_id' => '2002', 'branch_id' => '2'])
             ->assertStatus(422);
         $this->assertCreateCounts(9, 1, 1);
+    }
+
+    public function testCreateOrderFillsEveryCi3PrintBlockFromSubmittedFields(): void
+    {
+        $payload = [
+            'submission_id' => str_repeat('e', 32), 'number_id' => '3001', 'order_id' => 'ORDER-3001',
+            'book_id' => 'WPA', 'customer_name' => 'FULL CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_tel2' => '027619999', 'customer_email' => 'full@example.invalid',
+            'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_agent' => '1', 'detail_date_purchase' => '15/01/2026',
+            'detail_sku_name' => 'CABIN SPINNER', 'waranty_type' => '1', 'detail_number_waranty' => 'WRT-777',
+            'condition' => ['1', '2'], 'condition_other' => 'HANDLE CRACK',
+            'estimateprice' => ['2'], 'estimateprice_other' => 'PRICE NOTE',
+            'fixed' => ['1'], 'fixed_other' => 'FIXED NOTE',
+            'detail_equipment' => 'CHARGER AND STRAP', 'create_by_user' => 'RECEIVER NAME',
+        ];
+        $this->postOrder($payload)->assertRedirect();
+
+        $order = $this->db->table('request_order')->where('customerFullname', 'FULL CUSTOMER')->get()->getRowArray();
+        self::assertNotNull($order);
+        // Exact DB values pin the pipe-join order (mutation 1) and the column each catalogue writes (mutation 3).
+        self::assertSame(1, (int) $order['detailAgent']);
+        self::assertSame('027619999', (string) $order['customerTel2']);
+        self::assertSame('2026-01-15 00:00:00', (string) $order['detailDatePurchase']);
+        self::assertSame('CABIN SPINNER', (string) $order['detailSKUName']);
+        self::assertSame(1, (int) $order['warantyType']);
+        self::assertSame('WRT-777', (string) $order['detailNumberWaranty']);
+        self::assertSame('1|2', (string) $order['detailCondition']);
+        self::assertSame('HANDLE CRACK', (string) $order['detailConditionOther']);
+        self::assertSame('2', (string) $order['detailEstimatePrice']);
+        self::assertSame('1', (string) $order['detailFixed']);
+        self::assertSame('CHARGER AND STRAP', (string) $order['detailEquipment']);
+        self::assertSame('RECEIVER NAME', (string) $order['create_by_user']);
+
+        $print = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $order['request_id'] . '/print');
+        $print->assertStatus(200);
+        $body = $print->getBody();
+        // AC-1: blocks 1, 8, 9, 12, 13, 14, 15, 16, 17, 19 render the submitted data instead of blanks.
+        $print->assertSee('URGENT/ซ่อมด่วน');                              // block 1
+        self::assertStringContainsString('027619999', $body);                // block 8
+        self::assertStringContainsString('15/01/2026', $body);               // block 9
+        self::assertStringContainsString('CABIN SPINNER', $body);            // block 12
+        $print->assertSee('มี WRT-777');                                     // block 13
+        self::assertStringContainsString('value="1" disabled checked', $body); // block 14 (condition id 1)
+        self::assertStringContainsString('value="2" disabled checked', $body); // block 14 (condition id 2)
+        self::assertStringContainsString('HANDLE CRACK', $body);             // block 14 (other)
+        self::assertStringContainsString('PRICE NOTE', $body);               // block 15 (other)
+        self::assertStringContainsString('FIXED NOTE', $body);               // block 16 (other)
+        self::assertStringContainsString('CHARGER AND STRAP', $body);        // block 17
+        self::assertStringContainsString('RECEIVER NAME', $body);            // block 19
+    }
+
+    public function testCreateOrderDefaultsOptionalFieldsWhenOmitted(): void
+    {
+        $payload = [
+            'submission_id' => str_repeat('f', 32), 'number_id' => '4001', 'order_id' => 'ORDER-4001',
+            'book_id' => 'WPA', 'customer_name' => 'MINIMAL CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => '', 'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => '',
+            'detail_sku_name' => 'PLAIN BAG', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $this->postOrder($payload)->assertRedirect();
+
+        $order = $this->db->table('request_order')->where('customerFullname', 'MINIMAL CUSTOMER')->get()->getRowArray();
+        self::assertNotNull($order);
+        // Every omitted optional field takes its documented default (detail_agent/waranty off, zero date, blanks).
+        self::assertSame(0, (int) $order['detailAgent']);
+        self::assertSame(0, (int) $order['warantyType']);
+        self::assertSame('', (string) $order['detailNumberWaranty']);
+        self::assertSame('0000-00-00 00:00:00', (string) $order['detailDatePurchase']);
+        self::assertSame('', (string) $order['customerTel2']);
+        self::assertSame('', (string) $order['detailConditionOther']);
+    }
+
+    public function testCreateOrderBlanksWarantyNumberWhenTypeIsZero(): void
+    {
+        $payload = [
+            'submission_id' => str_repeat('1', 32), 'number_id' => '4101', 'order_id' => 'ORDER-4101',
+            'book_id' => 'WPA', 'customer_name' => 'WARANTY ZERO CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => '', 'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => '',
+            'detail_sku_name' => 'PLAIN BAG', 'create_by_user' => 'RECEIVER NAME',
+            'waranty_type' => '0', 'detail_number_waranty' => 'SHOULD-VANISH',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        $this->postOrder($payload)->assertRedirect();
+
+        $order = $this->db->table('request_order')->where('customerFullname', 'WARANTY ZERO CUSTOMER')->get()->getRowArray();
+        self::assertNotNull($order);
+        // AC-4: waranty type 0 blanks the number even though a value was submitted; print then reads "ไม่มี".
+        self::assertSame('', (string) $order['detailNumberWaranty']);
+
+        $print = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $order['request_id'] . '/print');
+        $print->assertStatus(200);
+        $print->assertSee('ไม่มี');
+        self::assertStringNotContainsString('SHOULD-VANISH', $print->getBody());
+    }
+
+    public function testCreateOrderRejectsAdversarialFieldPayloadsWithoutWriting(): void
+    {
+        // Cross-table row 2: a fixed id absent from the condition catalogue must still fail condition lookup.
+        $this->db->table('fixed')->insert(['fixed_id' => 7, 'fixed_details' => 'FIXED SEVEN']);
+        $base = [
+            'submission_id' => str_repeat('a', 32), 'number_id' => '5001', 'order_id' => 'ORDER-5001',
+            'book_id' => 'WPA', 'customer_name' => 'ADV CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'adv@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair',
+            'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ];
+        // null override means "drop the key" (unsent field); every row must answer 422 with no new row.
+        foreach ([
+            'condition unknown id (row 1)' => ['condition' => ['99999']],
+            'condition cross-table id (row 2)' => ['condition' => ['7']],
+            'condition duplicate ids (row 3)' => ['condition' => ['1', '1']],
+            'condition empty (row 4)' => ['condition' => []],
+            'condition missing (row 4)' => ['condition' => null],
+            'estimateprice empty' => ['estimateprice' => []],
+            'estimateprice missing' => ['estimateprice' => null],
+            'estimateprice unknown id' => ['estimateprice' => ['99999']],
+            'fixed empty' => ['fixed' => []],
+            'fixed missing' => ['fixed' => null],
+            'fixed unknown id' => ['fixed' => ['99999']],
+            'sku empty (row 5)' => ['detail_sku_name' => ''],
+            'sku over 100 (row 5)' => ['detail_sku_name' => str_repeat('x', 101)],
+            'tel2 alpha (row 6)' => ['customer_tel2' => 'abc'],
+            'tel2 dashes (row 6)' => ['customer_tel2' => '08-1234-5678'],
+            'purchase impossible day (row 8)' => ['detail_date_purchase' => '31/02/2026'],
+            'purchase iso format (row 8)' => ['detail_date_purchase' => '2026-01-15'],
+            'purchase short year (row 8)' => ['detail_date_purchase' => '1/1/26'],
+            'waranty out of set 2 (row 10)' => ['waranty_type' => '2'],
+            'waranty out of set x (row 10)' => ['waranty_type' => 'x'],
+            'condition_other over 250 (row 11)' => ['condition_other' => str_repeat('x', 251)],
+            'create_by empty (row 12)' => ['create_by_user' => ''],
+            'create_by missing (row 12)' => ['create_by_user' => null],
+        ] as $label => $override) {
+            $payload = $base;
+            $payload['submission_id'] = md5($label);
+            foreach ($override as $key => $value) {
+                if ($value === null) {
+                    unset($payload[$key]);
+                } else {
+                    $payload[$key] = $value;
+                }
+            }
+            $this->postOrder($payload)->assertStatus(422);
+            $this->assertCreateCounts(8, 0, 0);
+        }
+    }
+
+    public function testNewOrderFormExposesCatalogueCheckboxesAndCi4FieldNames(): void
+    {
+        $body = $this->withSession($this->session(2, 2, 1))->get('/orders/new')->getBody();
+        // The controller wires the three catalogues into the form; names are the CI4 contract normalize() reads.
+        self::assertStringContainsString('name="condition[]"', $body);
+        self::assertStringContainsString('name="estimateprice[]"', $body);
+        self::assertStringContainsString('name="fixed[]"', $body);
+        self::assertStringContainsString('CONDITION ONE', $body);
+        self::assertStringContainsString('name="detail_sku_name"', $body);
+        self::assertStringContainsString('name="waranty_type"', $body);
+        self::assertStringContainsString('name="create_by_user"', $body);
     }
 
     public function testNormalLifecycleWritesExactProviderDatesStatusesAndLogs(): void
@@ -740,7 +908,7 @@ final class OrderHttpTest extends CIUnitTestCase
         return $this->withSession($this->session(2, 2, 1))->post($path, $payload);
     }
 
-    /** @param array<string, string> $payload */
+    /** @param array<string, mixed> $payload */
     private function postOrder(array $payload, bool $clearFiles = true)
     {
         if ($clearFiles) {

@@ -35,7 +35,10 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER, default_suffix VARCHAR(10)',
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250)',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250)',
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME, trackID VARCHAR(100) UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailTypeId INTEGER, detailBrandId INTEGER, detailNote TEXT, detailImage VARCHAR(250), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, action_status INTEGER, create_by_user VARCHAR(250)',
+            'condition' => 'condition_id INTEGER PRIMARY KEY, condition_details VARCHAR(250)',
+            'estimateprice' => 'estimateprice_id INTEGER PRIMARY KEY, estimateprice_details VARCHAR(250)',
+            'fixed' => 'fixed_id INTEGER PRIMARY KEY, fixed_details VARCHAR(250)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME, trackID VARCHAR(100) UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailTypeId INTEGER, detailBrandId INTEGER, detailAgent INTEGER, detailSKUName VARCHAR(100), warantyType INTEGER, detailNumberWaranty VARCHAR(100), detailDatePurchase DATETIME, detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment TEXT, detailNote TEXT, detailImage VARCHAR(250), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, action_status INTEGER, create_by_user VARCHAR(250)',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100), action_id INTEGER, update_id INTEGER, cdate DATETIME',
         ] as $table => $definition) {
             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
@@ -48,6 +51,9 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
         $this->db->table('branch')->insert(['branch_id' => 1, 'branch_type' => 1, 'default_suffix' => 'WPA']);
         $this->db->table('brand')->insert(['brand_id' => 1, 'brand_details' => 'BRAND A']);
         $this->db->table('type')->insert(['type_id' => 1, 'type_details' => 'TYPE A']);
+        $this->db->table('condition')->insert(['condition_id' => 1, 'condition_details' => 'CONDITION A']);
+        $this->db->table('estimateprice')->insert(['estimateprice_id' => 1, 'estimateprice_details' => 'ESTIMATE A']);
+        $this->db->table('fixed')->insert(['fixed_id' => 1, 'fixed_details' => 'FIXED A']);
     }
 
     public function testLoopbackSendsOrderSmsOnceWithoutExposingPayload(): void
@@ -144,6 +150,8 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
             'order_id' => 'ORDER-' . $marker, 'book_id' => 'WPA', 'customer_name' => 'SMS CUSTOMER',
             'customer_tel' => '0000000000', 'customer_email' => 'sms@example.invalid',
             'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'Synthetic SMS',
+            'detail_sku_name' => 'SMS BAG', 'create_by_user' => 'SMS RECEIVER',
+            'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
         ], null);
 
         return new SmsDeliveryIntentStore($this->db, $this->encrypter);

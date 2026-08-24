@@ -122,13 +122,21 @@ CREATE TABLE branch (
 );
 CREATE TABLE `type` (type_id INT PRIMARY KEY, type_details VARCHAR(250) NOT NULL);
 CREATE TABLE brand (brand_id INT PRIMARY KEY, brand_details VARCHAR(250) NOT NULL);
+CREATE TABLE `condition` (condition_id INT PRIMARY KEY, condition_details VARCHAR(250) NOT NULL);
+CREATE TABLE estimateprice (estimateprice_id INT PRIMARY KEY, estimateprice_details VARCHAR(250) NOT NULL);
+CREATE TABLE `fixed` (fixed_id INT PRIMARY KEY, fixed_details VARCHAR(250) NOT NULL);
 CREATE TABLE request_order (
   request_id INT AUTO_INCREMENT PRIMARY KEY,
   requestDate DATETIME NOT NULL,
   trackID VARCHAR(100) NOT NULL UNIQUE,
   bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100),
-  customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100),
-  detailTypeId INT, detailBrandId INT, detailNote TEXT, detailImage VARCHAR(500),
+  customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100),
+  detailTypeId INT, detailBrandId INT, detailAgent INT, detailSKUName VARCHAR(100),
+  warantyType INT, detailNumberWaranty VARCHAR(100), detailDatePurchase DATETIME,
+  detailCondition VARCHAR(250), detailConditionOther VARCHAR(250),
+  detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250),
+  detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment TEXT,
+  detailNote TEXT, detailImage VARCHAR(500),
   branchID INT, branch_type_id INT, UserID INT, action_status INT, RepairPrice DECIMAL(8,2),
   number_cmg VARCHAR(100), create_by_user VARCHAR(250),
   UNIQUE KEY uq_order_branch_number (branchID, numberID)
@@ -141,6 +149,9 @@ CREATE TABLE status_log (
 INSERT INTO branch VALUES (1, 1, 'WPA');
 INSERT INTO `type` VALUES (1, 'TYPE A');
 INSERT INTO brand VALUES (1, 'BRAND A');
+INSERT INTO `condition` VALUES (1, 'CONDITION A');
+INSERT INTO estimateprice VALUES (1, 'ESTIMATE A');
+INSERT INTO `fixed` VALUES (1, 'FIXED A');
 INSERT INTO request_order (
   requestDate, trackID, numberID, orderIDShow, customerFullname, customerTel,
   branchID, branch_type_id, action_status

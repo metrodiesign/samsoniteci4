@@ -77,7 +77,7 @@ final class Order extends BaseController
     {
         return view('layout', [
             'title' => 'New repair order',
-            'content' => view('order_new', ['submissionId' => bin2hex(random_bytes(16))]),
+            'content' => view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->checkboxCatalogues()),
         ]);
     }
 
@@ -199,6 +199,20 @@ final class Order extends BaseController
                 ->where('type_id', (int) ($row['detailTypeId'] ?? 0))->get()->getRow('type_details') ?? ''),
             'brandName' => (string) ($db->table('brand')->select('brand_details')
                 ->where('brand_id', (int) ($row['detailBrandId'] ?? 0))->get()->getRow('brand_details') ?? ''),
+        ] + $this->checkboxCatalogues();
+    }
+
+    /**
+     * The condition/estimateprice/fixed catalogues rendered as checkbox lists by both the print view
+     * and the create form.
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function checkboxCatalogues(): array
+    {
+        $db = db_connect();
+
+        return [
             'conditions' => $db->table('condition')->select('condition_id, condition_details')
                 ->orderBy('condition_id', 'ASC')->get()->getResultArray(),
             'estimatePrices' => $db->table('estimateprice')->select('estimateprice_id, estimateprice_details')
