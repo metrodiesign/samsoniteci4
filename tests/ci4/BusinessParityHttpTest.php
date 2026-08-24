@@ -310,6 +310,37 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         self::assertSame(-1, $rows[0]['TotalDay']);
     }
 
+    public function testTrackingDayCountTruncatesTimeOfDayLikeDatediff(): void
+    {
+        // AC-4/AC-5: a sub-24h span across a date boundary counts as one calendar day (mirrors MySQL DATEDIFF).
+        $row                        = $this->order(91011, '2026-01-01 15:00:00', 'WP00C-TRACK-011', 1, 7, '2026-01-02 09:00:00');
+        $row['waranty_cmg']         = 'OUT';
+        $row['date_repair_waranty'] = '2026-01-01 15:00:00';
+        $this->db->table('request_order')->insert($row);
+
+        $rows = (new TrackingReport($this->db))->rows('WP00C-TRACK-011', null, null, null, 1);
+
+        self::assertCount(1, $rows);
+        // requestDate -> date_complete: DATEDIFF 1 + inclusive 1 = 2.
+        self::assertSame(2, $rows[0]['TotalDay']);
+        // date_repair_waranty -> date_complete (OUT): DATEDIFF 1, no inclusive = 1.
+        self::assertSame(1, $rows[0]['CMGTotalDay']);
+    }
+
+    public function testTrackingDayCountKeepsNullCompletionAndUnmatchedWarrantyZero(): void
+    {
+        // AC-6: no completion date keeps TotalDay null; a warranty flag outside the CMG set keeps CMGTotalDay 0.
+        $row = $this->order(91012, '2026-01-01 15:00:00', 'WP00C-TRACK-012', 1, 2, null);
+        // order() defaults waranty_cmg 'IN', which is outside {OUT, UNW, ''}.
+        $this->db->table('request_order')->insert($row);
+
+        $rows = (new TrackingReport($this->db))->rows('WP00C-TRACK-012', null, null, null, 1);
+
+        self::assertCount(1, $rows);
+        self::assertNull($rows[0]['TotalDay']);
+        self::assertSame(0, $rows[0]['CMGTotalDay']);
+    }
+
     /** @param array<string, string> $payload */
     private function postWithCsrf(string $path, array $payload)
     {

@@ -152,6 +152,72 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('value="' . $today->format('d/m/Y') . '"', $response->getBody());
     }
 
+    public function testRatingsDefaultsToLastMonthAndPrefillsForm(): void
+    {
+        // AC-1: no dates -> window today-1month..today. add_id 6 gets one rating inside, one outside.
+        $today = new \DateTimeImmutable('today');
+        $this->db->table('rating')->insertBatch([
+            ['add_id' => 6, 'rating' => 5, 'order_id' => 'WP06R-IN', 'branchID' => 1, 'cdate' => $today->format('Y-m-d H:i:s')],
+            ['add_id' => 6, 'rating' => 5, 'order_id' => 'WP06R-OUT', 'branchID' => 1, 'cdate' => $today->modify('-40 days')->format('Y-m-d H:i:s')],
+        ]);
+
+        $response = $this->withSession($this->session(2, 2, 1))->get('/user/report');
+        $response->assertStatus(200);
+        // Only the in-window rating counts -> question 6 total 1 (not the whole-table 2).
+        self::assertStringContainsString('data-question="6" data-total="1"', $response->getBody());
+        // The defaulted range is echoed back into the filter form as dd/mm/yyyy.
+        self::assertStringContainsString('value="' . $today->modify('-1 month')->format('d/m/Y') . '"', $response->getBody());
+        self::assertStringContainsString('value="' . $today->format('d/m/Y') . '"', $response->getBody());
+    }
+
+    public function testRatingsDefaultsEachDateFieldIndependently(): void
+    {
+        // AC-2: each omitted field defaults on its own (start -> today-1month, end -> today), matching CI3.
+        $today = new \DateTimeImmutable('today');
+        // Case A: only start_date sent -> end defaults to today, so a future rating is excluded.
+        $this->db->table('rating')->insertBatch([
+            ['add_id' => 7, 'rating' => 5, 'order_id' => 'WP06R-A-IN', 'branchID' => 1, 'cdate' => $today->modify('-1 day')->format('Y-m-d H:i:s')],
+            ['add_id' => 7, 'rating' => 5, 'order_id' => 'WP06R-A-FUTURE', 'branchID' => 1, 'cdate' => $today->modify('+5 days')->format('Y-m-d H:i:s')],
+            ['add_id' => 7, 'rating' => 5, 'order_id' => 'WP06R-A-OLD', 'branchID' => 1, 'cdate' => $today->modify('-10 days')->format('Y-m-d H:i:s')],
+        ]);
+        $onlyStart = $this->withSession($this->session(2, 2, 1))->post('/user/report', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => $today->modify('-3 days')->format('d/m/Y'), 'end_date' => '',
+        ]);
+        $onlyStart->assertStatus(200);
+        // start = given (-3d) drops the -10d rating; end defaulted to today drops the +5d future rating -> total 1.
+        self::assertStringContainsString('data-question="7" data-total="1"', $onlyStart->getBody());
+
+        // Case B: only end_date sent -> start defaults to today-1month, so a 40-day-old rating is excluded.
+        $this->db->table('rating')->insertBatch([
+            ['add_id' => 8, 'rating' => 5, 'order_id' => 'WP06R-B-IN', 'branchID' => 1, 'cdate' => $today->modify('-5 days')->format('Y-m-d H:i:s')],
+            ['add_id' => 8, 'rating' => 5, 'order_id' => 'WP06R-B-OLD', 'branchID' => 1, 'cdate' => $today->modify('-40 days')->format('Y-m-d H:i:s')],
+        ]);
+        $onlyEnd = $this->withSession($this->session(2, 2, 1))->post('/user/report', [
+            'csrf_test_name' => service('security')->getHash(),
+            'start_date' => '', 'end_date' => $today->format('d/m/Y'),
+        ]);
+        $onlyEnd->assertStatus(200);
+        // start defaulted to today-1month drops the 40-day-old rating -> total 1.
+        self::assertStringContainsString('data-question="8" data-total="1"', $onlyEnd->getBody());
+    }
+
+    public function testRatingsExportUsesDefaultedRangeNotWholeTable(): void
+    {
+        // AC-3: export with no dates yields the same one-month window as the page, not the whole table.
+        $today = new \DateTimeImmutable('today');
+        $this->db->table('rating')->insertBatch([
+            ['add_id' => 6, 'rating' => 5, 'order_id' => 'WP06R-EXP-IN', 'branchID' => 1, 'cdate' => $today->format('Y-m-d H:i:s')],
+            ['add_id' => 6, 'rating' => 5, 'order_id' => 'WP06R-EXP-OUT', 'branchID' => 1, 'cdate' => $today->modify('-40 days')->format('Y-m-d H:i:s')],
+        ]);
+
+        $export = $this->withSession($this->session(2, 2, 1))->get('/reports/ratings/export');
+        $export->assertStatus(200);
+        // Question 6 aggregates only the in-window rating (total 1); the whole-table total (2) must not appear.
+        self::assertStringContainsString('<td>6</td><td>1</td>', $export->getBody());
+        self::assertStringNotContainsString('<td>6</td><td>2</td>', $export->getBody());
+    }
+
     public function testSummaryOmitsMissingMasterAndAppliesBranchStatusBrandTypeFilters(): void
     {
         $all = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
