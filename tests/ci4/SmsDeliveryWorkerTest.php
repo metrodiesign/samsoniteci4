@@ -3,6 +3,7 @@
 namespace Tests\Ci4;
 
 use App\Orders\OrderCreationWorkflow;
+use App\Orders\OrderSmsMessages;
 use App\Orders\SmsDeliveryIntentStore;
 use App\Orders\SmsDeliveryWorker;
 use App\Orders\LoopbackSmsTransport;
@@ -83,6 +84,57 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
         self::assertSame('sent', $worker->runNext($now->modify('+5 minutes'), Closure::fromCallable([$transport, 'send'])));
         self::assertSame($firstKey, $transport->lastIdempotencyKey());
         self::assertSame(2, (int) $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->get()->getRow('attempt_count'));
+    }
+
+    public function testCreateEnqueuesThaiTrackingSmsThatDecodes(): void
+    {
+        $store = $this->seed('c');
+        $delivery = $store->reserveNext(new DateTimeImmutable('+1 minute'));
+
+        self::assertNotNull($delivery);
+        helper('url');
+        self::assertStringStartsWith('หมายเลขการติดตามสถานะสินค้าซ่อม', $delivery->message());
+        self::assertStringContainsString(base_url('tracking/' . $delivery->trackId()), $delivery->message());
+    }
+
+    public function testEnqueueSkipsSmsWhenTelephoneMalformed(): void
+    {
+        $store = new SmsDeliveryIntentStore($this->db, $this->encrypter);
+
+        $queued = $store->enqueue(1, 'WPA00000001', '12-345', OrderSmsMessages::created('WPA00000001'), str_repeat('d', 32), new DateTimeImmutable('now'));
+
+        self::assertFalse($queued);
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testEnqueueSkipsWhenRequestIdAlreadyQueued(): void
+    {
+        $store = new SmsDeliveryIntentStore($this->db, $this->encrypter);
+        $requestId = str_repeat('e', 32);
+        $args = [1, 'WPA00000001', '0000000000', OrderSmsMessages::created('WPA00000001'), $requestId, new DateTimeImmutable('now')];
+
+        self::assertTrue($store->enqueue(...$args));
+        self::assertFalse($store->enqueue(...$args));
+        self::assertSame(1, $this->db->table('ci4_delivery_intents')->where('request_id', $requestId)->countAllResults());
+    }
+
+    public function testSmsMessagesMatchCi3Verbatim(): void
+    {
+        helper('url');
+        $trackId = 'WPA00000001';
+
+        self::assertSame(
+            'หมายเลขการติดตามสถานะสินค้าซ่อม ' . $trackId . ' ท่านสามารถตรวจสอบสถานะได้ที่ ' . base_url('tracking/' . $trackId),
+            OrderSmsMessages::created($trackId),
+        );
+        self::assertSame(
+            'สินค้าซ่อมของท่าน ' . $trackId . ' ส่งคืนมายังสาขาแล้ว สามารถติดต่อรับคืนได้ภายใน 15 วันหลังจากได้รับข้อความนี้',
+            OrderSmsMessages::returned($trackId),
+        );
+        self::assertSame(
+            'ขอบคุณที่ใช้บริการกับ Samsonite  แสดงความคิดเห็น ' . base_url('rating/' . $trackId),
+            OrderSmsMessages::completed($trackId),
+        );
     }
 
     private function seed(string $marker): SmsDeliveryIntentStore

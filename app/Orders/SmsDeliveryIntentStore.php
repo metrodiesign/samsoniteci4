@@ -95,6 +95,27 @@ final class SmsDeliveryIntentStore
         return $this->db->affectedRows();
     }
 
+    public function enqueue(int $orderId, string $trackId, string $telephone, string $message, string $requestId, DateTimeImmutable $now): bool
+    {
+        if (preg_match('/\A[0-9]{10,20}\z/D', $telephone) !== 1
+            || preg_match('/\A[A-Za-z0-9]{1,10}[0-9]{8}\z/D', $trackId) !== 1
+            || $this->db->table('ci4_delivery_intents')->where('request_id', $requestId)->countAllResults() !== 0) {
+            return false;
+        }
+        $timestamp = $this->timestamp($now);
+        $payload = json_encode([
+            'order_id' => $orderId, 'track_id' => $trackId, 'telephone' => $telephone, 'message' => $message,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+
+        return (bool) $this->db->table('ci4_delivery_intents')->insert([
+            'idempotency_key' => hash('sha256', "sms\0" . $requestId),
+            'kind' => 'sms', 'user_id' => $orderId, 'request_id' => $requestId,
+            'payload_ciphertext' => base64_encode($this->encrypter->encrypt($payload)),
+            'status' => 'pending', 'attempt_count' => 0, 'available_at' => $timestamp,
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
+        ]);
+    }
+
     /** @param array<string, mixed> $row */
     private function decode(array $row): SmsDelivery
     {

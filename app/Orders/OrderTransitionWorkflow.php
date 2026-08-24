@@ -3,12 +3,14 @@
 namespace App\Orders;
 
 use CodeIgniter\Database\BaseConnection;
+use CodeIgniter\Encryption\EncrypterInterface;
+use DateTimeImmutable;
 use RuntimeException;
 use Throwable;
 
 final class OrderTransitionWorkflow
 {
-    public function __construct(private BaseConnection $db)
+    public function __construct(private BaseConnection $db, private EncrypterInterface $encrypter)
     {
     }
 
@@ -23,7 +25,7 @@ final class OrderTransitionWorkflow
             return 'invalid';
         }
         $query = $this->db->table('request_order')
-            ->select('request_id, trackID, action_status, branchID')
+            ->select('request_id, trackID, action_status, branchID, customerTel')
             ->whereIn('request_id', $ids);
         if ($actorRole !== 1) {
             $query->where('branchID', $actorBranch);
@@ -36,7 +38,7 @@ final class OrderTransitionWorkflow
             $from = (int) $row['action_status'];
             $allowed = match ($mode) {
                 'provider' => $from === 1,
-                'status' => ($from === 2 && in_array($value, [3, 4], true)) || ($from === 3 && $value === 4),
+                'status' => ($from === 2 && in_array($value, [3, 4], true)) || ($from === 3 && $value === 4) || ($from === 5 && $value === 7),
                 'deliver' => $from === 4 && $value === 5,
             };
             if (! $allowed) {
@@ -44,7 +46,10 @@ final class OrderTransitionWorkflow
             }
         }
 
-        $timestamp = date('Y-m-d H:i:s');
+        $now = new DateTimeImmutable('now');
+        $timestamp = $now->format('Y-m-d H:i:s');
+        $isComplete = $mode === 'status' && $value === 7;
+        $store = $mode === 'deliver' || $isComplete ? new SmsDeliveryIntentStore($this->db, $this->encrypter) : null;
         $this->db->transBegin();
         try {
             foreach ($rows as $row) {
@@ -55,6 +60,8 @@ final class OrderTransitionWorkflow
                     $updates['date_create'] = $timestamp;
                 } elseif ($mode === 'deliver') {
                     $updates['date_deliver'] = $timestamp;
+                } elseif ($isComplete) {
+                    $updates['date_complete'] = $timestamp;
                 }
                 $updated = $this->db->table('request_order')
                     ->where('request_id', $row['request_id'])
@@ -67,6 +74,19 @@ final class OrderTransitionWorkflow
                     'order_id' => $row['trackID'], 'action_id' => $target, 'update_id' => null, 'cdate' => $timestamp,
                 ])) {
                     throw new RuntimeException('Unable to log order transition.');
+                }
+                if ($mode === 'deliver') {
+                    $store?->enqueue(
+                        (int) $row['request_id'], (string) $row['trackID'], (string) $row['customerTel'],
+                        OrderSmsMessages::returned((string) $row['trackID']),
+                        md5('sms-return:' . (string) $row['request_id']), $now,
+                    );
+                } elseif ($isComplete) {
+                    $store?->enqueue(
+                        (int) $row['request_id'], (string) $row['trackID'], (string) $row['customerTel'],
+                        OrderSmsMessages::completed((string) $row['trackID']),
+                        md5('sms-complete:' . (string) $row['request_id']), $now,
+                    );
                 }
             }
             if (! $this->db->transStatus() || ! $this->db->transCommit()) {
