@@ -203,7 +203,7 @@ final class TrackingReport
         }
 
         try {
-            $interval = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end));
+            $interval = (new DateTimeImmutable($start))->setTime(0, 0)->diff((new DateTimeImmutable($end))->setTime(0, 0));
         } catch (\Exception) {
             return null;
         }

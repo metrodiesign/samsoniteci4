@@ -26,9 +26,7 @@ final class Reports extends BaseController
         $branchId = $this->branchScope();
         $start = $this->input('start_date');
         $end = $this->input('end_date');
-        if ($kind !== 'ratings') {
-            [$start, $end] = $this->defaultRange($start, $end);
-        }
+        [$start, $end] = $this->defaultRange($start, $end);
         $statusId = $kind === 'in-progress' ? $this->normalizeStatusIds($this->input('status_id')) : '';
         $error = null;
         try {
@@ -43,9 +41,9 @@ final class Reports extends BaseController
         $html = view('layout', [
             'title' => self::HEADINGS[$kind],
             'content' => view('reports/matrix', [
-                'branchId' => $branchId, 'endDate' => is_string($end) ? $end : '', 'error' => $error,
+                'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
                 'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
-                'startDate' => is_string($start) ? $start : '',
+                'startDate' => $start,
                 'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
             ]),
         ]);
@@ -109,7 +107,7 @@ final class Reports extends BaseController
         if (ini_set('memory_limit', '8048M') === false) {
             log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
         }
-        [$inProgressStart, $inProgressEnd] = $this->defaultRange($this->input('start_date'), $this->input('end_date'));
+        [$defaultStart, $defaultEnd] = $this->defaultRange($this->input('start_date'), $this->input('end_date'));
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
@@ -121,8 +119,8 @@ final class Reports extends BaseController
                     $this->input('searchText'), $this->input('sdate'), $this->input('edate'),
                     $this->input('status_id'), $this->input('detailBrandId'), $this->input('detailTypeId'), $branchId,
                 ),
-                'ratings' => $matrix->ratings($this->input('start_date'), $this->input('end_date'), $branchId),
-                'in-progress' => $matrix->matrix('in-progress', $inProgressStart, $inProgressEnd, $branchId, $this->normalizeStatusIds($this->input('status_id'))),
+                'ratings' => $matrix->ratings($defaultStart, $defaultEnd, $branchId),
+                'in-progress' => $matrix->matrix('in-progress', $defaultStart, $defaultEnd, $branchId, $this->normalizeStatusIds($this->input('status_id'))),
             };
         } catch (InvalidArgumentException $exception) {
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
