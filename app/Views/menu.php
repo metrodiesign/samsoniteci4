@@ -3,11 +3,17 @@
 /** @var list<array<string, mixed>> $rows */
 /** @var array<string, mixed>|null $row */
 /** @var list<array{id: int, name: string}> $menuGroups */
+/** @var string $search */
 $selected = array_filter(array_map('intval', explode(',', (string) ($row['group_type'] ?? ''))));
 $action = '/menu' . ($row === null ? '' : '/' . (int) $row['id']);
 ?>
 <section aria-labelledby="menu-title">
     <h1 id="menu-title">Menu groups</h1>
+    <form method="get" action="/menu">
+        <label for="menu-search">Search</label>
+        <input id="menu-search" name="search" value="<?= esc($search) ?>" maxlength="128">
+        <button type="submit">Search</button>
+    </form>
     <form method="post" action="<?= esc($action) ?>">
         <?= csrf_field() ?>
         <label for="menu-name">Name</label>

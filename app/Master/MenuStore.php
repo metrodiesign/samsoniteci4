@@ -30,9 +30,14 @@ final class MenuStore
     }
 
     /** @return list<array<string, mixed>> */
-    public function all(): array
+    public function all(string $search = ''): array
     {
-        return $this->db->table('group_menu')->orderBy('id', 'ASC')->limit(100)->get()->getResultArray();
+        $query = $this->db->table('group_menu')->orderBy('id', 'ASC')->limit(100);
+        if ($search !== '') {
+            $query->like('name', $search);
+        }
+
+        return $query->get()->getResultArray();
     }
 
     /** @return array<string, mixed>|null */

@@ -77,6 +77,21 @@ final class UserHttpTest extends CIUnitTestCase
         self::assertSame(0, (int) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('is_active'));
     }
 
+    public function testUserListingSearchMatchesMobileAndDropsUsername(): void
+    {
+        $admin = $this->session(9001, 1, null, 1);
+
+        // AC-5: mobile is searchable.
+        $byMobile = $this->withSession($admin)->get('/users?search=' . rawurlencode('0000000000'));
+        $byMobile->assertStatus(200);
+        $byMobile->assertSee('OPERATOR A');
+
+        // AC-5: username is no longer searchable.
+        $byUsername = $this->withSession($admin)->get('/users?search=' . rawurlencode('operator-a'));
+        $byUsername->assertStatus(200);
+        $byUsername->assertDontSee('OPERATOR A');
+    }
+
     public function testUserValidationDuplicateEmailAndExistenceContractHaveNoWrites(): void
     {
         $valid = [

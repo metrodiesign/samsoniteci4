@@ -70,6 +70,22 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertSame('REPORT ONLY', $this->db->table('group_menu')->where('id', $row['id'])->get()->getRow('name'));
     }
 
+    public function testMenuListingSearchFiltersByNameAndPrefills(): void
+    {
+        $session = $this->session($this->adminId, 1, 1, null);
+
+        $match = $this->withSession($session)->get('/menu?search=CENTRAL');
+        $match->assertStatus(200);
+        $match->assertSee('CENTRAL');
+        $match->assertDontSee('BRANCH');
+        self::assertStringContainsString('value="CENTRAL"', $match->getBody());
+
+        $overlong = $this->withSession($session)->get('/menu?search=' . str_repeat('x', 129));
+        $overlong->assertStatus(200);
+        $overlong->assertSee('CENTRAL');
+        $overlong->assertSee('BRANCH');
+    }
+
     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
     {
         $visible = (new MenuStore($this->db))->visible(1);

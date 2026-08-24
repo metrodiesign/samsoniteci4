@@ -25,7 +25,18 @@ final class MasterDataStore
             ->orderBy($definition['pk'], 'ASC')
             ->limit(self::PAGE_SIZE, ($page - 1) * self::PAGE_SIZE);
         if ($search !== '') {
-            $query->like($definition['label'], $search);
+            $columns = $definition['searchColumns'] ?? [$definition['label']];
+            if (isset($definition['searchJoins'])) {
+                $query->select($definition['table'] . '.*');
+                foreach ($definition['searchJoins'] as $join) {
+                    $query->join($join['table'], $join['on'], 'left');
+                }
+            }
+            $query->groupStart();
+            foreach ($columns as $index => $column) {
+                $index === 0 ? $query->like($column, $search) : $query->orLike($column, $search);
+            }
+            $query->groupEnd();
         }
 
         return $query->get()->getResultArray();

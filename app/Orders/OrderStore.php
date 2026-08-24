@@ -16,6 +16,7 @@ final class OrderStore
         $query = $this->db->table('request_order')
             ->select('request_order.request_id, request_order.requestDate, request_order.trackID, request_order.orderID, request_order.orderIDShow, request_order.customerFullname, request_order.customerTel, request_order.customerEmail, request_order.branchID, request_order.action_status, request_order.date_complete, statusaction.status_name')
             ->join('statusaction', 'statusaction.status_id = request_order.action_status', 'left')
+            ->join('branch', 'branch.branch_id = request_order.branchID', 'left')
             ->where('request_order.action_status', $status)
             ->orderBy('request_order.request_id', 'DESC')
             ->limit(50, ($page - 1) * 50);
@@ -30,9 +31,11 @@ final class OrderStore
         if ($search !== '') {
             $query->groupStart()
                 ->like('request_order.trackID', $search)
-                ->orLike('request_order.orderIDShow', $search)
+                ->orLike('request_order.orderID', $search)
                 ->orLike('request_order.customerFullname', $search)
-                ->orLike('request_order.customerTel', $search)
+                ->orLike('request_order.detailSKUName', $search)
+                ->orLike('branch.branch_name', $search)
+                ->orLike('statusaction.status_name', $search)
                 ->groupEnd();
         }
 

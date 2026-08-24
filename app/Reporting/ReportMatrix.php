@@ -347,8 +347,11 @@ final class ReportMatrix
             ->where('orders.action_status >', 0);
         $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
         if ($search !== '') {
-            $query->groupStart()->like('orders.trackID', $search)->orLike('orders.orderIDShow', $search)
-                ->orLike('orders.customerFullname', $search)->groupEnd();
+            $query->groupStart()->like('orders.trackID', $search)->orLike('orders.orderID', $search)
+                ->orLike('orders.customerFullname', $search)->orLike('orders.detailSKUName', $search)
+                ->orLike('orders.orderIDShow', $search)->orLike('branches.branch_name', $search)
+                ->orLike('orders.customerTel', $search)->orLike('orders.customerEmail', $search)
+                ->orLike('statuses.status_name', $search)->groupEnd();
         }
         if ($statuses !== []) {
             $query->whereIn('orders.action_status', $statuses);

@@ -17,7 +17,7 @@ final class ReportMatrixTest extends CIUnitTestCase
         parent::setUp();
         $name = $this->db->escapeIdentifiers($this->db->prefixTable('request_order'));
         $this->db->query("DROP TABLE IF EXISTS {$name}");
-        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100))");
+        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(250), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, RepairPrice DECIMAL(8,2), date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100))");
         $status = $this->db->escapeIdentifiers($this->db->prefixTable('statusaction'));
         $this->db->query("DROP TABLE IF EXISTS {$status}");
         $this->db->query("CREATE TABLE {$status} (status_id INTEGER PRIMARY KEY, status_name VARCHAR(250), status_name_th VARCHAR(250))");
@@ -48,6 +48,27 @@ final class ReportMatrixTest extends CIUnitTestCase
             ['type_id' => 1, 'type_details' => 'TYPE A'],
             ['type_id' => 2, 'type_details' => 'TYPE B'],
         ]);
+    }
+
+    public function testSummarySearchMatchesEveryParityField(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 900, 'requestDate' => '2026-08-10 09:00:00',
+            'trackID' => 'STK900', 'orderID' => 'SORD900', 'orderIDShow' => 'SSHOW900',
+            'customerFullname' => 'SFULL900', 'customerTel' => '027619999',
+            'customerEmail' => 'semail900@example.invalid', 'detailSKUName' => 'SSKU900',
+            'detailBrandId' => 1, 'detailTypeId' => 1, 'branchID' => 1, 'action_status' => 2,
+        ]);
+        $matrix = new ReportMatrix($this->db);
+        $terms = [
+            'STK900', 'SORD900', 'SFULL900', 'SSKU900', 'SSHOW900',
+            'BRANCH A', '027619999', 'semail900@example.invalid', 'STATUS 2',
+        ];
+        foreach ($terms as $term) {
+            $rows = $matrix->summary($term, '01/08/2026', '31/08/2026', null, null, null, null);
+            self::assertCount(1, $rows, $term);
+            self::assertSame(900, (int) $rows[0]['request_id'], $term);
+        }
     }
 
     public function testPendingTotalReturnsThreeBucketsAndTotalRow(): void
