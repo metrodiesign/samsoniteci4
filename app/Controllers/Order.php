@@ -29,7 +29,7 @@ final class Order extends BaseController
         2 => ['title' => 'TRANSPORTING', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [3, 4], 'row_action' => null],
         3 => ['title' => 'STATUS REPAIR', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [4], 'row_action' => null],
         4 => ['title' => 'DELIVER TO CUSTOMER', 'bulk_endpoint' => '/sendorder_deliver', 'statuses' => [5], 'row_action' => null],
-        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => 'rate'],
+        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [7], 'row_action' => 'rate'],
         7 => ['title' => 'COMPLETED', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null],
     ];
 
@@ -137,7 +137,7 @@ final class Order extends BaseController
     private function transition(string $mode, mixed $value, string $redirect): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
         $session = service('session');
-        $result = (new OrderTransitionWorkflow(db_connect()))->transition(
+        $result = (new OrderTransitionWorkflow(db_connect(), service('encrypter')))->transition(
             (int) $session->get('role'),
             $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
             $this->request->getPost('select_list_id'),
@@ -163,7 +163,49 @@ final class Order extends BaseController
 
     public function print(string $rawId): string
     {
-        return view('order_print', ['row' => $this->accessibleOrder($rawId)]);
+        $row = $this->accessibleOrder($rawId);
+
+        return view('order_print', ['row' => $row] + $this->printMasterData($row));
+    }
+
+    public function image(string $name): ResponseInterface
+    {
+        $path = WRITEPATH . 'uploads/orders/' . $name;
+        if (preg_match('/\A[a-f0-9]{32}\.png\z/D', $name) !== 1 || ! is_file($path)) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'order_image_not_found']);
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'image/png')
+            ->setHeader('Cache-Control', 'private, max-age=86400, immutable')
+            ->setBody((string) file_get_contents($path));
+    }
+
+    /**
+     * Master lookups the print view needs beyond the order row: the resolved branch/type/brand
+     * names plus the full condition/estimateprice/fixed catalogues rendered as checkbox lists.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function printMasterData(array $row): array
+    {
+        $db = db_connect();
+
+        return [
+            'branchName' => (string) ($db->table('branch')->select('branch_name')
+                ->where('branch_id', (int) ($row['branchID'] ?? 0))->get()->getRow('branch_name') ?? ''),
+            'typeName' => (string) ($db->table('type')->select('type_details')
+                ->where('type_id', (int) ($row['detailTypeId'] ?? 0))->get()->getRow('type_details') ?? ''),
+            'brandName' => (string) ($db->table('brand')->select('brand_details')
+                ->where('brand_id', (int) ($row['detailBrandId'] ?? 0))->get()->getRow('brand_details') ?? ''),
+            'conditions' => $db->table('condition')->select('condition_id, condition_details')
+                ->orderBy('condition_id', 'ASC')->get()->getResultArray(),
+            'estimatePrices' => $db->table('estimateprice')->select('estimateprice_id, estimateprice_details')
+                ->orderBy('estimateprice_id', 'ASC')->get()->getResultArray(),
+            'fixedItems' => $db->table('fixed')->select('fixed_id, fixed_details')
+                ->orderBy('fixed_id', 'ASC')->get()->getResultArray(),
+        ];
     }
 
     public function edit(string $rawId): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
