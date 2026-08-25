@@ -28,3 +28,7 @@ __pycache__/
 !/writable/logs/index.html
 !/writable/session/index.html
 !/writable/uploads/index.html
+
+# Agent pipeline scratch (handoff docs, never part of the codebase)
+/.pipeline/
+/.playwright-mcp/
