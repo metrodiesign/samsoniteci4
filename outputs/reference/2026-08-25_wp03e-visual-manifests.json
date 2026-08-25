@@ -1,0 +1,1030 @@
+{
+ "manifest-batch1.json": {
+  "batch": "batch1-public-auth",
+  "chromium_version": "151.0.0.0",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "ci3_pin": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "ci3_image": "samsonitetracking-ci3:ee1c95e",
+  "ci3_base_url": "http://127.0.0.1:18404",
+  "ci4_sha": "25898812929d3d7019bcdb1d8a52db3e628b4b7b",
+  "ci4_base_url": "http://127.0.0.1:18405",
+  "viewports": [
+   "1440x900",
+   "390x844"
+  ],
+  "captured_at": "2026-08-25T03:06:36Z",
+  "pages": [
+   {
+    "page_id": "tracking-home-en",
+    "ci3_url": "http://127.0.0.1:18404/",
+    "ci4_url": "http://127.0.0.1:18405/",
+    "role": "anonymous",
+    "files": [
+     "tracking-home-en__ci3__1440x900.png",
+     "tracking-home-en__ci4__1440x900.png",
+     "tracking-home-en__ci3__390x844.png",
+     "tracking-home-en__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "tracking-home-th",
+    "ci3_url": "http://127.0.0.1:18404/track_th",
+    "ci4_url": "http://127.0.0.1:18405/track_th",
+    "role": "anonymous",
+    "files": [
+     "tracking-home-th__ci3__1440x900.png",
+     "tracking-home-th__ci4__1440x900.png",
+     "tracking-home-th__ci3__390x844.png",
+     "tracking-home-th__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "tracking-result-en",
+    "ci3_url": "http://127.0.0.1:18404/track/trackstatus/WP00C-TRACK-001",
+    "ci4_url": "http://127.0.0.1:18405/tracking/WP00C-TRACK-001",
+    "role": "anonymous",
+    "files": [
+     "tracking-result-en__ci3__1440x900.png",
+     "tracking-result-en__ci4__1440x900.png",
+     "tracking-result-en__ci3__390x844.png",
+     "tracking-result-en__ci4__390x844.png"
+    ],
+    "note": "trackID = WP00C-TRACK-001 (ดึงจาก request_order fixture) ทั้งสองฝั่งใช้ตัวเดียวกัน GET ด้วย segment ใช้ได้ปกติทั้งคู่"
+   },
+   {
+    "page_id": "tracking-result-th",
+    "ci3_url": "http://127.0.0.1:18404/track_th/trackstatus/WP00C-TRACK-001",
+    "ci4_url": "http://127.0.0.1:18405/tracking-th/WP00C-TRACK-001",
+    "role": "anonymous",
+    "files": [
+     "tracking-result-th__ci3__1440x900.png",
+     "tracking-result-th__ci4__1440x900.png",
+     "tracking-result-th__ci3__390x844.png",
+     "tracking-result-th__ci4__390x844.png"
+    ],
+    "note": "ยืนยันตามที่ route-map สงสัยไว้: CI3 GET ตรง URL ด้วย trackID segment (/track_th/trackstatus/WP00C-TRACK-001) ใช้ไม่ได้จริง ขึ้น error toast 'Book creation failed' และฟอร์มว่าง เพราะ Track_th::trackstatus() ไม่รับ parameter — ภาพ CI3 ที่แนบมาจึงเป็นผลจากการกรอกฟอร์มที่หน้า /track_th (textbox trackID + กดปุ่ม 'ติดตาม') ซึ่งเป็น POST ไป /track_th/trackstatus แบบไม่มี segment แล้วได้ผลลัพธ์ถูกต้อง (สอดคล้องกับวิธีที่ผู้ใช้จริงใช้งาน) ส่วน CI4 (/tracking-th/{trackId}) เข้าตรงด้วย GET segment ได้ผลลัพธ์ปกติ"
+   },
+   {
+    "page_id": "contact-form-en",
+    "ci3_url": "http://127.0.0.1:18404/contact",
+    "ci4_url": "http://127.0.0.1:18405/contact",
+    "role": "anonymous",
+    "files": [
+     "contact-form-en__ci3__1440x900.png",
+     "contact-form-en__ci4__1440x900.png",
+     "contact-form-en__ci3__390x844.png",
+     "contact-form-en__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "contact-form-th",
+    "ci3_url": "http://127.0.0.1:18404/contact_th",
+    "ci4_url": "http://127.0.0.1:18405/contact-th",
+    "role": "anonymous",
+    "files": [
+     "contact-form-th__ci3__1440x900.png",
+     "contact-form-th__ci4__1440x900.png",
+     "contact-form-th__ci3__390x844.png",
+     "contact-form-th__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "login",
+    "ci3_url": "http://127.0.0.1:18404/login",
+    "ci4_url": "http://127.0.0.1:18405/login",
+    "role": "anonymous",
+    "files": [
+     "login__ci3__1440x900.png",
+     "login__ci4__1440x900.png",
+     "login__ci3__390x844.png",
+     "login__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "forgot-password",
+    "ci3_url": "http://127.0.0.1:18404/forgotPassword",
+    "ci4_url": "http://127.0.0.1:18405/forgot-password",
+    "role": "anonymous",
+    "files": [
+     "forgot-password__ci3__1440x900.png",
+     "forgot-password__ci4__1440x900.png",
+     "forgot-password__ci3__390x844.png",
+     "forgot-password__ci4__390x844.png"
+    ],
+    "note": "ถ่ายตรงจาก GET ปกติ ไม่มีความผิดปกติ"
+   },
+   {
+    "page_id": "dashboard",
+    "ci3_url": "http://127.0.0.1:18404/dashboard",
+    "ci4_url": "http://127.0.0.1:18405/dashboard",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "dashboard__ci3__1440x900.png",
+     "dashboard__ci4__1440x900.png",
+     "dashboard__ci3__390x844.png",
+     "dashboard__ci4__390x844.png"
+    ],
+    "note": "login ผ่านฟอร์ม /login จริงทั้งสองระบบด้วย wp00c-admin สำเร็จทั้งคู่ (redirect ไป /dashboard) ถ่ายภาพต่อจากนั้นทันที"
+   },
+   {
+    "page_id": "change-password",
+    "ci3_url": "http://127.0.0.1:18404/loadChangePass",
+    "ci4_url": "http://127.0.0.1:18405/change-password",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "change-password__ci3__1440x900.png",
+     "change-password__ci4__1440x900.png",
+     "change-password__ci3__390x844.png",
+     "change-password__ci4__390x844.png"
+    ],
+    "note": "ใช้ session login เดียวกับ dashboard ไม่มีความผิดปกติ"
+   }
+  ]
+ },
+ "manifest-batch2.json": {
+  "batch": "batch2-order",
+  "chromium_version": "151.0.0.0",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "ci3_pin": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "ci3_image": "samsonitetracking-ci3:ee1c95e",
+  "ci3_base_url": "http://127.0.0.1:18404",
+  "ci4_sha": "25898812929d3d7019bcdb1d8a52db3e628b4b7b",
+  "ci4_base_url": "http://127.0.0.1:18405",
+  "viewports": [
+   "1440x900",
+   "390x844"
+  ],
+  "captured_at": "2026-08-25T03:47:40Z",
+  "batch_note": "หัวใบงานเขียนว่า 13 page-id แต่ตารางรายการหน้ามี 12 แถวจริง — ยึดตาราง 12 แถว จำนวนภาพเป้าหมาย 12x2x2 = 48 หัก rating-form ฝั่ง CI3 ที่ user อนุมัติให้ข้าม 2 ภาพ = 46 ภาพ ถ่ายได้ครบ 46/46; login ทั้งสองระบบผ่านฟอร์ม /login จริงด้วย wp00c-admin ยืนยันเด้งไป /dashboard ทั้งคู่ (CI3 title 'Tracking : Dashboard', CI4 title 'Dashboard | Samsonite Tracking'); ข้อควรระวังตอน compare: CI4 รันด้วย ENVIRONMENT=development จึงมี CodeIgniter debug toolbar ฝังอยู่ในทุกหน้า (พบตอน click ปุ่ม submit เจอ input[type=submit] ของ debug bar 30 ตัว) ส่วน CI3 ไม่มี — ความต่างนี้เป็นของ harness ไม่ใช่ของ UI",
+  "pages": [
+   {
+    "page_id": "rating-form",
+    "ci3_url": null,
+    "ci4_url": "http://127.0.0.1:18405/rating/WP00C-TRACK-005",
+    "role": "anonymous",
+    "files": [
+     "rating-form__ci4__1440x900.png",
+     "rating-form__ci4__390x844.png"
+    ],
+    "note": "ถ่าย CI4 ฝั่งเดียวตาม decision ข้อ 3 ของ user — CI3 Rating::index() มี redirect(base_url()) เป็นบรรทัดแรก (Rating.php:24-25) โค้ดที่เหลือ dead เข้า URL จริงจะเด้งไปหน้า track เสมอ ไม่ใช่ฟอร์ม rating; CI4 ตอบ 200 render ฟอร์มปกติ (title 'Service rating | Samsonite') มี console error 1 รายการบนหน้านี้ (ไม่กระทบการ render)"
+   },
+   {
+    "page_id": "reset-password",
+    "ci3_url": "http://127.0.0.1:18404/resetPasswordConfirmUser/<activation_id>/wp00c-admin%40example.invalid",
+    "ci4_url": "http://127.0.0.1:18405/reset-password",
+    "role": "anonymous",
+    "files": [
+     "reset-password__ci3__1440x900.png",
+     "reset-password__ci3__390x844.png",
+     "reset-password__ci4__1440x900.png",
+     "reset-password__ci4__390x844.png"
+    ],
+    "note": "CI3 = ของจริง: POST /resetPasswordUser ด้วย login_email=wp00c-admin@example.invalid ผ่าน flow จริง ระบบ insert แถวใหม่ลง tbl_reset_password (createdDtm 2026-08-25 10:18:41) แล้วเข้า /resetPasswordConfirmUser/{activation_id}/{email} ได้ HTTP 200 render view newPassword จริง (ไม่ redirect ไป /login) — activation_id ถูก mask ใน manifest ตั้งใจ ไม่ commit token สด; CI3 pre-fill ช่อง Password/Confirm ด้วย get_random_password() เป็นพฤติกรรมของ CI3 เอง. CI4 = ออก token จริงไม่ได้ในเครื่องนี้: POST /password-reset/request (CSRF ผ่าน ยืนยันจาก log 'CSRF token verified') ตอบ 503 {\"error\":\"reset_service_unavailable\"} และ log แอปขึ้น 'Reset request unavailable: CodeIgniter\\Encryption\\Exceptions\\EncryptionException' (2026-08-25 10:21:36 และ 10:22:43) เพราะ harness ไม่มี encryption.key ทำให้ ResetDeliveryIntentStore เข้ารหัส payload ไม่ได้ ผลคือ ci4_password_reset_tokens = 0 แถว และ ci4_delivery_intents = 0 แถว; ภาพ CI4 สองไฟล์จึงเป็น render ของ /reset-password แบบไม่มี token ไม่ใช่ render จาก token จริง — โค้ดยืนยันว่าต่างกันแค่ค่า hidden input: PasswordReset::resetForm() ไม่แตะ DB ตอน render และตั้ง token='' เมื่อ regex 64-hex ไม่ผ่าน (PasswordReset.php:38-46) ส่วน view ใส่ค่าไว้ที่ <input type=hidden id=token> อย่างเดียว (reset_password.php:8) ถึงอย่างนั้นคู่นี้ก็ไม่ใช่ paired-real ให้ comparison ระวัง"
+   },
+   {
+    "page_id": "orders-new",
+    "ci3_url": "http://127.0.0.1:18404/Orders",
+    "ci4_url": "http://127.0.0.1:18405/orders/new",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "orders-new__ci3__1440x900.png",
+     "orders-new__ci4__1440x900.png",
+     "orders-new__ci3__390x844.png",
+     "orders-new__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Add New Order', CI4 title 'New repair order | Samsonite Tracking')"
+   },
+   {
+    "page_id": "orders-edit",
+    "ci3_url": "http://127.0.0.1:18404/editOrdersOld/91001",
+    "ci4_url": "http://127.0.0.1:18405/orders/91001",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "orders-edit__ci3__1440x900.png",
+     "orders-edit__ci4__1440x900.png",
+     "orders-edit__ci3__390x844.png",
+     "orders-edit__ci4__390x844.png"
+    ],
+    "note": "request_id 91001 (WP00C-TRACK-001) ทั้งคู่ 200; ผิดคาดเล็กน้อยฝั่ง CI3: title ของหน้าเป็น 'Tracking : Edit Branch' (ไม่ใช่ edit order) เป็นของ CI3 เองไม่ใช่ผลจากการถ่าย และหน้านี้มี console error 1 รายการทั้งสอง viewport; CI4 title 'Edit order | Samsonite Tracking'"
+   },
+   {
+    "page_id": "orders-print",
+    "ci3_url": "http://127.0.0.1:18404/OrderPrint/91001",
+    "ci4_url": "http://127.0.0.1:18405/orders/91001/print",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "orders-print__ci3__1440x900.png",
+     "orders-print__ci4__1440x900.png",
+     "orders-print__ci3__390x844.png",
+     "orders-print__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 เป็นหน้า HTML ไม่ใช่ไฟล์ attachment (CI3 title 'PDF FORM', CI4 title 'WP00C-TRACK-001')"
+   },
+   {
+    "page_id": "order-listing-status1",
+    "ci3_url": "http://127.0.0.1:18404/ordersListing",
+    "ci4_url": "http://127.0.0.1:18405/ordersListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status1__ci3__1440x900.png",
+     "order-listing-status1__ci4__1440x900.png",
+     "order-listing-status1__ci3__390x844.png",
+     "order-listing-status1__ci4__390x844.png"
+    ],
+    "note": "ยืนยันว่าแถว fixture render มาแบบ server-side แล้วตอนกด shutter (snapshot เจอ cell 'WP00C-TRACK-001') ไม่ต้องรอ AJAX; CI3 title 'Tracking : branch Listing', CI4 title 'NEW ORDER | Samsonite Tracking'"
+   },
+   {
+    "page_id": "order-listing-status2",
+    "ci3_url": "http://127.0.0.1:18404/TrackingListing",
+    "ci4_url": "http://127.0.0.1:18405/TrackingListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status2__ci3__1440x900.png",
+     "order-listing-status2__ci4__1440x900.png",
+     "order-listing-status2__ci3__390x844.png",
+     "order-listing-status2__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'TRANSPORTING | Samsonite Tracking')"
+   },
+   {
+    "page_id": "order-listing-status3",
+    "ci3_url": "http://127.0.0.1:18404/TrackingcloseListing",
+    "ci4_url": "http://127.0.0.1:18405/TrackingcloseListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status3__ci3__1440x900.png",
+     "order-listing-status3__ci4__1440x900.png",
+     "order-listing-status3__ci3__390x844.png",
+     "order-listing-status3__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'STATUS REPAIR | Samsonite Tracking')"
+   },
+   {
+    "page_id": "order-listing-status4",
+    "ci3_url": "http://127.0.0.1:18404/TrackingreturnListing",
+    "ci4_url": "http://127.0.0.1:18405/TrackingreturnListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status4__ci3__1440x900.png",
+     "order-listing-status4__ci4__1440x900.png",
+     "order-listing-status4__ci3__390x844.png",
+     "order-listing-status4__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'DELIVER TO CUSTOMER | Samsonite Tracking')"
+   },
+   {
+    "page_id": "order-listing-status5",
+    "ci3_url": "http://127.0.0.1:18404/TrackingcompleteListing",
+    "ci4_url": "http://127.0.0.1:18405/TrackingcompleteListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status5__ci3__1440x900.png",
+     "order-listing-status5__ci4__1440x900.png",
+     "order-listing-status5__ci3__390x844.png",
+     "order-listing-status5__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'COMPLETE | Samsonite Tracking')"
+   },
+   {
+    "page_id": "order-listing-status7",
+    "ci3_url": "http://127.0.0.1:18404/TrackingCompletedListing",
+    "ci4_url": "http://127.0.0.1:18405/TrackingCompletedListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "order-listing-status7__ci3__1440x900.png",
+     "order-listing-status7__ci4__1440x900.png",
+     "order-listing-status7__ci3__390x844.png",
+     "order-listing-status7__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'COMPLETED | Samsonite Tracking')"
+   },
+   {
+    "page_id": "report-tracking-listing",
+    "ci3_url": "http://127.0.0.1:18404/ReportTrackingListing",
+    "ci4_url": "http://127.0.0.1:18405/ReportTrackingListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-tracking-listing__ci3__1440x900.png",
+     "report-tracking-listing__ci4__1440x900.png",
+     "report-tracking-listing__ci3__390x844.png",
+     "report-tracking-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Listing', CI4 title 'Report Tracking | Samsonite Tracking')"
+   }
+  ]
+ },
+ "manifest-batch3.json": {
+  "batch": "batch3-master",
+  "chromium_version": "151.0.0.0",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "ci3_pin": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "ci3_image": "samsonitetracking-ci3:ee1c95e",
+  "ci3_base_url": "http://127.0.0.1:18404",
+  "ci4_sha": "25898812929d3d7019bcdb1d8a52db3e628b4b7b",
+  "ci4_base_url": "http://127.0.0.1:18405",
+  "viewports": [
+   "1440x900",
+   "390x844"
+  ],
+  "captured_at": "2026-08-25T04:04:30Z",
+  "batch_note": "ถ่ายครบ 80/80 ภาพตามตาราง 20 หน้า x 2 ระบบ x 2 viewport ไม่มีหน้าไหนถูกข้าม. login ผ่านฟอร์ม /login จริงในเบราว์เซอร์ด้วย wp00c-admin ทั้งสองระบบ ยืนยันเด้งไป /dashboard ทุกครั้ง. ข้อควรรู้ตอน compare 3 ข้อ: (1) CI3 กับ CI4 อยู่บน host เดียวกัน (127.0.0.1) ต่างกันแค่ port ซึ่ง cookie ไม่แยกตาม port ทำให้ session cookie `ci_session` ของสองระบบทับกันเอง — login ระบบหลังทำให้ระบบแรกหลุดทันที จึงต้องถ่ายทีละระบบแล้ว login ใหม่ทุกครั้งที่สลับ (ทำ login รวม 4 ครั้ง: CI3/CI4 x 2 viewport) ถ้ารอบหน้ามีใครถ่ายแล้วเจอหน้าเด้งไป /login ให้สงสัยข้อนี้ก่อน ไม่ใช่ session หมดอายุ; (2) CI4 รันด้วย ENVIRONMENT=development จึงมี CodeIgniter debug toolbar ฝังอยู่ทุกหน้า ส่วน CI3 ไม่มี — เป็นความต่างของ harness ไม่ใช่ของ UI (ยกมาจากบันทึก batch2 ยังจริงอยู่กับ batch นี้ทุกภาพฝั่ง CI4); (3) หน้า listing ของ CI4 มีฟอร์ม create inline อยู่ในหน้าเดียวกัน ส่วน CI3 แยกหน้า add-new ต่างหาก ตามที่ใบงานระบุ — ความสูงของหน้า listing สองฝั่งจึงต่างกันโดยตั้งใจ ไม่ใช่ layout เพี้ยน. master-statustype-edit ถ่ายใหม่แล้วด้วย id 9001 (id 1 ไม่มีจริงในตาราง `tracking_status` — ใบงานเดิมนับ id มาจากตาราง `statusaction` คนละตัว) ตอนนี้ทั้ง 20 หน้าใช้เทียบได้ครบ รายละเอียด behavior change เรื่อง id ที่ไม่มีอยู่จริงอยู่ใน note ของหน้านั้น. (4) **ความกว้างของภาพสองฝั่งไม่เท่ากันโดยธรรมชาติ ห้ามเอาไปตัดสินว่า layout เพี้ยน**: ภาพ CI4 ทุกใบในชุดนี้กว้าง 3313px ไม่ว่าจะตั้ง viewport 1440 หรือ 390 เพราะแถบ nav ของ CI4 ล้นออกแนวนอน (horizontal overflow) ทำให้ fullPage capture ขยายตาม scrollWidth ส่วน CI3 ได้ 1425px / 375px ตาม viewport จริง — แปลว่า **ภาพ CI4 ที่ viewport 390 ไม่ได้แสดง layout แบบ mobile จริง** หน้าจอมี scroll แนวนอนอยู่ ประเด็นนี้เป็น responsive issue ฝั่ง CI4 ที่ควรยกให้ user ตัดสินแยกต่างหาก ไม่ใช่ artifact ของการถ่าย. อีก 1 หน้ามีความต่างที่เห็นในภาพจาก asset หาย: master-branchtype-* ฝั่ง CI4 รูป branch type 404.",
+  "pages": [
+   {
+    "page_id": "master-branch-listing",
+    "ci3_url": "http://127.0.0.1:18404/branchListing",
+    "ci4_url": "http://127.0.0.1:18405/master/branch",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-branch-listing__ci3__1440x900.png",
+     "master-branch-listing__ci3__390x844.png",
+     "master-branch-listing__ci4__1440x900.png",
+     "master-branch-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : branch Listing', CI4 'Master data: branch | Samsonite Tracking'); แถวข้อมูล id 1-2 ตรงกันสองฐาน"
+   },
+   {
+    "page_id": "master-branch-edit",
+    "ci3_url": "http://127.0.0.1:18404/editBranchOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/branch/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-branch-edit__ci3__1440x900.png",
+     "master-branch-edit__ci3__390x844.png",
+     "master-branch-edit__ci4__1440x900.png",
+     "master-branch-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ (CI3 title 'Tracking : Edit Branch', CI4 'Master data: branch | Samsonite Tracking')"
+   },
+   {
+    "page_id": "master-branchtype-listing",
+    "ci3_url": "http://127.0.0.1:18404/branchtypeListing",
+    "ci4_url": "http://127.0.0.1:18405/master/branchtype",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-branchtype-listing__ci3__1440x900.png",
+     "master-branchtype-listing__ci3__390x844.png",
+     "master-branchtype-listing__ci4__1440x900.png",
+     "master-branchtype-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200. **รูป branch type ไม่แสดงผลทั้งสองระบบ ไม่ใช่ regression ของ CI4** — ไฟล์รูปไม่มีอยู่ในฐาน fixture ทั้งสองฝั่ง: CI3 แสดงเป็น alt text 'Responsive image' ในคอลัมน์ Image ทั้ง 2 แถว ส่วน CI4 แสดง broken image พร้อม console error asset 404 2 รายการ (`/branch-type-image/synthetic-retail.png`, `/branch-type-image/synthetic-service.png`) ต่างกันแค่วิธี render ของ browser เมื่อรูปโหลดไม่ได้ ไม่ใช่ความต่างของ UI; CI3 title ของหน้านี้เขียนว่า 'Tracking : branch Listing' (ใช้ title ร่วมกับหน้า branch — ของเดิม CI3 เป็นแบบนั้น)"
+   },
+   {
+    "page_id": "master-branchtype-edit",
+    "ci3_url": "http://127.0.0.1:18404/editBranchtypeOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/branchtype/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-branchtype-edit__ci3__1440x900.png",
+     "master-branchtype-edit__ci3__390x844.png",
+     "master-branchtype-edit__ci4__1440x900.png",
+     "master-branchtype-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200. **รูป branch type ไม่แสดงผลทั้งสองระบบ ไม่ใช่ regression ของ CI4** — เหตุเดียวกับหน้า listing คือไฟล์รูปไม่มีในฐาน fixture: CI3 แสดง broken image ใต้ช่อง IMAGE ส่วน CI4 มี console error asset 404 ชุดเดียวกัน (`/branch-type-image/*.png`); CI3 title 'Tracking : Edit Branch'"
+   },
+   {
+    "page_id": "master-statustype-listing",
+    "ci3_url": "http://127.0.0.1:18404/statustypeListing",
+    "ci4_url": "http://127.0.0.1:18405/master/statustype",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-statustype-listing__ci3__1440x900.png",
+     "master-statustype-listing__ci3__390x844.png",
+     "master-statustype-listing__ci4__1440x900.png",
+     "master-statustype-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200; แถวจริงของ statustype ทั้งสองฐานคือ id 9001 กับ 9002 ไม่มี id 1 (ยืนยันจาก snapshot ของทั้งสองหน้า listing); CI3 title 'Tracking : branch Listing'"
+   },
+   {
+    "page_id": "master-statustype-edit",
+    "ci3_url": "http://127.0.0.1:18404/editStatustypeOld/9001",
+    "ci4_url": "http://127.0.0.1:18405/master/statustype/9001",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-statustype-edit__ci3__1440x900.png",
+     "master-statustype-edit__ci3__390x844.png",
+     "master-statustype-edit__ci4__1440x900.png",
+     "master-statustype-edit__ci4__390x844.png"
+    ],
+    "note": "ถ่ายด้วย id **9001** ไม่ใช่ id 1 ตามตารางใบงานเดิม — ทั้งคู่ 200 render ฟอร์มจริงที่มีข้อมูล ใช้เทียบ parity ของฟอร์มได้ปกติ (CI3 title 'Tracking : Edit Status', CI4 'Master data: statustype | Samsonite Tracking'). เหตุที่เปลี่ยน id: entity statustype map ไปตาราง `tracking_status` ซึ่งมีแค่ 2 แถวคือ 9001 ('สถานะนำเข้าทดสอบสำเร็จ') กับ 9002 ('สถานะนำเข้าทดสอบไม่สำเร็จ') **ไม่มี id 1** ทั้งสองฐาน — id 1-8 ที่ระบุในใบงานเดิมเป็นของตาราง `statusaction` คนละตัวกัน (team-lead ยืนยันว่านับผิดตอนเตรียมใบงาน ไม่ใช่ข้อมูล fixture ผิด). **บันทึกไว้เป็น behavior change ที่ต้องให้ user ตัดสิน ไม่ใช่ visual diff**: ตอนถ่ายรอบแรกด้วย id 1 ที่ไม่มีอยู่จริง CI3 ตอบ HTTP 200 render ฟอร์มเปล่า (ไม่ guard กรณีหาแถวไม่เจอ) ส่วน CI4 ตอบ HTTP 404 เพราะ MasterData::edit() โยน PageNotFoundException เมื่อ MasterDataStore::find() คืน null (app/Controllers/MasterData.php) — ความต่างนี้อยู่ที่ error handling ของ id ที่ไม่มีอยู่จริง ไม่เกี่ยวกับหน้าตาฟอร์ม และไม่ปรากฏในภาพชุดปัจจุบันแล้วเพราะถ่ายใหม่ด้วย id ที่มีจริง",
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    }
+   },
+   {
+    "page_id": "master-producttype-listing",
+    "ci3_url": "http://127.0.0.1:18404/producttypeListing",
+    "ci4_url": "http://127.0.0.1:18405/master/producttype",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-producttype-listing__ci3__1440x900.png",
+     "master-producttype-listing__ci3__390x844.png",
+     "master-producttype-listing__ci4__1440x900.png",
+     "master-producttype-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : branch Listing'"
+   },
+   {
+    "page_id": "master-producttype-edit",
+    "ci3_url": "http://127.0.0.1:18404/editProducttypeOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/producttype/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-producttype-edit__ci3__1440x900.png",
+     "master-producttype-edit__ci3__390x844.png",
+     "master-producttype-edit__ci4__1440x900.png",
+     "master-producttype-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit Branch'"
+   },
+   {
+    "page_id": "master-book-listing",
+    "ci3_url": "http://127.0.0.1:18404/bookListing",
+    "ci4_url": "http://127.0.0.1:18405/bookListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-book-listing__ci3__1440x900.png",
+     "master-book-listing__ci3__390x844.png",
+     "master-book-listing__ci4__1440x900.png",
+     "master-book-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ — หน้านี้ CI4 ยังใช้ path เดิม `/bookListing` ไม่ใช่ `/master/book` ตามที่ใบงานระบุ (ยืนยันแล้วว่า URL ใช้ได้จริง render 'Master data: book | Samsonite Tracking'); CI3 title 'Tracking : Book Listing'"
+   },
+   {
+    "page_id": "master-book-edit",
+    "ci3_url": "http://127.0.0.1:18404/editBookOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/book/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-book-edit__ci3__1440x900.png",
+     "master-book-edit__ci3__390x844.png",
+     "master-book-edit__ci4__1440x900.png",
+     "master-book-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title ของหน้านี้เขียนว่า 'CodeInsect : Edit Book' (ชื่อ template เดิมค้างอยู่ใน CI3 ไม่ใช่ 'Tracking :' เหมือนหน้าอื่น) — เป็นของเดิมฝั่ง CI3 ไม่ใช่ผลจากการถ่าย"
+   },
+   {
+    "page_id": "master-brand-listing",
+    "ci3_url": "http://127.0.0.1:18404/brandListing",
+    "ci4_url": "http://127.0.0.1:18405/master/brand",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-brand-listing__ci3__1440x900.png",
+     "master-brand-listing__ci3__390x844.png",
+     "master-brand-listing__ci4__1440x900.png",
+     "master-brand-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Brand Listing'"
+   },
+   {
+    "page_id": "master-brand-edit",
+    "ci3_url": "http://127.0.0.1:18404/editBrandOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/brand/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-brand-edit__ci3__1440x900.png",
+     "master-brand-edit__ci3__390x844.png",
+     "master-brand-edit__ci4__1440x900.png",
+     "master-brand-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit Brand'"
+   },
+   {
+    "page_id": "master-condition-listing",
+    "ci3_url": "http://127.0.0.1:18404/conditionListing",
+    "ci4_url": "http://127.0.0.1:18405/master/condition",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-condition-listing__ci3__1440x900.png",
+     "master-condition-listing__ci3__390x844.png",
+     "master-condition-listing__ci4__1440x900.png",
+     "master-condition-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : condition Listing'"
+   },
+   {
+    "page_id": "master-condition-edit",
+    "ci3_url": "http://127.0.0.1:18404/editConditionOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/condition/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-condition-edit__ci3__1440x900.png",
+     "master-condition-edit__ci3__390x844.png",
+     "master-condition-edit__ci4__1440x900.png",
+     "master-condition-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit condition'"
+   },
+   {
+    "page_id": "master-estimateprice-listing",
+    "ci3_url": "http://127.0.0.1:18404/estimatepriceListing",
+    "ci4_url": "http://127.0.0.1:18405/master/estimateprice",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-estimateprice-listing__ci3__1440x900.png",
+     "master-estimateprice-listing__ci3__390x844.png",
+     "master-estimateprice-listing__ci4__1440x900.png",
+     "master-estimateprice-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : estimateprice Listing'"
+   },
+   {
+    "page_id": "master-estimateprice-edit",
+    "ci3_url": "http://127.0.0.1:18404/editEstimatepriceOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/estimateprice/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-estimateprice-edit__ci3__1440x900.png",
+     "master-estimateprice-edit__ci3__390x844.png",
+     "master-estimateprice-edit__ci4__1440x900.png",
+     "master-estimateprice-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit estimateprice'"
+   },
+   {
+    "page_id": "master-fixed-listing",
+    "ci3_url": "http://127.0.0.1:18404/fixedListing",
+    "ci4_url": "http://127.0.0.1:18405/master/fixed",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-fixed-listing__ci3__1440x900.png",
+     "master-fixed-listing__ci3__390x844.png",
+     "master-fixed-listing__ci4__1440x900.png",
+     "master-fixed-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : fixed Listing'"
+   },
+   {
+    "page_id": "master-fixed-edit",
+    "ci3_url": "http://127.0.0.1:18404/editFixedOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/fixed/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-fixed-edit__ci3__1440x900.png",
+     "master-fixed-edit__ci3__390x844.png",
+     "master-fixed-edit__ci4__1440x900.png",
+     "master-fixed-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit fixed'"
+   },
+   {
+    "page_id": "master-provider-listing",
+    "ci3_url": "http://127.0.0.1:18404/providerListing",
+    "ci4_url": "http://127.0.0.1:18405/master/provider",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-provider-listing__ci3__1440x900.png",
+     "master-provider-listing__ci3__390x844.png",
+     "master-provider-listing__ci4__1440x900.png",
+     "master-provider-listing__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : provider Listing'"
+   },
+   {
+    "page_id": "master-provider-edit",
+    "ci3_url": "http://127.0.0.1:18404/editProviderOld/1",
+    "ci4_url": "http://127.0.0.1:18405/master/provider/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "master-provider-edit__ci3__1440x900.png",
+     "master-provider-edit__ci3__390x844.png",
+     "master-provider-edit__ci4__1440x900.png",
+     "master-provider-edit__ci4__390x844.png"
+    ],
+    "note": "ทั้งคู่ 200 ปกติ; CI3 title 'Tracking : Edit provider'"
+   }
+  ]
+ },
+ "manifest-batch4.json": {
+  "batch": "batch4-admin",
+  "chromium_version": "151.0.0.0",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "ci3_pin": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "ci3_image": "samsonitetracking-ci3:ee1c95e",
+  "ci3_base_url": "http://127.0.0.1:18404",
+  "ci4_sha": "25898812929d3d7019bcdb1d8a52db3e628b4b7b",
+  "ci4_base_url": "http://127.0.0.1:18405",
+  "viewports": [
+   "1440x900",
+   "390x844"
+  ],
+  "captured_at": "2026-08-25T04:20:00Z",
+  "batch_note": "ถ่ายครบ 48/48 ภาพตามตาราง 12 หน้า x 2 ระบบ x 2 viewport ไม่มีหน้าไหนถูกข้าม ไม่มีหน้าไหน BLOCKED. ทุกหน้าตอบ 200 ทั้งสองระบบ (ยืนยันจาก URL ปลายทางไม่เปลี่ยนจากที่ขอ + title ตรงกับหน้าที่ต้องการ ไม่มีการ redirect ไป /login) ไม่มี 404/500. login ผ่านฟอร์ม /login จริงในเบราว์เซอร์ด้วย wp00c-admin ทั้งสองระบบ (CI3 ยืนยันจาก snapshot ว่าแถบบนขึ้นชื่อ 'SYNTHETIC ADMIN', ทั้งคู่เด้งไป /dashboard). **ยืนยัน id ก่อนถ่ายทุกหน้า edit ตามบทเรียน batch3** โดยยิง DB ทั้งสองฐานก่อนเริ่ม: tbl_menu id=1 มีจริงทั้งคู่ (35 แถวเท่ากัน), tbl_background_web มีแถวเดียวคือ id=97001 ทั้งคู่, tbl_users userId=9001 และ 9002 มีจริงทั้งคู่ — **ไม่ต้องเปลี่ยน id ใด ๆ** ต่างจาก batch3 ที่ต้องสลับ id. ข้อควรรู้ตอน compare 5 ข้อ: (1) **จำนวนแถว login history ไม่เท่ากันสองฝั่งโดยธรรมชาติ ห้ามอ่านเป็น parity bug** — ใบงานเขียนว่า userId 9001 มี login record 2 แถว ซึ่งล้าสมัยแล้ว ค่าจริงตอนเริ่มถ่ายคือ tbl_last_login ของ 9001 = CI3 8 แถว / CI4 12 แถว และการ login ของรอบถ่ายนี้เติมอีกฝั่งละ 1 แถว (จบงานเป็น CI3 9 / CI4 13) ตารางนี้โตทุกครั้งที่มีคน login จึงไม่มีทางตรงกันข้ามระบบ ต่างจากตาราง master ที่ seed มาเท่ากัน; (2) CI3 กับ CI4 อยู่บน host เดียวกัน (127.0.0.1) ต่างกันแค่ port ซึ่ง cookie ไม่แยกตาม port ทำให้ session cookie ของสองระบบทับกันเอง — login ระบบหลังทำให้ระบบแรกหลุดทันที จึงถ่าย CI3 ให้จบทั้งสอง viewport ก่อนแล้วค่อย login CI4 (login รวม 2 ครั้ง; การ resize ไม่ทำให้ session หลุด ยืนยันแล้วในรอบนี้) ยกมาจาก batch3 ยังจริงอยู่; (3) CI4 รันด้วย ENVIRONMENT=development จึงมี CodeIgniter debug toolbar ฝังอยู่ทุกหน้า ส่วน CI3 ไม่มี — เป็นความต่างของ harness ไม่ใช่ของ UI; (4) **ความกว้างของภาพสองฝั่งไม่เท่ากันโดยธรรมชาติ ห้ามเอาไปตัดสินว่า layout เพี้ยน** — ภาพ CI4 ทุกใบในชุดนี้กว้าง 3313px ไม่ว่าตั้ง viewport 1440 หรือ 390 เพราะแถบ nav ของ CI4 ล้นออกแนวนอน (horizontal overflow) ทำให้ fullPage capture ขยายตาม scrollWidth ส่วน CI3 ได้ 1425px / 375px ตาม viewport จริง แปลว่าภาพ CI4 ที่ viewport 390 ไม่ได้แสดง layout แบบ mobile จริง เป็น responsive issue ฝั่ง CI4 ที่ควรยกให้ user ตัดสินแยกต่างหาก ไม่ใช่ artifact ของการถ่าย (ยกมาจาก batch3 ยังจริงอยู่ทุกภาพในชุดนี้); (5) **ความสูงของหน้าต่างกันมากโดยโครงสร้าง** — ภาพ CI3 ทุกใบในชุดนี้สูง 1627-1680px เท่ากันเกือบหมดเพราะ template ของ CI3 มี sidebar เมนูยาวคงที่ที่ดันความสูงขั้นต่ำของทุกหน้า ส่วน CI4 สูงตามเนื้อหาจริง (829-1303px) เพราะเมนูอยู่บนแถบ nav แนวนอน — ความต่างนี้เป็นเรื่อง shell ของ layout ไม่ใช่เนื้อหาหาย ตรวจแล้วว่าไฟล์ทุกคู่ที่ความสูงเท่ากันมีเนื้อหาต่างกันจริง (cmp ทุกคู่ listing vs edit และหน้าที่สูงเท่ากันในระบบเดียวกัน ไม่มีคู่ไหน identical). console ของหน้า users-edit (CI3) และ users-listing / users-edit (CI4) มี entry ระดับ VERBOSE เรื่อง autocomplete attribute ของ input password/username เท่านั้น ไม่ใช่ error ไม่กระทบภาพ. ไม่ได้แก้ source, ไม่ได้แก้ข้อมูลใน DB (query อ่านอย่างเดียว), ไม่ได้ commit.",
+  "pages": [
+   {
+    "page_id": "imports-status",
+    "ci3_url": "http://127.0.0.1:18404/UploadexcelListing",
+    "ci4_url": "http://127.0.0.1:18405/imports/status",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "imports-status__ci3__1440x900.png",
+     "imports-status__ci3__390x844.png",
+     "imports-status__ci4__1440x900.png",
+     "imports-status__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : branch Listing' — ใช้ title ร่วมกับหน้า branch ตามของเดิม CI3, CI4 'Import status | Samsonite Tracking'). ทั้งสองหน้าคือฟอร์มอัปโหลดไฟล์ ไม่มีตาราง listing แม้ชื่อ route ฝั่ง CI3 จะลงท้าย Listing. **ความต่างที่เห็นในภาพและควรให้ user ตัดสิน**: CI3 มีปุ่มชุด Choose File / Upload / Reset ใต้หัวข้อ 'Upload Management Add / Upload' > 'Enter Upload Details' (กด Upload แล้ว commit เลย) ส่วน CI4 มีหัวข้อ 'Import status' + file input + ปุ่ม **Preview** ปุ่มเดียว (มีขั้น preview คั่นก่อน commit) — เป็นความต่างของ flow ไม่ใช่ layout เพี้ยน"
+   },
+   {
+    "page_id": "imports-price",
+    "ci3_url": "http://127.0.0.1:18404/UploadexcelpriceListing",
+    "ci4_url": "http://127.0.0.1:18405/imports/price",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "imports-price__ci3__1440x900.png",
+     "imports-price__ci3__390x844.png",
+     "imports-price__ci4__1440x900.png",
+     "imports-price__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : branch Listing', CI4 'Import price | Samsonite Tracking'); โครงหน้าเหมือน imports-status ทุกอย่างรวมถึงความต่างเรื่องปุ่ม Upload (CI3) vs Preview (CI4)"
+   },
+   {
+    "page_id": "imports-new-order",
+    "ci3_url": "http://127.0.0.1:18404/UploadneworderexcelListing",
+    "ci4_url": "http://127.0.0.1:18405/imports/new-order",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "imports-new-order__ci3__1440x900.png",
+     "imports-new-order__ci3__390x844.png",
+     "imports-new-order__ci4__1440x900.png",
+     "imports-new-order__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 — หน้านี้เป็นหน้าเดียวในกลุ่ม imports ที่ CI3 ตั้ง title เฉพาะของตัวเอง 'Tracking : Upload NEW REQUEST Listing' (อีกสองหน้าใช้ title ของ branch ร่วมกัน), CI4 'Import new-order | Samsonite Tracking'; โครงหน้าเหมือนอีกสองหน้าในกลุ่ม"
+   },
+   {
+    "page_id": "login-history-own",
+    "ci3_url": "http://127.0.0.1:18404/login-history",
+    "ci4_url": "http://127.0.0.1:18405/login-history",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "login-history-own__ci3__1440x900.png",
+     "login-history-own__ci3__390x844.png",
+     "login-history-own__ci4__1440x900.png",
+     "login-history-own__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 ใช้ path เดียวกัน (CI3 title 'Tracking : User Login History', CI4 'Login history | Samsonite Tracking'). **จำนวนแถวในตารางต่างกันสองฝั่งโดยธรรมชาติ ห้ามอ่านเป็น parity bug**: tbl_last_login ของ userId 9001 ตอนเริ่มถ่าย CI3 = 8 แถว / CI4 = 12 แถว (ไม่ใช่ 2 แถวตามที่ใบงานเขียน — ตัวเลขในใบงานล้าสมัย) และ login ของรอบถ่ายนี้เติมอีกฝั่งละ 1 แถวเป็น CI3 9 / CI4 13 ตารางนี้โตทุกครั้งที่มีคน login จึงไม่ถูก seed ให้เท่ากันเหมือนตาราง master. เทียบได้เฉพาะโครงตาราง/คอลัมน์/หัวตาราง ไม่ใช่จำนวนแถว"
+   },
+   {
+    "page_id": "users-history-of-user",
+    "ci3_url": "http://127.0.0.1:18404/login-history/9001",
+    "ci4_url": "http://127.0.0.1:18405/users/9001/history",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "users-history-of-user__ci3__1440x900.png",
+     "users-history-of-user__ci3__390x844.png",
+     "users-history-of-user__ci4__1440x900.png",
+     "users-history-of-user__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 — path ต่างกัน (CI3 `/login-history/<id>` vs CI4 `/users/<id>/history`) แต่ทั้งสองระบบใช้ title เดียวกับหน้า login-history-own ของตัวเอง (CI3 'Tracking : User Login History', CI4 'Login history | Samsonite Tracking'). userId 9001 มีจริงทั้งสองฐาน (ยืนยันก่อนถ่าย). ข้อจำกัดเรื่องจำนวนแถวเหมือน login-history-own ทุกประการ (CI3 9 / CI4 13)"
+   },
+   {
+    "page_id": "contact-listing",
+    "ci3_url": "http://127.0.0.1:18404/contactListing",
+    "ci4_url": "http://127.0.0.1:18405/contactListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "contact-listing__ci3__1440x900.png",
+     "contact-listing__ci3__390x844.png",
+     "contact-listing__ci4__1440x900.png",
+     "contact-listing__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 ใช้ path เดียวกัน (CI3 title 'Tracking : contact', CI4 'Contact messages | Samsonite Tracking'); ยืนยันจาก DB ว่าตาราง `contact` (ไม่ใช่ `tbl_contact`) มี 1 แถวเท่ากันทั้งสองฐาน ตรงตามที่ใบงานระบุ — จำนวนแถวในสองภาพต้องตรงกัน"
+   },
+   {
+    "page_id": "menu-listing",
+    "ci3_url": "http://127.0.0.1:18404/menuListing",
+    "ci4_url": "http://127.0.0.1:18405/menu",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "menu-listing__ci3__1440x900.png",
+     "menu-listing__ci3__390x844.png",
+     "menu-listing__ci4__1440x900.png",
+     "menu-listing__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Menu Listing', CI4 'Menu groups | Samsonite Tracking'); ยืนยันจาก DB ว่า tbl_menu มี 35 แถวเท่ากันทั้งสองฐาน ตรงตามใบงาน. ถ่ายด้วย role 1 ทั้งคู่จึงไม่โดนผลของ dead gate `isAdmin()` ฝั่ง CI3 ที่ใบงานเตือนไว้"
+   },
+   {
+    "page_id": "menu-edit",
+    "ci3_url": "http://127.0.0.1:18404/editMunuOld/1",
+    "ci4_url": "http://127.0.0.1:18405/menu/1",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "menu-edit__ci3__1440x900.png",
+     "menu-edit__ci3__390x844.png",
+     "menu-edit__ci4__1440x900.png",
+     "menu-edit__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 ด้วย id=1 ตามใบงาน — **ยืนยันก่อนถ่ายแล้วว่า tbl_menu id=1 มีจริงทั้งสองฐาน จึงไม่ต้องสลับ id แบบ batch3**. CI3 title ของหน้านี้เขียนว่า 'CodeInsect : Edit User' (ชื่อ template เดิมค้างอยู่ใน CI3 และยังผิดหมวดด้วย — หน้าแก้เมนูแต่ title บอก Edit User เป็นของเดิมฝั่ง CI3 ไม่ใช่ผลจากการถ่าย). CI4 ใช้ title เดียวกับหน้า listing ('Menu groups | Samsonite Tracking') เพราะ CI4 render ฟอร์ม edit ในหน้าเดียวกับ listing — ตรวจด้วย cmp แล้วว่าไฟล์ภาพต่างจาก menu-listing จริงทั้งสอง viewport (ฟอร์มมีค่าที่ prefill) ไม่ใช่ภาพซ้ำ"
+   },
+   {
+    "page_id": "background-listing",
+    "ci3_url": "http://127.0.0.1:18404/BackgroundListing",
+    "ci4_url": "http://127.0.0.1:18405/backgrounds",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "background-listing__ci3__1440x900.png",
+     "background-listing__ci3__390x844.png",
+     "background-listing__ci4__1440x900.png",
+     "background-listing__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : background web', CI4 'Website backgrounds | Samsonite Tracking'); tbl_background_web มีแถวเดียวคือ id 97001 เท่ากันทั้งสองฐาน — ตารางในสองภาพต้องมี 1 แถว"
+   },
+   {
+    "page_id": "background-edit",
+    "ci3_url": "http://127.0.0.1:18404/editBackgroundOld/97001",
+    "ci4_url": "http://127.0.0.1:18405/backgrounds/97001",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "background-edit__ci3__1440x900.png",
+     "background-edit__ci3__390x844.png",
+     "background-edit__ci4__1440x900.png",
+     "background-edit__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 ด้วย id=97001 ตามใบงาน — **ยืนยันก่อนถ่ายแล้วว่า id นี้มีจริงทั้งสองฐาน (และเป็นแถวเดียวในตาราง) ไม่ต้องสลับ id**. CI3 title 'CodeInsect : Edit Background' (ชื่อ template เดิมค้างอยู่ใน CI3). CI4 ใช้ title เดียวกับหน้า listing เพราะ render ฟอร์ม edit ในหน้าเดียวกับ listing — ตรวจด้วย cmp แล้วว่าไฟล์ภาพต่างจาก background-listing จริงทั้งสอง viewport"
+   },
+   {
+    "page_id": "users-listing",
+    "ci3_url": "http://127.0.0.1:18404/userListing",
+    "ci4_url": "http://127.0.0.1:18405/users",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "users-listing__ci3__1440x900.png",
+     "users-listing__ci3__390x844.png",
+     "users-listing__ci4__1440x900.png",
+     "users-listing__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : User Listing', CI4 'Users | Samsonite Tracking'); fixture ผู้ใช้ 4 คน (9001-9004) เท่ากันทั้งสองฐาน. CI4 มี console entry ระดับ VERBOSE 1 รายการเรื่อง autocomplete attribute ของ input username — ไม่ใช่ error ไม่กระทบภาพ"
+   },
+   {
+    "page_id": "users-edit",
+    "ci3_url": "http://127.0.0.1:18404/editOld/9002",
+    "ci4_url": "http://127.0.0.1:18405/users/9002",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "users-edit__ci3__1440x900.png",
+     "users-edit__ci3__390x844.png",
+     "users-edit__ci4__1440x900.png",
+     "users-edit__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 ด้วย userId=9002 (wp00c-a role 2 branch 1) ตามใบงาน — **ยืนยันก่อนถ่ายแล้วว่ามีจริงทั้งสองฐาน ไม่ต้องสลับ id**. CI3 title 'CodeInsect : Edit User' (ชื่อ template เดิมค้างอยู่ใน CI3). CI4 ใช้ title เดียวกับหน้า listing เพราะ render ฟอร์ม edit ในหน้าเดียวกับ listing — ตรวจด้วย cmp แล้วว่าไฟล์ภาพต่างจาก users-listing จริงทั้งสอง viewport. ทั้งสองระบบมี console entry ระดับ VERBOSE เรื่อง autocomplete attribute ของ input password/username (CI3 2 รายการ, CI4 1 รายการ) — ไม่ใช่ error ไม่กระทบภาพ"
+   }
+  ]
+ },
+ "manifest-batch5.json": {
+  "batch": "batch5-reports-exports",
+  "chromium_version": "151.0.0.0",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "ci3_pin": "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6",
+  "ci3_image": "samsonitetracking-ci3:ee1c95e",
+  "ci3_base_url": "http://127.0.0.1:18404",
+  "ci4_sha": "25898812929d3d7019bcdb1d8a52db3e628b4b7b",
+  "ci4_base_url": "http://127.0.0.1:18405",
+  "viewports": [
+   "1440x900",
+   "390x844"
+  ],
+  "captured_at": "2026-08-25T04:36:00Z",
+  "batch_note": "ถ่ายครบ 44/44 ภาพตามตาราง 11 หน้า x 2 ระบบ x 2 viewport ไม่มีหน้าไหนถูกข้าม ไม่มีหน้าไหน BLOCKED. ทุกหน้าตอบ 200 ทั้งสองระบบ (ยืนยันจาก URL ปลายทางไม่เปลี่ยนจากที่ขอ + title ตรงกับหน้าที่ต้องการ ไม่มี redirect ไป /login) ไม่มี 404/500. login ผ่านฟอร์ม /login จริงในเบราว์เซอร์ด้วย wp00c-admin ทั้งสองระบบ (CI3 -> /dashboard, CI4 -> /dashboard). **ไม่ได้กดปุ่ม export ใด ๆ** ตามใบงาน — บันทึกเฉพาะข้อความ/คลาส/href ของปุ่มลง note ของแต่ละหน้า. **ไม่ได้กรอกวันที่เอง** ทุกหน้าถ่ายด้วยค่า default ที่ระบบเติมมา และบันทึกค่าที่เติมลง note. ข้อควรรู้ตอน compare 7 ข้อ: (1) **ค่า default ของช่วงวันที่**: หน้า /user/report* ทั้ง 6 หน้าเติมเหมือนกันเป๊ะทั้งสองระบบ = 25/07/2026 ถึง 25/08/2026 (ย้อนหลัง 1 เดือนจากวันถ่าย); /reportsummary ทั้งสองระบบเว้นว่างทั้งคู่; **/ReportTrackingListing ต่างกัน** — CI3 เติม sdate=edate=25/08/2026 (วันนี้ถึงวันนี้) ส่วน CI4 เว้นว่างทั้งคู่ ผลคือตารางของ CI3 มีข้อมูล 1 แถว แต่ CI4 มี 9 แถว ความต่างจำนวนแถวนี้มาจาก default range ไม่ใช่ข้อมูลใน DB ต่างกัน; (2) **ปุ่ม export หายไป 4 หน้าฝั่ง CI4** — CI3 มีปุ่ม Export บนหน้า report ครบทั้ง 7 หน้า แต่ CI4 มีแค่ 4 หน้า (ratings, in-progress, summary, tracking) ส่วน report-jobs-by-day / report-pending / report-pending-total / report-in-progress-average ฝั่ง CI4 **ไม่มีปุ่ม export เลย**; อย่างไรก็ตามปุ่ม Export ของ CI3 บน 4 หน้านั้นมี href ที่ไม่ชี้ไป endpoint ใด (href=\"#\" 3 หน้า และ href=\"javascript:void(0);\" 1 หน้า) — **ไม่ได้ตรวจว่ามี JS handler ผูกกับปุ่มหรือไม่ เพราะห้ามกดปุ่ม** จึงยังสรุปไม่ได้ว่าปุ่มใช้งานได้จริงหรือไม่ ต้องให้ user ตัดสินว่าเป็น feature ที่ตั้งใจตัดทิ้งหรือ regression; (3) **ข้อความบนปุ่มไม่ตรงกัน**: CI3 = \"Export\" (a.btn.btn-primary) ส่วน CI4 = \"Export XLS\" (a.button) ทุกหน้าที่มีปุ่ม; (4) **รูปแบบ href ของปุ่ม export ต่างกันเชิงโครงสร้าง**: CI3 ยัดค่าฟิลเตอร์ปัจจุบันเป็น path segment (เช่น /user/excel_ratings//25-07-2026/25-08-2026) ส่วน CI4 ใช้ query string (/reports/ratings/export?start_date=25%2F07%2F2026&end_date=25%2F08%2F2026) และ 2 หน้าของ CI4 (summary, tracking) href ไม่มีพารามิเตอร์ติดไปเลย (/reports/summary/export, /reports/tracking/export); (5) **หน้า ratings คนละโครงสร้างเนื้อหา** — CI3 render เป็นหัวข้อคำถามภาษาไทย 6 ข้อพร้อมแถบเปอร์เซ็นต์ (progress bar) แล้วปิดท้ายด้วยตาราง \"No | Note\" 1 แถว ส่วน CI4 render เป็นตารางเดียว \"Item | Total | Detail\" 8 แถว ชื่อรายการเป็น \"Question 1\"-\"Question 8\" (ไม่มีข้อความคำถามภาษาไทย ไม่มี progress bar ไม่มีตาราง Note); (6) **ฟิลเตอร์ที่หายไปฝั่ง CI4**: CI3 มี select branch_id บนหน้า /user/report* ทุกหน้า แต่ CI4 ไม่มี branch_id บนหน้า ratings/jobs-by-day/pending/pending-total/in-progress-average เลย และหน้า in-progress ของ CI4 ใช้ status_id[] แบบ multi-select แทน t_status_id + branch_id ของ CI3; (7) **จำนวนแถวข้อมูลตรงกัน 6 จาก 7 หน้า** (jobs-by-day 9=9, pending 2=2, pending-total 4=4, in-progress-average 6=6, in-progress 8=8, summary 8=8) ต่างเฉพาะ tracking ตามข้อ (1). ข้อสังเกตของ harness ที่ยกมาจาก batch3/batch4 และยังจริงทุกภาพในชุดนี้: cookie ci_session ทับกันข้าม port (ถ่าย CI3 ให้จบทั้งสอง viewport ก่อนแล้วค่อย login CI4 — login รวม 2 ครั้ง, resize ไม่ทำให้ session หลุด); CI4 รัน ENVIRONMENT=development จึงมี CodeIgniter debug toolbar ฝังทุกหน้า ส่วน CI3 ไม่มี; **ภาพ CI4 ทุกใบกว้าง 3313px ทั้งที่ viewport 1440 และ 390** เพราะ nav ล้นแนวนอน fullPage จึงขยายตาม scrollWidth แปลว่าภาพ CI4 ที่ 390 ไม่ใช่ mobile layout จริง เป็น responsive issue ฝั่ง CI4 ไม่ใช่ artifact ของการถ่าย; ภาพ CI3 กว้าง 1425px / 375px ตาม viewport จริง (หัก scrollbar) ห้ามอ่านความกว้างที่ไม่เท่ากันว่า layout เพี้ยน. **ข้อควรรู้เรื่องไฟล์ของ page-id ที่ใช้ URL ร่วมกัน**: export-ratings/report-ratings, export-in-progress/report-in-progress, export-summary/report-summary ถ่ายจากการโหลดหน้าเดียวกัน (ยิง shutter สองครั้งติดกัน ไม่ได้ reload) ไฟล์จึงไม่ identical แต่ต่างกันเพียงความกว้าง scrollbar — ภาพช็อตแรก (report-*) ได้ 1425/375 ส่วนช็อตที่สอง (export-*) ได้ 1440/390 เพราะ scrollbar หายหลัง fullPage capture รอบแรก; การเทียบ CI3 vs CI4 ของ page-id เดียวกันยังเทียบตรงเงื่อนไขกันเสมอ (ทั้งคู่เป็นช็อตลำดับเดียวกัน) และ export-tracking ถ่ายจาก navigate ของตัวเองจึงได้ 1425/375 ตามปกติ; cmp ยืนยันแล้วว่าไม่มีคู่ไหน identical รวมถึงคู่ export-tracking vs report-tracking-listing (ของ batch ก่อน) ที่ URL เดียวกัน. ไม่ได้แก้ source, ไม่ได้แก้ข้อมูลใน DB, ไม่ได้ commit, ไม่ได้กดปุ่มดาวน์โหลด, ไม่ได้ยิง SMS/API จริง.",
+  "pages": [
+   {
+    "page_id": "report-ratings",
+    "ci3_url": "http://127.0.0.1:18404/user/report",
+    "ci4_url": "http://127.0.0.1:18405/user/report",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-ratings__ci3__1440x900.png",
+     "report-ratings__ci3__390x844.png",
+     "report-ratings__ci4__1440x900.png",
+     "report-ratings__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard' ใช้ title ร่วมกับ dashboard, CI4 'Ratings | Samsonite Tracking'). **default date ตรงกัน**: ทั้งสองระบบเติม start_date=25/07/2026 end_date=25/08/2026 (ไม่ได้กรอกเอง). **โครงสร้างเนื้อหาต่างกันมาก**: CI3 = หัวข้อ 'Rating Report' + คำถามภาษาไทย 6 ข้อ ('1. ความพึงพอใจในการให้บริการของเจ้าหน้าที่ ณ จุดรับซ่อม' ... '6. ข้อเสนอแนะเพิ่มเติม') แต่ละข้อมี 'Total 1' + แถบเปอร์เซ็นต์ แล้วปิดท้ายด้วยตาราง #examples หัวคอลัมน์ 'No | Note' 1 แถวข้อมูล; CI4 = ตารางเดียว 'Item | Total | Detail' 8 แถว ชื่อแถวเป็น 'Question 1'..'Question 8' Total=1 ทุกแถว Detail เป็นสตริงเปอร์เซ็นต์ '1: 0.00% 2: ... 5: 100.00%' — ไม่มีข้อความคำถามภาษาไทย ไม่มี progress bar ไม่มีตาราง Note. **ฟิลเตอร์ต่างกัน**: CI3 มี select branch_id (default 0 = ทุกสาขา) แต่ CI4 ไม่มี branch_id เลย. ภาพชุดนี้เป็นช็อตแรกหลัง navigate (CI3 1425px/375px)"
+   },
+   {
+    "page_id": "report-jobs-by-day",
+    "ci3_url": "http://127.0.0.1:18404/user/report_job_byday",
+    "ci4_url": "http://127.0.0.1:18405/user/report_job_byday",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-jobs-by-day__ci3__1440x900.png",
+     "report-jobs-by-day__ci3__390x844.png",
+     "report-jobs-by-day__ci4__1440x900.png",
+     "report-jobs-by-day__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard', CI4 'Jobs by day | Samsonite Tracking'). **default date ตรงกัน** 25/07/2026–25/08/2026 ทั้งสองระบบ. จำนวนแถวข้อมูลตรงกัน 9 แถวทั้งคู่. **CI3 มีปุ่ม 'Export' (a.btn.btn-primary) href=\"#\" (ไม่ชี้ endpoint — ไม่ได้ตรวจว่ามี JS handler ผูกหรือไม่ เพราะห้ามกดปุ่ม); CI4 ไม่มีปุ่ม export บนหน้านี้เลย** — ให้ user ตัดสินว่าตั้งใจตัดหรือ regression. **ฟิลเตอร์ต่างกัน**: CI3 มี select branch_id (=0), CI4 มีแค่ start_date/end_date. หัวตารางฝั่ง CI4 = 'Brand | Product Type | 0 | 1-7 | 8-30 | 31-45 | > 45'"
+   },
+   {
+    "page_id": "report-pending",
+    "ci3_url": "http://127.0.0.1:18404/user/report_job_pending",
+    "ci4_url": "http://127.0.0.1:18405/user/report_job_pending",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-pending__ci3__1440x900.png",
+     "report-pending__ci3__390x844.png",
+     "report-pending__ci4__1440x900.png",
+     "report-pending__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard', CI4 'Pending jobs | Samsonite Tracking'). **default date ตรงกัน** 25/07/2026–25/08/2026. จำนวนแถวข้อมูลตรงกัน 2 แถวทั้งคู่. **CI3 มีปุ่ม 'Export' href=\"#\" (ไม่ชี้ endpoint — ไม่ได้ตรวจ JS handler เพราะห้ามกดปุ่ม); CI4 ไม่มีปุ่ม export**. ฟิลเตอร์: CI3 มี branch_id (=0) เพิ่มจาก CI4. หัวตารางฝั่ง CI4 = 'No | trackID | Status | เล่มที่/เลขที่ | เบอร์มือถือลูกค้า | วันที่ส่งซ่อม | Day'"
+   },
+   {
+    "page_id": "report-pending-total",
+    "ci3_url": "http://127.0.0.1:18404/user/report_total_job_pending",
+    "ci4_url": "http://127.0.0.1:18405/user/report_total_job_pending",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-pending-total__ci3__1440x900.png",
+     "report-pending-total__ci3__390x844.png",
+     "report-pending-total__ci4__1440x900.png",
+     "report-pending-total__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard', CI4 'Pending totals | Samsonite Tracking'). **default date ตรงกัน** 25/07/2026–25/08/2026. จำนวนแถวข้อมูลตรงกัน 4 แถวทั้งคู่. **CI3 มีปุ่ม 'Export' href=\"#\" (ไม่ชี้ endpoint — ไม่ได้ตรวจ JS handler เพราะห้ามกดปุ่ม); CI4 ไม่มีปุ่ม export**. ฟิลเตอร์: CI3 มี branch_id (=0) เพิ่มจาก CI4. หัวตารางฝั่ง CI4 = 'No | Detail | Job | Average (Percent)'"
+   },
+   {
+    "page_id": "report-in-progress-average",
+    "ci3_url": "http://127.0.0.1:18404/user/report_in_progress_average",
+    "ci4_url": "http://127.0.0.1:18405/user/report_in_progress_average",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-in-progress-average__ci3__1440x900.png",
+     "report-in-progress-average__ci3__390x844.png",
+     "report-in-progress-average__ci4__1440x900.png",
+     "report-in-progress-average__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard', CI4 'In-progress average | Samsonite Tracking'). **default date ตรงกัน** 25/07/2026–25/08/2026. จำนวนแถวข้อมูลตรงกัน 6 แถวทั้งคู่. **CI3 มีปุ่ม 'Export' href=\"javascript:void(0);\" (ไม่ชี้ endpoint — ไม่ได้ตรวจ JS handler เพราะห้ามกดปุ่ม; เป็นหน้าเดียวในกลุ่มที่ใช้ javascript:void(0) แทน #); CI4 ไม่มีปุ่ม export**. ฟิลเตอร์: CI3 มี branch_id (=0) เพิ่มจาก CI4. หัวตารางฝั่ง CI4 = 'No | Detail | Job | Average (Percent)' (เหมือน report-pending-total)"
+   },
+   {
+    "page_id": "report-in-progress",
+    "ci3_url": "http://127.0.0.1:18404/user/report_in_progress_job",
+    "ci4_url": "http://127.0.0.1:18405/user/report_in_progress_job",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-in-progress__ci3__1440x900.png",
+     "report-in-progress__ci3__390x844.png",
+     "report-in-progress__ci4__1440x900.png",
+     "report-in-progress__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Dashboard', CI4 'In-progress jobs | Samsonite Tracking'). **default date ตรงกัน** 25/07/2026–25/08/2026. จำนวนแถวข้อมูลตรงกัน 8 แถวทั้งคู่. หน้านี้ **มีปุ่ม export ทั้งสองระบบ** (รายละเอียดปุ่มดู page-id export-in-progress ที่ถ่ายจาก URL เดียวกัน). **ฟิลเตอร์ต่างกัน**: CI3 = t_status_id (select เดี่ยว) + branch_id (=0) + ช่วงวันที่; CI4 = ช่วงวันที่ + status_id[] แบบ multi-select ไม่มี branch_id. หัวตารางฝั่ง CI4 = 'No | Status | Track Id | Order Id | Branch Name | Full Name | Tel | Request Date | Day'. ภาพชุดนี้เป็นช็อตแรกหลัง navigate (CI3 1425px/375px)"
+   },
+   {
+    "page_id": "report-summary",
+    "ci3_url": "http://127.0.0.1:18404/reportsummary",
+    "ci4_url": "http://127.0.0.1:18405/reportsummary",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "report-summary__ci3__1440x900.png",
+     "report-summary__ci3__390x844.png",
+     "report-summary__ci4__1440x900.png",
+     "report-summary__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Listing' ใช้ title ร่วมกับหน้า listing อื่น, CI4 'Report summary | Samsonite Tracking'). **default date: เว้นว่างทั้งสองระบบ** (sdate='' edate='' ทั้งคู่ ระบบไม่เติมค่าให้ — ไม่ได้กรอกเอง). จำนวนแถวข้อมูลตรงกัน 8 แถวทั้งคู่. หน้านี้มีปุ่ม export ทั้งสองระบบ (ดู page-id export-summary). **ฟิลเตอร์ต่างกัน**: CI3 = detailBrandId(=0) + detailTypeId(=0) + status_id(=0) + sdate + edate; CI4 = searchText + sdate + edate + status_id + detailBrandId + detailTypeId + branch_id(=0) — CI4 มี searchText และ branch_id เพิ่ม. หัวตารางฝั่ง CI4 = 'No | Status | Tracking | Order | Branch | Brand | Type | Price'. ภาพชุดนี้เป็นช็อตแรกหลัง navigate (CI3 1425px/375px)"
+   },
+   {
+    "page_id": "export-ratings",
+    "ci3_url": "http://127.0.0.1:18404/user/report",
+    "ci4_url": "http://127.0.0.1:18405/user/report",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "export-ratings__ci3__1440x900.png",
+     "export-ratings__ci3__390x844.png",
+     "export-ratings__ci4__1440x900.png",
+     "export-ratings__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "URL เดียวกับ page-id report-ratings ถ่ายจากการโหลดหน้าเดียวกัน (ยิง shutter ต่อจากกันไม่ได้ reload) ไฟล์จึงต่างจาก report-ratings แค่ความกว้าง scrollbar (1440/390 แทน 1425/375) ไม่ใช่ภาพซ้ำและไม่ใช่ความต่างของ UI. **ไม่ได้กดปุ่มดาวน์โหลด**. **ปุ่ม export มีทั้งสองระบบแต่ไม่ตรงกัน**: CI3 ข้อความ 'Export' selector `a.btn.btn-primary` href `http://127.0.0.1:18404/user/excel_ratings//25-07-2026/25-08-2026` (ยัดช่วงวันที่ปัจจุบันเป็น path segment และมี // เพราะ segment branch ว่าง); CI4 ข้อความ 'Export XLS' selector `a.button` href `http://127.0.0.1:18405/reports/ratings/export?start_date=25%2F07%2F2026&end_date=25%2F08%2F2026` (query string). endpoint ปลายทางคนละ path กันโดยสิ้นเชิง (/user/excel_ratings vs /reports/ratings/export)"
+   },
+   {
+    "page_id": "export-in-progress",
+    "ci3_url": "http://127.0.0.1:18404/user/report_in_progress_job",
+    "ci4_url": "http://127.0.0.1:18405/user/report_in_progress_job",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "export-in-progress__ci3__1440x900.png",
+     "export-in-progress__ci3__390x844.png",
+     "export-in-progress__ci4__1440x900.png",
+     "export-in-progress__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "URL เดียวกับ page-id report-in-progress ถ่ายจาก render เดียวกัน (ช็อตที่สอง — ต่างจาก report-in-progress แค่ความกว้าง scrollbar 1440/390 แทน 1425/375). **ไม่ได้กดปุ่มดาวน์โหลด**. **ปุ่ม export มีทั้งสองระบบแต่ไม่ตรงกัน**: CI3 ข้อความ 'Export' selector `a.btn.btn-primary` href `http://127.0.0.1:18404/user/excel_in_progress_job?branchId=&startDate=25-07-2026&endDate=25-08-2026&status=` (query string มีพารามิเตอร์ branchId/status ว่าง); CI4 ข้อความ 'Export XLS' selector `a.button` href `http://127.0.0.1:18405/reports/in-progress/export?start_date=25%2F07%2F2026&end_date=25%2F08%2F2026` (ไม่มีพารามิเตอร์ status/branch ติดไปด้วย ทั้งที่หน้ามี status_id[] multi-select). รูปแบบวันที่ใน href ต่างกัน: CI3 ใช้ 25-07-2026 (ขีดกลาง) CI4 ใช้ 25%2F07%2F2026 (สแลช encode)"
+   },
+   {
+    "page_id": "export-tracking",
+    "ci3_url": "http://127.0.0.1:18404/ReportTrackingListing",
+    "ci4_url": "http://127.0.0.1:18405/ReportTrackingListing",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "export-tracking__ci3__1440x900.png",
+     "export-tracking__ci3__390x844.png",
+     "export-tracking__ci4__1440x900.png",
+     "export-tracking__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "ทั้งคู่ 200 (CI3 title 'Tracking : Listing', CI4 'Report Tracking | Samsonite Tracking'). page-id นี้ถ่ายจาก navigate ของตัวเอง (ไม่ได้แชร์ render กับใคร) ภาพ CI3 จึงกว้าง 1425/375 ตามปกติ; URL เดียวกับ page-id report-tracking-listing ของ batch ก่อนหน้า cmp แล้วไม่ identical. **ไม่ได้กดปุ่มดาวน์โหลด**. **ปุ่ม export มีทั้งสองระบบแต่ไม่ตรงกัน**: CI3 ข้อความ 'Export' selector `a.btn.btn-primary` href `http://127.0.0.1:18404/order/excel_report/0/25-08-2026/25-08-2026/0/` (path segment พร้อมช่วงวันที่ default ของหน้า); CI4 ข้อความ 'Export XLS' selector `a.button` href `http://127.0.0.1:18405/reports/tracking/export` (**ไม่มีพารามิเตอร์ฟิลเตอร์ติดไปเลย**). **จุดต่างสำคัญของหน้านี้คือ default date range**: CI3 เติม sdate=25/08/2026 edate=25/08/2026 (วันนี้ถึงวันนี้) ส่วน CI4 เว้นว่างทั้ง sdate/edate ทำให้ตาราง CI3 แสดง 1 แถว แต่ CI4 แสดง 9 แถว — เป็นผลจาก default range ไม่ใช่ข้อมูลใน DB ต่างกัน (ไม่ได้กรอกวันที่เอง). ฟิลเตอร์อื่น: CI3 มี multiselect สถานะแสดงเป็นปุ่ม 'None selected' (a.multiselect.dropdown-toggle.btn.btn-default), CI4 มี status_id + searchText"
+   },
+   {
+    "page_id": "export-summary",
+    "ci3_url": "http://127.0.0.1:18404/reportsummary",
+    "ci4_url": "http://127.0.0.1:18405/reportsummary",
+    "role": "wp00c-admin (role 1)",
+    "files": [
+     "export-summary__ci3__1440x900.png",
+     "export-summary__ci3__390x844.png",
+     "export-summary__ci4__1440x900.png",
+     "export-summary__ci4__390x844.png"
+    ],
+    "http_status": {
+     "ci3": "200",
+     "ci4": "200"
+    },
+    "note": "URL เดียวกับ page-id report-summary ถ่ายจาก render เดียวกัน (ช็อตที่สอง — ต่างจาก report-summary แค่ความกว้าง scrollbar 1440/390 แทน 1425/375). **ไม่ได้กดปุ่มดาวน์โหลด**. **ปุ่ม export มีทั้งสองระบบแต่ไม่ตรงกัน**: CI3 ข้อความ 'Export' selector `a.btn.btn-primary` href `http://127.0.0.1:18404/order/excel_report/0/0/0/0/` (path segment ค่า 0 ทั้งหมดเพราะฟิลเตอร์ยังไม่ถูกตั้ง); CI4 ข้อความ 'Export XLS' selector `a.button` href `http://127.0.0.1:18405/reports/summary/export` (ไม่มีพารามิเตอร์). **ข้อสังเกตเทียบกับใบงาน**: ใบงานระบุ endpoint ของ export-summary ว่า `/Order/excel_report_sum` แต่ปุ่มจริงบนหน้า /reportsummary ของ CI3 ชี้ไป `/order/excel_report` (endpoint เดียวกับปุ่มบนหน้า /ReportTrackingListing ต่างกันแค่ค่า segment) — สแกนปุ่มทั้งหน้าแล้วมีปุ่มเดียวไม่มีปุ่ม excel_report_sum ซ่อนอยู่ (ปุ่มทั้งหมดบนหน้า: Back / Change Password / Export / ปุ่มค้นหา a.btn.searchList)"
+   }
+  ]
+ }
+}
