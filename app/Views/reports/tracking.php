@@ -23,8 +23,7 @@ $exportQuery = http_build_query(array_filter([
 ], static fn (mixed $value): bool => $value !== '' && $value !== null));
 $exportUrl = site_url('reports/tracking/export') . ($exportQuery === '' ? '' : '?' . $exportQuery);
 ?>
-<section aria-labelledby="tracking-title">
-    <h1 id="tracking-title">Report Tracking</h1>
+<section aria-labelledby="page-title">
     <p class="muted"><?= count($rows) ?> matching order(s). Status accepts comma-separated IDs.</p>
 
     <?php if (is_string($error) && $error !== ''): ?>
@@ -71,19 +70,19 @@ $exportUrl = site_url('reports/tracking/export') . ($exportQuery === '' ? '' : '
                 <th>Branch Name</th>
                 <th>trackID</th>
                 <th>orderID</th>
-                <th>CMG No.</th>
+                <th>เลขที่ CMG</th>
                 <th>Urgent</th>
                 <th>Fullname</th>
                 <th>Tel</th>
                 <th>Email</th>
                 <th>RequestDate</th>
-                <th>RepairDate</th>
-                <th>StatusDate</th>
-                <th>DeliverDate</th>
-                <th>CompleteDate</th>
-                <th>Provider</th>
-                <th>Repair Price</th>
-                <th>Warranty</th>
+                <th>รับเข้า</th>
+                <th>อัพเดทล่าสุด</th>
+                <th>ศูนย์ส่งคืนสาขา</th>
+                <th>ลูกค้ามารับคืน</th>
+                <th>Logistics</th>
+                <th>ราคาซ่อม</th>
+                <th>Warannty</th>
                 <th>Actions</th>
             </tr>
             </thead>

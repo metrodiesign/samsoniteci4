@@ -18,6 +18,9 @@ final class ReportHttpTest extends CIUnitTestCase
     private int $adminId;
     private int $branchUserId;
 
+    /** @var list<array{userId: int, role: int, branchId: int|null}> */
+    private array $dashboardActors;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -75,23 +78,107 @@ final class ReportHttpTest extends CIUnitTestCase
             ['add_id' => 2, 'rating' => 4, 'order_id' => 'WP00C-REPORT-003', 'branchID' => 1, 'cdate' => '2026-08-03 12:00:00'],
         ]);
         $users = new ShadowUserStore($this->db);
-        $this->adminId = $users->create('report-admin@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 1, null);
-        $this->branchUserId = $users->create('report-branch@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 2, 1);
+        $hash = password_hash('pass', PASSWORD_DEFAULT);
+        $this->adminId = $users->create('report-admin@example.invalid', $hash, 1, null);
+        $this->branchUserId = $users->create('report-branch@example.invalid', $hash, 2, 1);
+        $this->dashboardActors = [
+            ['userId' => $this->adminId, 'role' => 1, 'branchId' => null],
+            ['userId' => $users->create('report-admin-branch@example.invalid', $hash, 1, 1), 'role' => 1, 'branchId' => 1],
+            ['userId' => $this->branchUserId, 'role' => 2, 'branchId' => 1],
+            ['userId' => $users->create('report-branch-two@example.invalid', $hash, 2, 2), 'role' => 2, 'branchId' => 2],
+            ['userId' => $users->create('report-viewer@example.invalid', $hash, 3, 1), 'role' => 3, 'branchId' => 1],
+            ['userId' => $users->create('report-viewer-two@example.invalid', $hash, 3, 2), 'role' => 3, 'branchId' => 2],
+        ];
     }
 
     public function testDashboardTotalsUseSessionBranchAndBranchTypeBackground(): void
     {
-        $admin = $this->withSession($this->session(1, 1, null))->get('/dashboard');
-        $admin->assertStatus(200);
-        self::assertStringContainsString('data-status="2" data-count="2"', $admin->getBody());
-        self::assertStringContainsString('data-status="5" data-count="1"', $admin->getBody());
+        // Keep the legacy method name because the WP00C closure catalog points at it.
+        $reports = [['label' => 'REPORTS', 'href' => '/ReportTrackingListing']];
+        $cases = [
+            ['groupId' => 3, 'includeGroup' => true, 'expected' => [
+                ['label' => 'UPLOAD STATUS', 'href' => '/UploadexcelListing'],
+                ['label' => 'UPLOAD CMG DATA', 'href' => '/UploadneworderexcelListing'],
+                ...$reports,
+            ]],
+            ['groupId' => 4, 'includeGroup' => true, 'expected' => [
+                ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing'],
+                ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing'],
+                ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing'],
+                ...$reports,
+            ]],
+            ['groupId' => 1, 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => 2, 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => null, 'includeGroup' => false, 'expected' => $reports],
+            ['groupId' => null, 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => 0, 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => -1, 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => 'malformed', 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => ['3'], 'includeGroup' => true, 'expected' => $reports],
+            ['groupId' => PHP_INT_MAX, 'includeGroup' => true, 'expected' => $reports],
+        ];
 
-        $branch = $this->withSession($this->session(2, 2, 1))->get('/dashboard');
-        $branch->assertStatus(200);
-        $branch->assertSee('BRANCH A');
-        self::assertStringContainsString('data-background="branch-a.png"', $branch->getBody());
-        self::assertStringContainsString('data-status="2" data-count="2"', $branch->getBody());
-        self::assertStringContainsString('data-status="5" data-count="0"', $branch->getBody());
+        foreach ($this->dashboardActors as $actor) {
+            foreach ($cases as $case) {
+                $session = $this->dashboardSession($actor, $case['groupId'], $case['includeGroup']);
+                $response = $this->withSession($session)->get('/dashboard');
+                $response->assertStatus(200);
+                self::assertSame($case['expected'], $this->dashboardTiles($response->getBody()));
+                self::assertStringNotContainsString('2. LOGISTICS', $response->getBody());
+                self::assertStringNotContainsString('data-status=', $response->getBody());
+                self::assertStringNotContainsString('data-count=', $response->getBody());
+                self::assertStringNotContainsString('data-background=', $response->getBody());
+            }
+        }
+    }
+
+    public function testDashboardDoesNotQueryReportBranchOrBackgroundData(): void
+    {
+        $controller = (string) file_get_contents(APPPATH . 'Controllers/Dashboard.php');
+
+        self::assertStringNotContainsString('TrackingReport', $controller);
+        self::assertStringNotContainsString('db_connect', $controller);
+        self::assertStringNotContainsString('BranchID', $controller);
+        self::assertStringNotContainsString('background', $controller);
+        self::assertStringNotContainsString('safeBackground', $controller);
+    }
+
+    public function testDashboardEscapesInjectedTileLabelAndHref(): void
+    {
+        $body = view('dashboard', ['tiles' => [[
+            'label' => '<img src=x onerror=alert(1)>',
+            'href' => '" onmouseover="alert(2)',
+        ]]]);
+
+        self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $body);
+        self::assertStringNotContainsString('<img', $body);
+        self::assertStringContainsString('href="&quot; onmouseover=&quot;alert(2)"', $body);
+        self::assertStringNotContainsString('href="" onmouseover="alert(2)"', $body);
+    }
+
+    public function testDashboardSemanticGridCssAndRoutesMeetResponsiveKeyboardContract(): void
+    {
+        $response = $this->withSession($this->dashboardSession($this->dashboardActors[2], 4, true))->get('/dashboard');
+        $response->assertStatus(200);
+        $body = $response->getBody();
+        self::assertSame(1, preg_match('#<nav aria-label="Dashboard shortcuts">(.*?)</nav>#s', $body, $nav));
+        self::assertStringContainsString('<ul class="dashboard-actions">', $nav[1]);
+        self::assertSame(4, substr_count($nav[1], '<li>'));
+        self::assertSame(4, substr_count($nav[1], '<a class="dashboard-action" href="'));
+        self::assertStringNotContainsString('<script', $nav[1]);
+        self::assertStringNotContainsString('<style', $nav[1]);
+        self::assertStringNotContainsString('<img', $nav[1]);
+        self::assertStringNotContainsString('tabindex=', $nav[1]);
+
+        $css = (string) file_get_contents(FCPATH . 'assets/css/admin.css');
+        self::assertMatchesRegularExpression('/\.dashboard-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s', $css);
+        self::assertMatchesRegularExpression('/\.dashboard-action\s*\{[^}]*min-height:\s*96px;[^}]*overflow-wrap:\s*anywhere;/s', $css);
+        self::assertMatchesRegularExpression('/\.dashboard-action:focus-visible\s*\{[^}]*outline:\s*3px\s+solid\s+#f5a623;/s', $css);
+        self::assertMatchesRegularExpression('/@media\s*\(max-width:\s*640px\)\s*\{\s*\.dashboard-actions\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/s', $css);
+
+        foreach (array_column($this->dashboardTiles($body), 'href') as $href) {
+            self::assertTrue($this->routeIsDefined($href), 'Dashboard route is missing: ' . $href);
+        }
     }
 
     public function testAllLegacyHtmlReportRoutesUseExactScopedMatrixTotals(): void
@@ -122,6 +209,80 @@ final class ReportHttpTest extends CIUnitTestCase
         ]);
         self::assertStringContainsString('data-question="1" data-total="1"', $filtered->getBody());
         $filtered->assertSee('100.00%');
+    }
+
+    public function testEveryMatrixReportShowsTheActorAppropriateBranchControl(): void
+    {
+        $routes = [
+            '/user/report', '/user/report_job_byday', '/user/report_job_pending',
+            '/user/report_total_job_pending', '/user/report_in_progress_average',
+            '/user/report_in_progress_job',
+        ];
+        foreach ($routes as $route) {
+            $central = $this->withSession($this->session(1, 1, null))->get($route);
+            $central->assertStatus(200);
+            $body = $central->getBody();
+            self::assertStringContainsString('<label for="branch_id">Branch:</label>', $body);
+            self::assertStringContainsString('<select id="branch_id" name="branch_id">', $body);
+            self::assertStringContainsString('<option value="0">ALL</option>', $body);
+            self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
+            self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
+
+            $branch = $this->withSession($this->session(2, 2, 1))->get($route);
+            $branch->assertStatus(200);
+            self::assertStringContainsString('<input type="hidden" id="branch_id" name="branch_id" value="1">', $branch->getBody());
+            self::assertStringNotContainsString('<select id="branch_id" name="branch_id">', $branch->getBody());
+        }
+    }
+
+    public function testMatrixBranchSelectionPersistsFiltersDataAndFlowsIntoExports(): void
+    {
+        $ratings = $this->withSession($this->session(1, 1, null))->post('/user/report', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $ratings->assertStatus(200);
+        self::assertStringContainsString('<option value="2" selected>BRANCH B,branch-b</option>', $ratings->getBody());
+        self::assertStringContainsString('data-question="1" data-total="1"', $ratings->getBody());
+        self::assertStringContainsString('/reports/ratings/export', $ratings->getBody());
+        self::assertStringContainsString('branch_id=2', $ratings->getBody());
+
+        $inProgress = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['5'],
+        ]);
+        $inProgress->assertStatus(200);
+        self::assertStringContainsString('<option value="2" selected>BRANCH B,branch-b</option>', $inProgress->getBody());
+        $inProgress->assertSee('WP00C-REPORT-005');
+        $inProgress->assertDontSee('WP00C-REPORT-001');
+        self::assertStringContainsString('/reports/in-progress/export', $inProgress->getBody());
+        self::assertStringContainsString('branch_id=2', $inProgress->getBody());
+    }
+
+    public function testBranchUserCannotRequestAnotherBranchInMatrixOrExport(): void
+    {
+        foreach ([
+            '/user/report', '/user/report_job_byday', '/user/report_job_pending',
+            '/user/report_total_job_pending', '/user/report_in_progress_average',
+            '/user/report_in_progress_job',
+        ] as $route) {
+            try {
+                $this->withSession($this->session(2, 2, 1))->post($route, [
+                    'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+                ]);
+                self::fail('Expected cross-branch matrix denial: ' . $route);
+            } catch (PageNotFoundException $exception) {
+                self::assertSame(404, $exception->getCode());
+            }
+        }
+        foreach (['ratings', 'in-progress'] as $type) {
+            try {
+                $this->withSession($this->session(2, 2, 1))->get('/reports/' . $type . '/export?branch_id=2');
+                self::fail('Expected cross-branch export denial: ' . $type);
+            } catch (PageNotFoundException $exception) {
+                self::assertSame(404, $exception->getCode());
+            }
+        }
     }
 
     public function testNonRatingReportsDefaultToLastMonthWhenDatesOmitted(): void
@@ -435,6 +596,54 @@ final class ReportHttpTest extends CIUnitTestCase
         $branch = $this->withSession($this->session(2, 2, 1))->get('/ReportTrackingListing/0/1');
         $branch->assertStatus(200);
         $branch->assertDontSee('CMG TotalDay');
+    }
+
+    /**
+     * @param array{userId: int, role: int, branchId: int|null} $actor
+     * @return array<string, mixed>
+     */
+    private function dashboardSession(array $actor, mixed $groupId, bool $includeGroup): array
+    {
+        $session = [
+            'userId' => $actor['userId'], 'role' => $actor['role'], 'BranchID' => $actor['branchId'],
+            'sessionVersion' => 1, 'isLoggedIn' => true, 'name' => 'DASHBOARD ACTOR',
+        ];
+        if ($includeGroup) {
+            $session['GroupID'] = $groupId;
+        }
+
+        return $session;
+    }
+
+    /** @return list<array{label: string, href: string}> */
+    private function dashboardTiles(string $body): array
+    {
+        self::assertSame(1, preg_match('#<nav aria-label="Dashboard shortcuts">(.*?)</nav>#s', $body, $nav));
+        self::assertGreaterThan(
+            0,
+            preg_match_all('#<a class="dashboard-action" href="([^"]*)">([^<]*)</a>#s', $nav[1], $matches),
+        );
+
+        $tiles = [];
+        foreach ($matches[1] as $index => $href) {
+            $tiles[] = ['label' => html_entity_decode($matches[2][$index]), 'href' => html_entity_decode($href)];
+        }
+
+        return $tiles;
+    }
+
+    private function routeIsDefined(string $path): bool
+    {
+        $collection = service('routes');
+        $router = new \CodeIgniter\Router\Router($collection, service('request'));
+        $collection->setHTTPVerb('GET');
+        try {
+            $router->handle(ltrim($path, '/'));
+
+            return true;
+        } catch (PageNotFoundException) {
+            return false;
+        }
     }
 
     /** @return array<string, int|string|null> */

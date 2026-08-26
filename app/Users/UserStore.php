@@ -16,16 +16,17 @@ final class UserStore
     /** @return list<array<string, mixed>> */
     public function all(int $actorRole, ?int $actorBranch, string $search = ''): array
     {
-        $query = $this->db->table('tbl_users')
-            ->select('userId, email, username, name, mobile, group_id, roleId, branch_id, isDeleted')
-            ->where('isDeleted', 0)
-            ->orderBy('userId', 'ASC')
+        $query = $this->db->table('tbl_users users')
+            ->select('users.userId, users.email, users.username, users.name, users.mobile, users.group_id, users.roleId, users.branch_id, users.isDeleted, roles.role AS role')
+            ->join('tbl_roles roles', 'roles.roleId = users.roleId', 'left')
+            ->where('users.isDeleted', 0)
+            ->orderBy('users.userId', 'ASC')
             ->limit(100);
         if ($actorRole !== 1) {
-            $query->where('branch_id', $actorBranch);
+            $query->where('users.branch_id', $actorBranch);
         }
         if ($search !== '') {
-            $query->groupStart()->like('name', $search)->orLike('email', $search)->orLike('mobile', $search)->groupEnd();
+            $query->groupStart()->like('users.name', $search)->orLike('users.email', $search)->orLike('users.mobile', $search)->groupEnd();
         }
 
         return $query->get()->getResultArray();

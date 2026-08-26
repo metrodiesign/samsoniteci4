@@ -17,13 +17,6 @@ $questions = [
     ['th' => 'ความพึงพอใจในการบริการ', 'en' => 'Quality of customer service'],
 ];
 ?>
-<style>
-    #rating-modal .lang-en { display: none; }
-    #rating-modal.show-en .lang-th { display: none; }
-    #rating-modal.show-en .lang-en { display: block; }
-    #rating-modal .star { cursor: pointer; color: #ccc; font-size: 1.4em; }
-    #rating-modal .star.on { color: #f5a623; }
-</style>
 <dialog id="rating-modal" aria-labelledby="rating-modal-title">
     <div>
         <button type="button" class="rate-lang" data-lang="th">ไทย</button>

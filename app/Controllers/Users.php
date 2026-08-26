@@ -11,7 +11,15 @@ final class Users extends BaseController
 {
     public function listing(): string
     {
-        return $this->render(null);
+        $rawSearch = $this->request->getGet('search');
+        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+
+        return $this->renderList($search);
+    }
+
+    public function add(): string
+    {
+        return $this->renderForm(null);
     }
 
     public function edit(string $rawId): string
@@ -22,7 +30,7 @@ final class Users extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->render($row);
+        return $this->renderForm($row);
     }
 
     public function create(): RedirectResponse|ResponseInterface
@@ -45,12 +53,15 @@ final class Users extends BaseController
         $id = $this->positiveInteger($rawId);
         $result = $id === null ? 'not_found' : $this->store()->softDelete($this->actorId(), $this->role(), $this->branch(), $id);
 
-        return match ($result) {
+        $response = match ($result) {
             'deleted' => $this->response->setStatusCode(204),
             'forbidden' => $this->response->setStatusCode(409)->setJSON(['error' => 'user_delete_forbidden']),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'user_not_found']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'user_unavailable']),
         };
+        $security = service('security');
+
+        return $response->setHeader($security->getHeaderName(), $security->getHash());
     }
 
     public function emailExists(): ResponseInterface
@@ -130,16 +141,19 @@ final class Users extends BaseController
             : $this->response->setJSON(['books' => $rows]);
     }
 
-    /** @param array<string, mixed>|null $row */
-    private function render(?array $row): string
+    private function renderList(string $search): string
     {
-        $rawSearch = $this->request->getGet('search');
-        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
-
-        return $this->layout('Users', view('users', [
+        return $this->layout('Users', view('users_list', [
             'rows' => $this->store()->all($this->role(), $this->branch(), $search),
-            'row' => $row,
             'search' => $search,
+        ]), ['actions' => $this->actionLink('/users/new', 'Add New')]);
+    }
+
+    /** @param array<string, mixed>|null $row */
+    private function renderForm(?array $row): string
+    {
+        return $this->layout('Users', view('users_form', [
+            'row' => $row,
             'actorRole' => $this->role(),
             'actorBranch' => $this->branch(),
         ]));

@@ -36,6 +36,15 @@ final class OrderTransitionWorkflow
         }
         foreach ($rows as $row) {
             $from = (int) $row['action_status'];
+            // Branch users lose manual control of the TRANSPORTING (2) / STATUS REPAIR (3) queues:
+            // manual transitions (all manual transition endpoints), the queue 2/3 listings
+            // (/orders?status=2|3) and soft-delete are closed to them, so deny before the state check
+            // to answer 403 not 409. This is not an app-wide invariant:
+            // the Excel status import (app/Imports/ImportWorkflow.php) still lets branches move orders
+            // through those states on purpose, matching the CI3 UPLOAD STATUS menu.
+            if ($actorBranch !== null && ($from === 2 || $from === 3)) {
+                return 'forbidden';
+            }
             $allowed = match ($mode) {
                 'provider' => $from === 1,
                 'status' => ($from === 2 && in_array($value, [3, 4], true)) || ($from === 3 && $value === 4) || ($from === 5 && $value === 7),

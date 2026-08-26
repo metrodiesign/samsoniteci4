@@ -77,9 +77,3 @@ parameters:
 			identifier: return.type
 			count: 1
 			path: tests/ci4/ReportHttpTest.php
-
-		-
-			message: '#^Call to function is_string\(\) with non\-falsy\-string will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 1
-			path: tests/ci4/support/Commands/ConcurrencyProbe.php

@@ -1,0 +1,269 @@
+/*
+ * Admin theme (wp03f t1) — layout/theme parity with CI3 admin (closes C1 + C2).
+ * Palette and sizes sourced from CI3 AdminLTE skin-blue / CustomAdmin.css (design.md §1.4).
+ * No external assets: colours are literal, group icons are inline SVG in layout.php,
+ * sidebar toggle is CSS-only (:checked). Class names kept from the original inline block.
+ */
+
+:root {
+    color-scheme: light;
+    font-family: "db_helvethaica_x53_ext", Inter, ui-sans-serif, system-ui, sans-serif;
+    color: #333;
+    background: #ecf0f5;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: #014c8f; }
+
+/* --- shared page primitives (kept from the original inline theme) --- */
+h1, h2 { margin-top: 0; }
+label { display: block; font-weight: 650; margin-bottom: .35rem; }
+input, select, button, textarea { font: inherit; }
+input, select, textarea {
+    width: 100%;
+    min-height: 2.7rem;
+    padding: .55rem .7rem;
+    border: 1px solid #aeb8ca;
+    border-radius: .35rem;
+    background: #fff;
+}
+button, .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.7rem;
+    padding: .55rem 1rem;
+    border: 0;
+    border-radius: .35rem;
+    background: #014c8f;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+}
+.link-button { min-height: auto; padding: 0; background: none; color: inherit; }
+.field { margin-bottom: 1rem; }
+.alert {
+    padding: .75rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #c93737;
+    border-radius: .35rem;
+    color: #8b1515;
+    background: #fff1f1;
+}
+.muted { color: #5b6578; }
+.dashboard-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.dashboard-actions li { min-width: 0; }
+.dashboard-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 96px;
+    padding: 1rem;
+    border-radius: 3px;
+    background: #014c8f;
+    color: #fff;
+    text-align: center;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.dashboard-action:hover { background: #222d32; }
+.dashboard-action:focus-visible { outline: 3px solid #f5a623; outline-offset: 3px; }
+.filters {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1.4fr auto;
+    gap: .75rem;
+    align-items: end;
+}
+.card {
+    background: #fff;
+    border: 1px solid #d2d6de;
+    border-radius: 3px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, .1);
+    padding: 20px 45px;
+}
+.login-card { width: min(420px, 100%); margin: 8vh auto; }
+.table-wrap { overflow-x: auto; margin-top: 1rem; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; white-space: nowrap; }
+th, td { padding: .6rem .7rem; border-bottom: 1px solid #e2e7f0; text-align: left; }
+th { position: sticky; top: 0; background: #edf2fa; color: #26324b; }
+tbody tr:hover { background: #f7f9fd; }
+
+/* --- login / other anonymous pages keep a simple centred flow --- */
+body.bare { display: block; }
+body.bare main { width: min(1100px, 100%); margin: 0 auto; padding: 1.5rem; }
+
+/* --- admin grid shell (design §1.1) --- */
+body.admin {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    grid-template-rows: 50px 1fr auto;
+    grid-template-areas:
+        "sidebar topbar"
+        "sidebar main"
+        "sidebar footer";
+    min-height: 100vh;
+}
+
+.sidebar-toggle { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+aside.sidebar {
+    grid-area: sidebar;
+    background: #222d32;
+    color: #b8c7ce;
+    overflow-y: auto;
+}
+aside.sidebar .brand {
+    display: block;
+    padding: 0;
+    line-height: 0;
+    background: #014c8f;
+}
+aside.sidebar .brand img { width: 230px; max-width: 100%; height: auto; display: block; }
+aside.sidebar nav { display: block; }
+.menu-heading {
+    margin: 0;
+    padding: .65rem 1rem;
+    background: #1a2226;
+    color: #4b646f;
+    font-size: .78rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.menu-group { list-style: none; margin: 0; padding: 0; background: #2c3b41; }
+.menu-group-heading { list-style: none; }
+.menu-group-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+    padding: .7rem 1rem;
+    background: #222d32;
+    color: #b8c7ce;
+    font-weight: 600;
+}
+.menu-group-title svg { width: 1.05em; height: 1.05em; flex: 0 0 auto; }
+.menu-group li a {
+    display: block;
+    padding: .55rem 1rem .55rem 2.6rem;
+    color: #8aa4af;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+}
+.menu-group li a:hover,
+.menu-group li a:focus {
+    background: #1e282c;
+    color: #fff;
+    border-left-color: #3c8dbc;
+}
+
+/* --- topbar (design §1.4) --- */
+header.topbar {
+    grid-area: topbar;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.2rem;
+    background: #fff;
+    color: #014c8f;
+    border-bottom: 1px solid #014c8f;
+}
+header.topbar a { color: #014c8f; text-decoration: none; }
+header.topbar .topbar-user { margin-left: auto; font-weight: 600; }
+header.topbar form { margin: 0; }
+.sidebar-toggle-btn {
+    display: none;
+    margin: 0;
+    cursor: pointer;
+    font-size: 1.4rem;
+    line-height: 1;
+    user-select: none;
+}
+
+/* --- main content + page header (design §1.4) --- */
+main.content {
+    grid-area: main;
+    min-width: 0;
+    padding: 1px 2% 30px 2%;
+    background: #ecf0f5;
+}
+.page-header {
+    display: flex;
+    align-items: baseline;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin: 0 0 1rem;
+    padding: .9rem 1.2rem;
+    background: #014c8f;
+    color: #fff;
+}
+.page-header h1 { margin: 0; font-size: 1.5rem; }
+.page-header small { color: #dbe6f2; }
+.page-actions { margin-left: auto; display: flex; gap: .5rem; }
+.page-actions a {
+    padding: .4rem .9rem;
+    border: 1px solid #fff;
+    border-radius: .35rem;
+    color: #fff;
+    text-decoration: none;
+}
+
+/* --- footer band (design §1.4) --- */
+footer.site-footer {
+    grid-area: footer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    padding: .8rem 1rem;
+    background: #7098ba;
+    color: #fff;
+    text-align: center;
+}
+footer.site-footer img { max-height: 40px; width: auto; }
+body.bare footer.site-footer { grid-area: auto; }
+
+/* --- breakpoints --- */
+@media (max-width: 850px) {
+    .filters { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 767px) {
+    body.admin {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "topbar"
+            "main"
+            "footer";
+    }
+    aside.sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: 230px;
+        z-index: 20;
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+    }
+    #sidebar-toggle:checked ~ aside.sidebar { transform: translateX(0); }
+    .sidebar-toggle-btn { display: inline-flex; }
+}
+
+@media (max-width: 640px) {
+    .dashboard-actions { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- rating modal (moved from orders_rating_modal.php so AC-8 holds on every admin page) --- */
+#rating-modal .lang-en { display: none; }
+#rating-modal.show-en .lang-th { display: none; }
+#rating-modal.show-en .lang-en { display: block; }
+#rating-modal .star { cursor: pointer; color: #ccc; font-size: 1.4em; }
+#rating-modal .star.on { color: #f5a623; }

@@ -22,7 +22,14 @@ final class MasterData extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->render($type, $definition, null, $search, $page);
+        return $this->renderList($type, $definition, $search, $page);
+    }
+
+    public function add(string $type): string
+    {
+        $definition = $this->authorizedDefinition($type);
+
+        return $this->renderForm($type, $definition, null);
     }
 
     public function edit(string $type, string $rawId): string
@@ -34,7 +41,7 @@ final class MasterData extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->render($type, $definition, $row, '');
+        return $this->renderForm($type, $definition, $row);
     }
 
     public function create(string $type): RedirectResponse|ResponseInterface
@@ -82,7 +89,7 @@ final class MasterData extends BaseController
             ->setBody((string) file_get_contents($path));
     }
 
-    /** @return array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>} */
+    /** @return array{table: string, pk: string, label: string, listFields?: list<string>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string, formText?: string, listText?: string}>} */
     private function authorizedDefinition(string $type): array
     {
         // CI3 parity (business decision 2026-08-23): master data is open to every
@@ -131,10 +138,48 @@ final class MasterData extends BaseController
     }
 
     /**
-     * @param array{table: string, pk: string, label: string, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}>} $definition
+     * @param array{table: string, pk: string, label: string, listFields?: list<string>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string, formText?: string, listText?: string}>} $definition
+     */
+    private function renderList(string $type, array $definition, string $search, int $page): string
+    {
+        $store = new MasterDataStore(db_connect());
+        $rows = $store->all($type, $search, $page);
+        if ($type === 'branch') {
+            $branchTypes = [];
+            foreach ($store->options('branchtype') as $option) {
+                $branchTypes[(string) $option['value']] = (string) $option['label'];
+            }
+            foreach ($rows as &$row) {
+                $row['branch_type'] = $branchTypes[(string) ($row['branch_type'] ?? '')] ?? '';
+            }
+            unset($row);
+        } elseif ($type === 'book') {
+            $branches = [];
+            foreach ($store->options('branch') as $option) {
+                $branches[(string) $option['value']] = (string) $option['label'];
+            }
+            foreach ($rows as &$row) {
+                $row['branch_id'] = $branches[(string) ($row['branch_id'] ?? '')] ?? '';
+                $row['status'] = (int) ($row['status'] ?? 0) === 1 ? 'Publishing' : 'Unpublish';
+            }
+            unset($row);
+        }
+        $actions = $this->actionLink('/master/' . rawurlencode($type) . '/new', 'Add New');
+
+        return $this->layout('Master data: ' . $type, view('master_list', [
+            'definition' => $definition,
+            'rows'       => $rows,
+            'search'     => $search,
+            'type'       => $type,
+            'page'       => $page,
+        ]), ['actions' => $actions]);
+    }
+
+    /**
+     * @param array{table: string, pk: string, label: string, listFields?: list<string>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string, formText?: string, listText?: string}>} $definition
      * @param array<string, mixed>|null $row
      */
-    private function render(string $type, array $definition, ?array $row, string $search, int $page = 1): string
+    private function renderForm(string $type, array $definition, ?array $row): string
     {
         $store     = new MasterDataStore(db_connect());
         $fkOptions = [];
@@ -144,13 +189,10 @@ final class MasterData extends BaseController
             }
         }
 
-        return $this->layout('Master data: ' . $type, view('master_data', [
+        return $this->layout('Master data: ' . $type, view('master_form', [
             'definition' => $definition,
-            'rows'       => $store->all($type, $search, $page),
             'row'        => $row,
-            'search'     => $search,
             'type'       => $type,
-            'page'       => $page,
             'fkOptions'  => $fkOptions,
         ]));
     }

@@ -4,8 +4,8 @@
 /** @var int $userId */
 /** @var int $page */
 ?>
-<section aria-labelledby="history-title">
-    <h1 id="history-title">Login history</h1>
+<section aria-labelledby="page-title">
+    <div class="table-wrap">
     <table>
         <thead><tr><th>Date</th><th>IP</th><th>Browser</th><th>Agent</th><th>Platform</th></tr></thead>
         <tbody>
@@ -20,5 +20,6 @@
             <?php endforeach ?>
         </tbody>
     </table>
+    </div>
     <?php if (count($rows) === 5): ?><a href="/users/<?= $userId ?>/history/<?= $page + 1 ?>">Next</a><?php endif ?>
 </section>

@@ -3,8 +3,7 @@
 /** @var list<array<string, mixed>> $contacts */
 /** @var string $search */
 ?>
-<section aria-labelledby="contact-list-title">
-    <h1 id="contact-list-title">Contact messages</h1>
+<section aria-labelledby="page-title">
     <form method="get" action="/contact-list">
         <label for="contact-search">Search</label>
         <input id="contact-search" name="search" value="<?= esc($search) ?>" maxlength="128">

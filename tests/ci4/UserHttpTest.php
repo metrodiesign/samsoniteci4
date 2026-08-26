@@ -4,6 +4,7 @@ namespace Tests\Ci4;
 
 use App\Authentication\ShadowUserStore;
 use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\Security\Exceptions\SecurityException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -20,6 +21,7 @@ final class UserHttpTest extends CIUnitTestCase
         parent::setUp();
         foreach ([
             'tbl_users' => 'userId INTEGER PRIMARY KEY AUTOINCREMENT, email VARCHAR(128) NOT NULL, username VARCHAR(50) NOT NULL, password VARCHAR(255) NOT NULL, name VARCHAR(128), mobile VARCHAR(20), group_id INTEGER, roleId INTEGER NOT NULL, branch_id INTEGER, branch_type_id INTEGER, isDeleted INTEGER NOT NULL DEFAULT 0, createdBy INTEGER, createdDtm DATETIME NOT NULL, updatedBy INTEGER, updatedDtm DATETIME',
+            'tbl_roles' => 'roleId INTEGER PRIMARY KEY, role VARCHAR(64) NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER NOT NULL, branch_user_name VARCHAR(100), branch_name VARCHAR(250) NOT NULL',
             'book' => 'book_id INTEGER PRIMARY KEY, branch_id INTEGER NOT NULL, book_detail VARCHAR(3) NOT NULL, status INTEGER NOT NULL',
             'tbl_last_login' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, userId INTEGER NOT NULL, sessionData VARCHAR(2048) NOT NULL, machineIp VARCHAR(1024) NOT NULL, userAgent VARCHAR(128) NOT NULL, agentString VARCHAR(1024) NOT NULL, platform VARCHAR(128) NOT NULL, createdDtm DATETIME NOT NULL',
@@ -30,6 +32,11 @@ final class UserHttpTest extends CIUnitTestCase
         }
         $this->db->table('ci4_users')->truncate();
         $this->db->resetDataCache();
+        $this->db->table('tbl_roles')->insertBatch([
+            ['roleId' => 1, 'role' => 'Administrator'],
+            ['roleId' => 2, 'role' => 'Operator'],
+            ['roleId' => 3, 'role' => 'Viewer'],
+        ]);
         $this->db->table('branch')->insertBatch([
             ['branch_id' => 1, 'branch_type' => 1, 'branch_user_name' => 'branch-a', 'branch_name' => 'BRANCH A'],
             ['branch_id' => 2, 'branch_type' => 2, 'branch_user_name' => 'branch-b', 'branch_name' => 'BRANCH B'],
@@ -66,15 +73,28 @@ final class UserHttpTest extends CIUnitTestCase
         self::assertTrue(password_verify('Synthetic passphrase', (string) $legacy['password']));
         self::assertSame(1, $this->db->table('ci4_users')->where('id', $legacy['userId'])->where('is_active', 1)->countAllResults());
 
+        $legacyHash = (string) $legacy['password'];
+        $shadowHash = (string) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('password_hash');
         unset($payload['password'], $payload['password_confirmation']);
         $payload['name'] = 'UPDATED OPERATOR';
         $this->postAs(9001, 1, null, 1, '/users/' . $legacy['userId'], $payload)->assertRedirectTo('/users');
         self::assertSame('UPDATED OPERATOR', $this->db->table('tbl_users')->where('userId', $legacy['userId'])->get()->getRow('name'));
         self::assertSame('UPDATED OPERATOR', $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('display_name'));
+        self::assertSame($legacyHash, $this->db->table('tbl_users')->where('userId', $legacy['userId'])->get()->getRow('password'));
+        self::assertSame($shadowHash, $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('password_hash'));
+        self::assertSame(1, (int) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('session_version'));
+
+        $payload['password'] = 'Replacement passphrase';
+        $payload['password_confirmation'] = 'Replacement passphrase';
+        $this->postAs(9001, 1, null, 1, '/users/' . $legacy['userId'], $payload)->assertRedirectTo('/users');
+        self::assertTrue(password_verify('Replacement passphrase', (string) $this->db->table('tbl_users')->where('userId', $legacy['userId'])->get()->getRow('password')));
+        self::assertTrue(password_verify('Replacement passphrase', (string) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('password_hash')));
+        self::assertSame(2, (int) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('session_version'));
 
         $this->postAs(9001, 1, null, 1, '/users/' . $legacy['userId'] . '/delete', [])->assertStatus(204);
         self::assertSame(1, (int) $this->db->table('tbl_users')->where('userId', $legacy['userId'])->get()->getRow('isDeleted'));
         self::assertSame(0, (int) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('is_active'));
+        self::assertSame(3, (int) $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('session_version'));
     }
 
     public function testUserListingSearchMatchesMobileAndDropsUsername(): void
@@ -122,7 +142,9 @@ final class UserHttpTest extends CIUnitTestCase
 
     public function testChangePasswordRejectsWrongAndSameThenRevokesOtherSessionsOnSuccess(): void
     {
-        $this->withSession($this->session(9002, 2, 1, 4))->get('/change-password')->assertStatus(200);
+        $changePage = $this->withSession($this->session(9002, 2, 1, 4))->get('/change-password');
+        $changePage->assertStatus(200);
+        self::assertStringContainsString('type="reset"', $changePage->getBody()); // t5 AC-6
         $before = (string) $this->db->table('ci4_users')->where('id', 9002)->get()->getRow('password_hash');
 
         $wrong = $this->postAs(9002, 2, 1, 4, '/change-password', [
@@ -235,12 +257,244 @@ final class UserHttpTest extends CIUnitTestCase
         self::assertSame(3, $this->db->table('tbl_users')->countAllResults());
     }
 
+    public function testUserListingUsesCi3TableRoleLabelsAndEscapesEveryColumn(): void
+    {
+        $this->db->table('tbl_roles')->where('roleId', 3)->update(['role' => '<img src=x onerror=alert(1)>']);
+        $this->db->table('tbl_users')->where('userId', 9003)->update([
+            'name' => '<script>alert(1)</script>',
+            'email' => '<svg onload=alert(1)>',
+            'mobile' => '<b>mobile</b>',
+        ]);
+        $this->db->table('tbl_users')->insert([
+            'userId' => 9010, 'email' => 'missing-role@example.invalid', 'username' => 'missing-role',
+            'password' => password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 'name' => 'MISSING ROLE',
+            'mobile' => 'not-a-phone', 'group_id' => 4, 'roleId' => 99, 'branch_id' => 1,
+            'branch_type_id' => 1, 'isDeleted' => 0, 'createdBy' => 9001,
+            'createdDtm' => '2026-08-22 09:00:00',
+        ]);
+
+        $page = $this->withSession($this->session(9001, 1, null, 1))->get('/users');
+        $page->assertStatus(200);
+        $body = $page->getBody();
+        self::assertStringContainsString('<a href="/users/new">Add New</a>', $body);
+        foreach (['No', 'Name', 'Email', 'Mobile', 'Role', 'Actions'] as $heading) {
+            self::assertStringContainsString('<th>' . $heading . '</th>', $body);
+        }
+        self::assertStringNotContainsString('id="user-username"', $body);
+        self::assertStringNotContainsString('name="password"', $body);
+        self::assertStringContainsString('<td>Administrator</td>', $body);
+        self::assertStringContainsString('<td>Operator</td>', $body);
+        self::assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $body);
+        self::assertStringContainsString('&lt;svg onload=alert(1)&gt;', $body);
+        self::assertStringContainsString('&lt;b&gt;mobile&lt;/b&gt;', $body);
+        self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $body);
+        self::assertStringNotContainsString('<script>alert(1)</script>', $body);
+        self::assertStringNotContainsString('<svg onload=alert(1)>', $body);
+        self::assertStringNotContainsString('<img src=x onerror=alert(1)>', $body);
+        self::assertMatchesRegularExpression('/<td>MISSING ROLE<\/td>\s*<td>missing-role@example\.invalid<\/td>\s*<td>not-a-phone<\/td>\s*<td><\/td>/', $body);
+        self::assertStringNotContainsString('<td>99</td>', $body);
+    }
+
+    public function testUserListingHandlesZeroOneAndOneHundredRowsWithNormalizedSearch(): void
+    {
+        $operator = $this->withSession($this->session(9002, 2, 1, 4))->get('/users');
+        $operator->assertStatus(200);
+        self::assertSame(1, substr_count($operator->getBody(), 'class="user-delete"'));
+        self::assertStringContainsString('<td>1</td>', $operator->getBody());
+
+        $this->db->table('tbl_users')->update(['isDeleted' => 1]);
+        $empty = $this->withSession($this->session(9001, 1, null, 1))->get('/users');
+        $empty->assertStatus(200);
+        self::assertSame(0, substr_count($empty->getBody(), 'class="user-delete"'));
+        self::assertStringContainsString('<th>No</th>', $empty->getBody());
+
+        $rows = [];
+        $hash = password_hash('Synthetic passphrase', PASSWORD_DEFAULT);
+        for ($number = 1; $number <= 100; $number++) {
+            $rows[] = [
+                'userId' => 10000 + $number, 'email' => sprintf('user-%03d@example.invalid', $number),
+                'username' => sprintf('user-%03d', $number), 'password' => $hash,
+                'name' => sprintf('USER-%03d', $number), 'mobile' => sprintf('000000%04d', $number),
+                'group_id' => 4, 'roleId' => 2, 'branch_id' => 1, 'branch_type_id' => 1,
+                'isDeleted' => 0, 'createdBy' => 9001, 'createdDtm' => '2026-08-22 09:00:00',
+            ];
+        }
+        $this->db->table('tbl_users')->insertBatch($rows);
+
+        $full = $this->withSession($this->session(9001, 1, null, 1))->get('/users');
+        $full->assertStatus(200);
+        self::assertSame(100, substr_count($full->getBody(), 'class="user-delete"'));
+        preg_match_all('/<td>([0-9]+)<\/td>\s*<td>USER-[0-9]{3}<\/td>/', $full->getBody(), $matches);
+        self::assertSame(array_map('strval', range(1, 100)), $matches[1]);
+
+        $found = $this->withSession($this->session(9001, 1, null, 1))->get('/users?search=%20USER-050%20');
+        self::assertSame(1, substr_count($found->getBody(), 'class="user-delete"'));
+        $found->assertSee('USER-050');
+        $found->assertDontSee('USER-049');
+
+        $missing = $this->withSession($this->session(9001, 1, null, 1))->get('/users?search=NO-SUCH-USER');
+        self::assertSame(0, substr_count($missing->getBody(), 'class="user-delete"'));
+
+        $invalid = $this->withSession($this->session(9001, 1, null, 1))->get('/users?search=' . str_repeat('x', 129));
+        self::assertSame(100, substr_count($invalid->getBody(), 'class="user-delete"'));
+        self::assertStringContainsString('name="search" value="" maxlength="128"', $invalid->getBody());
+    }
+
+    public function testUserAddAndEditFormsAreSeparatedAndAvailableToEveryWritableRole(): void
+    {
+        $this->get('/users/new')->assertStatus(401);
+
+        foreach ([
+            [$this->session(9001, 1, null, 1), 9002, 'OPERATOR A'],
+            [$this->session(9002, 2, 1, 4), 9002, 'OPERATOR A'],
+            [$this->session(9003, 3, 2, 4), 9003, 'OPERATOR B'],
+        ] as [$session, $targetId, $targetName]) {
+            $add = $this->withSession($session)->get('/users/new');
+            $add->assertStatus(200);
+            $addBody = $add->getBody();
+            self::assertStringContainsString('<form method="post" action="/users">', $addBody);
+            foreach (['username', 'name', 'email', 'mobile', 'group_id', 'role_id', 'branch_id'] as $field) {
+                self::assertMatchesRegularExpression('/name="' . $field . '" value=""/', $addBody);
+            }
+            self::assertMatchesRegularExpression('/name="password"[^>]*required/', $addBody);
+            self::assertMatchesRegularExpression('/name="password_confirmation"[^>]*required/', $addBody);
+            self::assertStringContainsString('type="reset">Reset</button>', $addBody);
+            self::assertStringContainsString('type="submit">Submit</button>', $addBody);
+            self::assertStringNotContainsString('<table>', $addBody);
+            self::assertStringNotContainsString('id="user-search"', $addBody);
+            self::assertStringNotContainsString('class="user-delete"', $addBody);
+
+            $edit = $this->withSession($session)->get('/users/' . $targetId);
+            $edit->assertStatus(200);
+            $editBody = $edit->getBody();
+            self::assertStringContainsString('<form method="post" action="/users/' . $targetId . '">', $editBody);
+            self::assertStringContainsString('name="name" value="' . $targetName . '"', $editBody);
+            self::assertStringNotContainsString('name="password" type="password" autocomplete="new-password" required', $editBody);
+            self::assertStringNotContainsString('<table>', $editBody);
+            self::assertStringNotContainsString('class="user-delete"', $editBody);
+        }
+    }
+
+    public function testUserDeleteMarkupPinsCsrfConfirmationDoubleSubmitAndFailureHandling(): void
+    {
+        $page = $this->withSession($this->session(9001, 1, null, 1))->get('/users');
+        $page->assertStatus(200);
+        $body = $page->getBody();
+        self::assertSame(3, substr_count($body, 'class="user-delete"'));
+        preg_match_all('/<form class="user-delete".*?<input type="hidden" name="csrf_test_name"/s', $body, $csrfForms);
+        self::assertCount(3, $csrfForms[0]);
+        self::assertStringContainsString("confirm('Are you sure to delete this  ? ')", $body);
+        self::assertStringContainsString("fetch(form.action, { method: 'POST', body: new FormData(form) })", $body);
+        self::assertStringContainsString('if (button.disabled)', $body);
+        self::assertStringContainsString('button.disabled = true;', $body);
+        self::assertStringContainsString("response.headers.get('X-CSRF-TOKEN')", $body);
+        self::assertStringContainsString("document.querySelectorAll('.user-delete input[name=\"csrf_test_name\"]')", $body);
+        self::assertStringContainsString('input.value = token;', $body);
+        self::assertLessThan(
+            strpos($body, 'if (response.status === 204)'),
+            strpos($body, "response.headers.get('X-CSRF-TOKEN')"),
+        );
+        self::assertStringContainsString('if (response.status === 204)', $body);
+        self::assertStringContainsString("form.closest('tr').remove();", $body);
+        self::assertStringContainsString("error.textContent = 'Unable to delete user.';", $body);
+        self::assertStringContainsString('button.disabled = false;', $body);
+        self::assertStringContainsString('.catch(function () {', $body);
+        self::assertStringNotContainsString('response.text()', $body);
+        self::assertStringNotContainsString('response.json()', $body);
+    }
+
+    public function testUserDeleteRefreshesCsrfBetweenConsecutiveRequests(): void
+    {
+        $session = $this->session(9001, 1, null, 1);
+        $page = $this->withSession($session)->get('/users');
+        self::assertSame(1, preg_match('/name="csrf_test_name" value="([^"]+)"/', $page->getBody(), $matches));
+        $renderedToken = $matches[1];
+
+        $first = $this->withSession($session)->post('/users/9002/delete', ['csrf_test_name' => $renderedToken]);
+        $first->assertStatus(204);
+        $nextToken = $first->response()->getHeaderLine('X-CSRF-TOKEN');
+        self::assertNotSame('', $nextToken);
+        self::assertNotSame($renderedToken, $nextToken);
+
+        $second = $this->withSession($session)->post('/users/9003/delete', ['csrf_test_name' => $nextToken]);
+        $second->assertStatus(204);
+        self::assertNotSame('', $second->response()->getHeaderLine('X-CSRF-TOKEN'));
+        self::assertSame(1, (int) $this->db->table('tbl_users')->where('userId', 9002)->get()->getRow('isDeleted'));
+        self::assertSame(1, (int) $this->db->table('tbl_users')->where('userId', 9003)->get()->getRow('isDeleted'));
+    }
+
+    public function testUserDeletePreservesStateForSelfMissingCsrfAndTransactionFailure(): void
+    {
+        $self = $this->postAs(9002, 2, 1, 4, '/users/9002/delete', []);
+        $self->assertStatus(409);
+        $self->assertJSONExact(['error' => 'user_delete_forbidden']);
+        self::assertNotSame('', $self->response()->getHeaderLine('X-CSRF-TOKEN'));
+        self::assertSame(0, (int) $this->db->table('tbl_users')->where('userId', 9002)->get()->getRow('isDeleted'));
+        self::assertSame(1, (int) $this->db->table('ci4_users')->where('id', 9002)->get()->getRow('is_active'));
+
+        $missing = $this->postAs(9001, 1, null, 1, '/users/9999/delete', []);
+        $missing->assertStatus(404);
+        self::assertNotSame('', $missing->response()->getHeaderLine('X-CSRF-TOKEN'));
+
+        foreach ([[], ['csrf_test_name' => 'wrong']] as $payload) {
+            try {
+                $this->withSession($this->session(9001, 1, null, 1))->post('/users/9003/delete', $payload);
+                self::fail('Expected CSRF rejection.');
+            } catch (SecurityException $exception) {
+                self::assertSame('The action you requested is not allowed.', $exception->getMessage());
+            }
+        }
+        self::assertSame(0, (int) $this->db->table('tbl_users')->where('userId', 9003)->get()->getRow('isDeleted'));
+        self::assertSame(1, (int) $this->db->table('ci4_users')->where('id', 9003)->get()->getRow('is_active'));
+
+        $shadowTable = $this->db->escapeIdentifiers($this->db->prefixTable('ci4_users'));
+        $this->db->query("CREATE TRIGGER fail_user_deactivate BEFORE UPDATE ON {$shadowTable} WHEN OLD.id = 9003 BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+        $retryToken = '';
+        try {
+            $failed = $this->postAs(9001, 1, null, 1, '/users/9003/delete', []);
+            $failed->assertStatus(503);
+            $failed->assertJSONExact(['error' => 'user_unavailable']);
+            $retryToken = $failed->response()->getHeaderLine('X-CSRF-TOKEN');
+            self::assertNotSame('', $retryToken);
+            self::assertSame(0, (int) $this->db->table('tbl_users')->where('userId', 9003)->get()->getRow('isDeleted'));
+            self::assertSame(1, (int) $this->db->table('ci4_users')->where('id', 9003)->get()->getRow('is_active'));
+            self::assertSame(1, (int) $this->db->table('ci4_users')->where('id', 9003)->get()->getRow('session_version'));
+        } finally {
+            $this->db->query('DROP TRIGGER IF EXISTS fail_user_deactivate');
+            $this->db->resetTransStatus();
+        }
+
+        $retry = $this->withSession($this->session(9001, 1, null, 1))
+            ->post('/users/9003/delete', ['csrf_test_name' => $retryToken]);
+        $retry->assertStatus(204);
+        self::assertSame(1, (int) $this->db->table('tbl_users')->where('userId', 9003)->get()->getRow('isDeleted'));
+        self::assertSame(0, (int) $this->db->table('ci4_users')->where('id', 9003)->get()->getRow('is_active'));
+    }
+
     /** @param array<string, string> $payload */
     private function postAs(int $id, int $role, ?int $branch, int $group, string $path, array $payload)
     {
         $payload['csrf_test_name'] = service('security')->getHash();
 
         return $this->withSession($this->session($id, $role, $branch, $group))->post($path, $payload);
+    }
+
+    public function testC3LabelParityUserFormUsesCi3Text(): void
+    {
+        $page = $this->withSession($this->session(9001, 1, null, 1))->get('/users/new');
+        $page->assertStatus(200);
+        $page->assertSee('Full Name');
+        $page->assertSee('Email address');
+        $page->assertSee('Mobile Number');
+        $page->assertSee('User Group');
+        $page->assertSee('>Role</label>');
+        $page->assertDontSee('>name</label>');
+        $page->assertDontSee('>mobile</label>');
+        self::assertStringContainsString('type="reset"', $page->getBody());
+
+        $edit = $this->withSession($this->session(9001, 1, null, 1))->get('/users/9002');
+        $edit->assertStatus(200);
+        self::assertStringContainsString('type="reset"', $edit->getBody());
     }
 
     /** @return array<string, int|bool|null|string> */

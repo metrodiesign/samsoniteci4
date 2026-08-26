@@ -17,7 +17,14 @@ final class Background extends BaseController
     {
         $this->assertAdmin();
 
-        return $this->render(null);
+        return $this->renderList();
+    }
+
+    public function add(): string
+    {
+        $this->assertAdmin();
+
+        return $this->renderForm(null);
     }
 
     public function edit(string $rawId): string
@@ -28,7 +35,7 @@ final class Background extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->render($row);
+        return $this->renderForm($row);
     }
 
     public function create(): RedirectResponse|ResponseInterface
@@ -78,12 +85,18 @@ final class Background extends BaseController
             ->setBody((string) file_get_contents($path));
     }
 
-    /** @param array<string, mixed>|null $row */
-    private function render(?array $row): string
+    private function renderList(): string
     {
-        return $this->layout('Website backgrounds', view('background', [
-            'fields' => BackgroundStore::FIELDS,
+        return $this->layout('Website backgrounds', view('background_list', [
             'rows' => (new BackgroundStore(db_connect()))->all(),
+        ]));
+    }
+
+    /** @param array<string, mixed>|null $row */
+    private function renderForm(?array $row): string
+    {
+        return $this->layout('Website backgrounds', view('background_form', [
+            'fields' => BackgroundStore::FIELDS,
             'row' => $row,
         ]));
     }

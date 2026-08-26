@@ -86,7 +86,62 @@ probe_runtime=(
   --volume "$ROOT/tests/ci4/support/Commands:/app/app/Commands:ro"
 )
 
+docker exec -i "$database" mariadb --batch -uci4 -p"$password" ci4_concurrency <<'SQL'
+CREATE TABLE book (
+  book_id INT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  book_detail VARCHAR(3) NOT NULL,
+  status INT NOT NULL
+);
+CREATE TABLE branch (
+  branch_id INT PRIMARY KEY,
+  branch_type INT NOT NULL,
+  default_suffix VARCHAR(10) NOT NULL
+);
+CREATE TABLE `type` (type_id INT PRIMARY KEY, type_details VARCHAR(250) NOT NULL);
+CREATE TABLE brand (brand_id INT PRIMARY KEY, brand_details VARCHAR(250) NOT NULL);
+CREATE TABLE `condition` (condition_id INT PRIMARY KEY, condition_details VARCHAR(250) NOT NULL);
+CREATE TABLE estimateprice (estimateprice_id INT PRIMARY KEY, estimateprice_details VARCHAR(250) NOT NULL);
+CREATE TABLE `fixed` (fixed_id INT PRIMARY KEY, fixed_details VARCHAR(250) NOT NULL);
+CREATE TABLE request_order (
+  request_id INT AUTO_INCREMENT PRIMARY KEY,
+  requestDate DATETIME NOT NULL,
+  trackID VARCHAR(100) NOT NULL UNIQUE,
+  bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100),
+  customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100),
+  detailTypeId INT, detailBrandId INT, detailAgent INT, detailSKUName VARCHAR(100),
+  warantyType INT, detailNumberWaranty VARCHAR(100), detailDatePurchase DATETIME,
+  detailCondition VARCHAR(250), detailConditionOther VARCHAR(250),
+  detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250),
+  detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment TEXT,
+  detailNote TEXT, detailImage VARCHAR(500),
+  branchID INT, branch_type_id INT, UserID INT, action_status INT, RepairPrice DECIMAL(8,2),
+  number_cmg VARCHAR(100), create_by_user VARCHAR(250)
+);
+CREATE TABLE status_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_id VARCHAR(100) NOT NULL,
+  action_id INT, update_id INT, cdate DATETIME NOT NULL
+);
+INSERT INTO book VALUES (1, 1, 'ABC', 1);
+INSERT INTO branch VALUES (1, 1, 'WPA');
+INSERT INTO `type` VALUES (1, 'TYPE A');
+INSERT INTO brand VALUES (1, 'BRAND A');
+INSERT INTO `condition` VALUES (1, 'CONDITION A');
+INSERT INTO estimateprice VALUES (1, 'ESTIMATE A');
+INSERT INTO `fixed` VALUES (1, 'FIXED A');
+INSERT INTO request_order (
+  requestDate, trackID, bookID, numberID, orderID, orderIDShow, customerFullname, customerTel,
+  branchID, branch_type_id, action_status
+) VALUES (
+  UTC_TIMESTAMP(), CONCAT('WPA', DATE_FORMAT(UTC_DATE(), '%y%m'), '0042'), '1', 'LEGACY-42',
+  'ABCLEGACY-42', 'ABC/LEGACY-42', 'LEGACY SEQUENCE', '0000000000', 1, 1, 1
+);
+SQL
+
 docker run --rm "${runtime[@]}" "$CI4_IMAGE" php spark migrate --all >/dev/null
+docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe order-migration-verify \
+  | grep -Fq 'ORDER_MIGRATION_VERIFIED'
 docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe seed >/dev/null
 
 barrier=$(( $(date +%s) + 3 ))
@@ -114,71 +169,43 @@ docker run --rm "${runtime[@]}" "$CI4_IMAGE" \
   php spark reset:delivery-work --transport loopback --limit 10 \
   | grep -Fq 'reset_delivery sent=0 retry=0 idle=1 released=0'
 
-docker exec -i "$database" mariadb --batch -uci4 -p"$password" ci4_concurrency <<'SQL'
-CREATE TABLE branch (
-  branch_id INT PRIMARY KEY,
-  branch_type INT NOT NULL,
-  default_suffix VARCHAR(10) NOT NULL
-);
-CREATE TABLE `type` (type_id INT PRIMARY KEY, type_details VARCHAR(250) NOT NULL);
-CREATE TABLE brand (brand_id INT PRIMARY KEY, brand_details VARCHAR(250) NOT NULL);
-CREATE TABLE `condition` (condition_id INT PRIMARY KEY, condition_details VARCHAR(250) NOT NULL);
-CREATE TABLE estimateprice (estimateprice_id INT PRIMARY KEY, estimateprice_details VARCHAR(250) NOT NULL);
-CREATE TABLE `fixed` (fixed_id INT PRIMARY KEY, fixed_details VARCHAR(250) NOT NULL);
-CREATE TABLE request_order (
-  request_id INT AUTO_INCREMENT PRIMARY KEY,
-  requestDate DATETIME NOT NULL,
-  trackID VARCHAR(100) NOT NULL UNIQUE,
-  bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100),
-  customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100),
-  detailTypeId INT, detailBrandId INT, detailAgent INT, detailSKUName VARCHAR(100),
-  warantyType INT, detailNumberWaranty VARCHAR(100), detailDatePurchase DATETIME,
-  detailCondition VARCHAR(250), detailConditionOther VARCHAR(250),
-  detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250),
-  detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment TEXT,
-  detailNote TEXT, detailImage VARCHAR(500),
-  branchID INT, branch_type_id INT, UserID INT, action_status INT, RepairPrice DECIMAL(8,2),
-  number_cmg VARCHAR(100), create_by_user VARCHAR(250),
-  UNIQUE KEY uq_order_branch_number (branchID, numberID)
-);
-CREATE TABLE status_log (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  order_id VARCHAR(100) NOT NULL,
-  action_id INT, update_id INT, cdate DATETIME NOT NULL
-);
-INSERT INTO branch VALUES (1, 1, 'WPA');
-INSERT INTO `type` VALUES (1, 'TYPE A');
-INSERT INTO brand VALUES (1, 'BRAND A');
-INSERT INTO `condition` VALUES (1, 'CONDITION A');
-INSERT INTO estimateprice VALUES (1, 'ESTIMATE A');
-INSERT INTO `fixed` VALUES (1, 'FIXED A');
-INSERT INTO request_order (
-  requestDate, trackID, numberID, orderIDShow, customerFullname, customerTel,
-  branchID, branch_type_id, action_status
-) VALUES (
-  UTC_TIMESTAMP(), CONCAT('WPA', DATE_FORMAT(UTC_DATE(), '%y%m'), '0042'), 'LEGACY-42',
-  'WPA/LEGACY-42', 'LEGACY SEQUENCE', '0000000000', 1, 1, 1
-);
-SQL
+run_order_scenario() {
+  local scenario=$1
+  local expected_created=$2
+  local expected_duplicate=$3
+  local expected_orders=$4
+  local label=${scenario^^}
+  local barrier=$(( $(date +%s) + 3 ))
+  docker create --name "$order_one" "${probe_runtime[@]}" \
+    --env PROBE_START_EPOCH="$barrier" --env PROBE_SLOT=1 --env PROBE_SCENARIO="$scenario" \
+    "$CI4_IMAGE" php spark concurrency:probe order-create >/dev/null
+  docker create --name "$order_two" "${probe_runtime[@]}" \
+    --env PROBE_START_EPOCH="$barrier" --env PROBE_SLOT=2 --env PROBE_SCENARIO="$scenario" \
+    "$CI4_IMAGE" php spark concurrency:probe order-create >/dev/null
+  docker start "$order_one" "$order_two" >/dev/null
+  local status_one status_two output
+  status_one=$(docker wait "$order_one")
+  status_two=$(docker wait "$order_two")
+  output=$(docker logs "$order_one" 2>&1; docker logs "$order_two" 2>&1)
+  [ "$status_one" = 0 ] && [ "$status_two" = 0 ] \
+    || { printf '%s\n' "$output" >&2; exit 1; }
+  [ "$(grep -c "ORDER_${label}_CREATED" <<<"$output" || true)" = "$expected_created" ]
+  [ "$(grep -c "ORDER_${label}_DUPLICATE" <<<"$output" || true)" = "$expected_duplicate" ]
+  docker run --rm "${probe_runtime[@]}" --env PROBE_SCENARIO="$scenario" \
+    "$CI4_IMAGE" php spark concurrency:probe order-verify \
+    | grep -Fq "ORDER_${label}_VERIFIED orders=${expected_orders} logs=${expected_orders} sms=${expected_orders}"
+  docker rm -f "$order_one" "$order_two" >/dev/null
+}
 
-barrier=$(( $(date +%s) + 3 ))
-docker create --name "$order_one" "${probe_runtime[@]}" \
-  --env PROBE_START_EPOCH="$barrier" --env PROBE_SLOT=1 \
-  "$CI4_IMAGE" php spark concurrency:probe order-create >/dev/null
-docker create --name "$order_two" "${probe_runtime[@]}" \
-  --env PROBE_START_EPOCH="$barrier" --env PROBE_SLOT=2 \
-  "$CI4_IMAGE" php spark concurrency:probe order-create >/dev/null
-docker start "$order_one" "$order_two" >/dev/null
-order_status_one=$(docker wait "$order_one")
-order_status_two=$(docker wait "$order_two")
-order_output=$(docker logs "$order_one" 2>&1; docker logs "$order_two" 2>&1)
-[ "$order_status_one" = 0 ] && [ "$order_status_two" = 0 ] \
-  || { printf '%s\n' "$order_output" >&2; exit 1; }
-[ "$(grep -c 'ORDER_CREATED WPA' <<<"$order_output")" = 2 ]
-docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe order-verify \
-  | grep -Fq 'ORDER_VERIFIED unique=3 orders=3 logs=2 sms=2 baseline=0042 allocated=0043,0044'
+run_order_scenario business 1 1 1
+run_order_scenario submission 1 1 1
+run_order_scenario distinct 2 0 2
+migration_cycle_output=$(docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe order-migration-cycle 2>&1) \
+  || { printf '%s\n' "$migration_cycle_output" >&2; exit 1; }
+grep -Eq 'ORDER_MIGRATION_CYCLED rows=[0-9]+' <<<"$migration_cycle_output" \
+  || { printf '%s\n' "$migration_cycle_output" >&2; exit 1; }
 docker run --rm "${runtime[@]}" "$CI4_IMAGE" php spark sms:delivery-work --transport loopback --limit 10 \
-  | grep -Fq 'sms_delivery sent=2 retry=0 idle=1 released=0'
+  | grep -Fq 'sms_delivery sent=4 retry=0 idle=1 released=0'
 docker run --rm "${runtime[@]}" "$CI4_IMAGE" php spark sms:delivery-work --transport loopback --limit 10 \
   | grep -Fq 'sms_delivery sent=0 retry=0 idle=1 released=0'
 
@@ -218,6 +245,8 @@ isolation_output=$(docker logs "$isolation_one" 2>&1; docker logs "$isolation_tw
 [ "$(grep -c 'IMPORT_ISOLATION_[AB]_CONFIRMED' <<<"$isolation_output")" = 2 ]
 docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe import-isolation-verify \
   | grep -Fq 'IMPORT_ISOLATION_VERIFIED owners=2 branches=2 batches=2 prices=111.00,222.00'
+docker run --rm "${probe_runtime[@]}" "$CI4_IMAGE" php spark concurrency:probe order-migration-duplicate \
+  | grep -Eq 'ORDER_MIGRATION_DUPLICATE_ABORTED rows=[0-9]+'
 
 docker exec -i "$database" mariadb --batch -uci4 -p"$password" ci4_concurrency <<'SQL'
 DROP TABLE request_order;
@@ -294,10 +323,14 @@ import xml.etree.ElementTree as ET
 
 target = pathlib.Path(sys.argv[1])
 target.parent.mkdir(parents=True, exist_ok=True)
-suite = ET.Element("testsuite", name="WP-00C operational concurrency", tests="7", failures="0")
+suite = ET.Element("testsuite", name="WP-00C operational concurrency", tests="11", failures="0")
 cases = {
     "testPasswordResetAtomicity": 6,
-    "testOrderTrackingIdAllocation": 6,
+    "testOrderBusinessKeyRace": 8,
+    "testOrderSubmissionReplayRace": 8,
+    "testOrderDistinctBusinessKeys": 8,
+    "testOrderBusinessKeyMigrationCycle": 6,
+    "testOrderBusinessKeyMigrationDuplicatePreflight": 4,
     "testImportConfirmIdempotency": 4,
     "testImportBatchOwnershipIsolation": 8,
     "testPublicTrackingIsolation": 40,
@@ -317,4 +350,4 @@ ET.ElementTree(root).write(target, encoding="utf-8", xml_declaration=True)
 PY
 fi
 
-echo 'PASS MariaDB token/rate/order-allocation/import-confirm/import-isolation/public-tracking concurrency + loopback email/SMS delivery workers'
+echo 'PASS MariaDB token/rate/order-business-key/order-submission/order-distinct/migration/import-confirm/import-isolation/public-tracking concurrency + loopback email/SMS delivery workers'
