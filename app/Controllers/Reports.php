@@ -29,8 +29,9 @@ final class Reports extends BaseController
         [$start, $end] = $this->defaultRange($start, $end);
         $statusId = $kind === 'in-progress' ? $this->normalizeStatusIds($this->input('status_id')) : '';
         $error = null;
+        $db = db_connect();
         try {
-            $matrix = new ReportMatrix(db_connect());
+            $matrix = new ReportMatrix($db);
             $rows = $kind === 'ratings'
                 ? $matrix->ratings($start, $end, $branchId)
                 : $matrix->matrix($kind, $start, $end, $branchId, $statusId);
@@ -38,9 +39,12 @@ final class Reports extends BaseController
             $rows = [];
             $error = $exception->getMessage();
         }
+        $role = (int) service('session')->get('role');
         $html = $this->layout(self::HEADINGS[$kind], view('reports/matrix', [
+            'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
             'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
             'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
+            'showBranchSelect' => service('session')->get('BranchID') === null,
             'startDate' => $start,
             'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
         ]));

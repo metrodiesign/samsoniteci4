@@ -2,37 +2,33 @@
 
 namespace App\Controllers;
 
-use App\Reporting\TrackingReport;
-
 final class Dashboard extends BaseController
 {
+    /** @var list<array{label: string, href: string}> */
+    private const REPORTS_TILE = [
+        ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+    ];
+
+    /** @var array<int, list<array{label: string, href: string}>> */
+    private const TILES_BY_GROUP = [
+        3 => [
+            ['label' => 'UPLOAD STATUS', 'href' => '/UploadexcelListing'],
+            ['label' => 'UPLOAD CMG DATA', 'href' => '/UploadneworderexcelListing'],
+            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+        ],
+        4 => [
+            ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing'],
+            ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing'],
+            ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing'],
+            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+        ],
+    ];
+
     public function index(): string
     {
-        $session  = service('session');
-        $branchId = $session->get('BranchID');
-        $branchId = $branchId === null ? null : (int) $branchId;
-        $counts   = (new TrackingReport(db_connect()))->statusCounts($branchId);
-        $branch = null;
-        if ($branchId !== null && db_connect()->tableExists('branch') && db_connect()->tableExists('branch_type')) {
-            $branch = db_connect()->table('branch branches')
-                ->select('branches.branch_name, types.branch_type_image')
-                ->join('branch_type types', 'types.branch_type_id = branches.branch_type', 'left')
-                ->where('branches.branch_id', $branchId)->get()->getRowArray();
-        }
+        $groupId = service('session')->get('GroupID');
+        $tiles = is_int($groupId) ? (self::TILES_BY_GROUP[$groupId] ?? self::REPORTS_TILE) : self::REPORTS_TILE;
 
-        return $this->layout('Dashboard', view('dashboard', [
-            'counts' => $counts,
-            'name'   => (string) $session->get('name'),
-            'branchName' => (string) ($branch['branch_name'] ?? ''),
-            'background' => $this->safeBackground($branch['branch_type_image'] ?? null),
-        ]));
-    }
-
-    private function safeBackground(mixed $value): string
-    {
-        return is_string($value) && ! str_contains($value, '..')
-            && preg_match('/\A[A-Za-z0-9][A-Za-z0-9._\/-]{0,249}\z/D', $value) === 1
-            ? $value
-            : 'assets/images/bg-dashbord.png';
+        return $this->layout('Dashboard', view('dashboard', ['tiles' => $tiles]));
     }
 }

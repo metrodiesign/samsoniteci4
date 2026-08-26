@@ -6,11 +6,15 @@ use App\Authentication\AtomicRateLimiter;
 use App\Authentication\ResetDeliveryIntentStore;
 use App\Authentication\ResetTokenFactory;
 use App\Authentication\ResetTokenStore;
+use App\Database\Migrations\AddUniqueOrderBusinessKey;
 use App\Imports\ImportWorkflow;
 use App\Orders\OrderCreationWorkflow;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
+use CodeIgniter\Database\BaseConnection;
+use Config\Database;
 use DateTimeImmutable;
+use DomainException;
 use RuntimeException;
 
 final class ConcurrencyProbe extends BaseCommand
@@ -25,7 +29,7 @@ final class ConcurrencyProbe extends BaseCommand
 
     protected $description = 'Runs isolated MariaDB concurrency assertions.';
 
-    protected $usage = 'concurrency:probe <seed|consume|verify|order-create|order-verify|import-seed|import-confirm|import-verify|import-isolation-seed|import-isolation-confirm|import-isolation-verify>';
+    protected $usage = 'concurrency:probe <seed|consume|verify|order-create|order-verify|order-migration-verify|order-migration-cycle|order-migration-duplicate|import-seed|import-confirm|import-verify|import-isolation-seed|import-isolation-confirm|import-isolation-verify>';
 
     protected $arguments = [
         'mode' => 'seed, consume or verify',
@@ -39,6 +43,9 @@ final class ConcurrencyProbe extends BaseCommand
             'verify'  => $this->verify(),
             'order-create' => $this->createOrder(),
             'order-verify' => $this->verifyOrders(),
+            'order-migration-verify' => $this->verifyOrderMigration(),
+            'order-migration-cycle' => $this->cycleOrderMigration(),
+            'order-migration-duplicate' => $this->verifyOrderMigrationDuplicatePreflight(),
             'import-seed' => $this->seedImport(),
             'import-confirm' => $this->confirmImport(),
             'import-verify' => $this->verifyImport(),
@@ -115,57 +122,159 @@ final class ConcurrencyProbe extends BaseCommand
     private function createOrder(): int
     {
         $slot = filter_var(getenv('PROBE_SLOT'), FILTER_VALIDATE_INT);
-        if (! in_array($slot, [1, 2], true)) {
-            throw new RuntimeException('Invalid order probe slot.');
+        $scenario = getenv('PROBE_SCENARIO');
+        if (! in_array($slot, [1, 2], true) || ! in_array($scenario, ['business', 'submission', 'distinct'], true)) {
+            throw new RuntimeException('Invalid order probe input.');
         }
+        $number = match ($scenario) {
+            'business' => '301',
+            'submission' => '30' . ($slot + 1),
+            'distinct' => '30' . ($slot + 3),
+        };
+        $submission = match ($scenario) {
+            'business' => str_repeat($slot === 1 ? 'a' : 'b', 32),
+            'submission' => str_repeat('c', 32),
+            'distinct' => str_repeat($slot === 1 ? 'd' : 'e', 32),
+        };
+        $telephone = match ($scenario) {
+            'business' => '1111111111',
+            'submission' => '2222222222',
+            'distinct' => '3333333333',
+        };
         $this->waitForBarrier();
-        $trackId = (new OrderCreationWorkflow(db_connect(), service('encrypter')))->create(
-            self::USER_ID,
-            2,
-            1,
-            [
-                'submission_id' => str_repeat($slot === 1 ? 'a' : 'b', 32),
-                'number_id' => '30' . $slot,
-                'order_id' => 'ORDER-30' . $slot,
-                'book_id' => 'WPA',
-                'customer_name' => 'CONCURRENT ' . $slot,
-                'customer_tel' => '0000000000',
-                'customer_email' => 'concurrent-' . $slot . '@example.invalid',
-                'type_id' => '1',
-                'brand_id' => '1',
-                'branch_id' => '1',
-                'note' => 'Concurrency probe',
-                'detail_sku_name' => 'PROBE BAG',
-                'create_by_user' => 'PROBE RECEIVER',
-                'condition' => ['1'],
-                'estimateprice' => ['1'],
-                'fixed' => ['1'],
-            ],
-            [],
-        );
-        CLI::write('ORDER_CREATED ' . $trackId);
+        try {
+            (new OrderCreationWorkflow(db_connect(), service('encrypter')))->create(
+                self::USER_ID,
+                2,
+                1,
+                [
+                    'submission_id' => $submission,
+                    'number_id' => $number,
+                    'order_id' => 'IGNORED-' . $slot,
+                    'book_id' => '1',
+                    'customer_name' => strtoupper($scenario) . ' ' . $slot,
+                    'customer_tel' => $telephone,
+                    'customer_email' => $scenario . '-' . $slot . '@example.invalid',
+                    'type_id' => '1',
+                    'brand_id' => '1',
+                    'branch_id' => '1',
+                    'note' => 'Concurrency probe',
+                    'detail_sku_name' => 'PROBE BAG',
+                    'create_by_user' => 'PROBE RECEIVER',
+                    'condition' => ['1'],
+                    'estimateprice' => ['1'],
+                    'fixed' => ['1'],
+                ],
+                [],
+            );
+            CLI::write('ORDER_' . strtoupper($scenario) . '_CREATED');
+        } catch (DomainException) {
+            CLI::write('ORDER_' . strtoupper($scenario) . '_DUPLICATE');
+        }
 
         return EXIT_SUCCESS;
     }
 
     private function verifyOrders(): int
     {
+        $scenario = getenv('PROBE_SCENARIO');
+        $contract = match ($scenario) {
+            'business' => ['1111111111', 1, ['ABC/301']],
+            'submission' => ['2222222222', 1, ['ABC/302', 'ABC/303']],
+            'distinct' => ['3333333333', 2, ['ABC/304', 'ABC/305']],
+            default => throw new RuntimeException('Invalid order verification scenario.'),
+        };
+        [$telephone, $expectedCount, $allowedKeys] = $contract;
         $db = db_connect();
-        $orders = $db->table('request_order')->select('trackID')->orderBy('trackID', 'ASC')->get()->getResultArray();
+        $orders = $db->table('request_order')
+            ->select('request_id, trackID, bookID, numberID, orderID, orderIDShow')
+            ->where('customerTel', $telephone)
+            ->orderBy('request_id', 'ASC')
+            ->get()
+            ->getResultArray();
         $tracks = array_column($orders, 'trackID');
-        $logs = $db->table('status_log')->countAllResults();
-        $intents = $db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults();
-        $period = (new DateTimeImmutable('now'))->format('ym');
-        $expected = ["WPA{$period}0042", "WPA{$period}0043", "WPA{$period}0044"];
-        if ($tracks !== $expected || count(array_unique($tracks)) !== 3 || $logs !== 2 || $intents !== 2) {
-            throw new RuntimeException('Order concurrency invariant failed.');
+        $requestIds = array_map('intval', array_column($orders, 'request_id'));
+        $logs = $tracks === [] ? 0 : $db->table('status_log')->whereIn('order_id', $tracks)->countAllResults();
+        $intents = $requestIds === [] ? 0 : $db->table('ci4_delivery_intents')
+            ->where('kind', 'sms')->whereIn('user_id', $requestIds)->countAllResults();
+        if (count($orders) !== $expectedCount || count(array_unique($tracks)) !== $expectedCount
+            || $logs !== $expectedCount || $intents !== $expectedCount) {
+            throw new RuntimeException('Order concurrency state count failed.');
         }
-        foreach ($tracks as $track) {
-            if (! is_string($track) || preg_match('/\A[A-Za-z0-9]{1,10}[0-9]{8}\z/D', $track) !== 1) {
-                throw new RuntimeException('Invalid concurrent tracking ID.');
+        foreach ($orders as $order) {
+            if ((string) $order['bookID'] !== '1'
+                || (string) $order['orderID'] !== 'ABC' . (string) $order['numberID']
+                || ! in_array((string) $order['orderIDShow'], $allowedKeys, true)
+                || ! is_string($order['trackID'])
+                || preg_match('/\AWPA[0-9]{8}\z/D', $order['trackID']) !== 1) {
+                throw new RuntimeException('Order concurrency canonical identifier failed.');
             }
         }
-        CLI::write('ORDER_VERIFIED unique=3 orders=3 logs=2 sms=2 baseline=0042 allocated=0043,0044');
+        CLI::write('ORDER_' . strtoupper($scenario) . "_VERIFIED orders={$expectedCount} logs={$expectedCount} sms={$expectedCount}");
+
+        return EXIT_SUCCESS;
+    }
+
+    private function verifyOrderMigration(): int
+    {
+        $index = db_connect()->getIndexData('request_order')['uq_request_order_order_show_tel'] ?? null;
+        if ($index === null || $index->type !== 'UNIQUE' || $index->fields !== ['orderIDShow', 'customerTel']) {
+            throw new RuntimeException('Order business key migration invariant failed.');
+        }
+        CLI::write('ORDER_MIGRATION_VERIFIED');
+
+        return EXIT_SUCCESS;
+    }
+
+    private function cycleOrderMigration(): int
+    {
+        $db = db_connect();
+        $before = $db->table('request_order')->countAllResults();
+        $migration = $this->orderMigration($db);
+        $migration->down();
+        if (array_key_exists('uq_request_order_order_show_tel', $db->getIndexData('request_order'))
+            || $db->table('request_order')->countAllResults() !== $before) {
+            throw new RuntimeException('Order migration down invariant failed.');
+        }
+        $migration->up();
+        if (! array_key_exists('uq_request_order_order_show_tel', $db->getIndexData('request_order'))
+            || $db->table('request_order')->countAllResults() !== $before) {
+            throw new RuntimeException('Order migration up invariant failed.');
+        }
+        CLI::write('ORDER_MIGRATION_CYCLED rows=' . $before);
+
+        return EXIT_SUCCESS;
+    }
+
+    private function verifyOrderMigrationDuplicatePreflight(): int
+    {
+        $db = db_connect();
+        $migration = $this->orderMigration($db);
+        $migration->down();
+        $before = $db->table('request_order')->countAllResults();
+        foreach ([1, 2] as $slot) {
+            if (! $db->table('request_order')->insert([
+                'requestDate' => '2026-08-26 00:00:00', 'trackID' => 'WPA2608999' . $slot,
+                'bookID' => '1', 'numberID' => '999', 'orderID' => 'ABC999', 'orderIDShow' => 'ABC/999',
+                'customerFullname' => 'MIGRATION DUPLICATE ' . $slot, 'customerTel' => '9999999999',
+                'branchID' => 1, 'branch_type_id' => 1, 'UserID' => self::USER_ID, 'action_status' => 1,
+            ])) {
+                throw new RuntimeException('Unable to seed migration duplicate proof.');
+            }
+        }
+        try {
+            $migration->up();
+            throw new RuntimeException('Migration accepted duplicate business keys.');
+        } catch (RuntimeException $exception) {
+            if (! str_contains($exception->getMessage(), 'aborted before DDL')) {
+                throw $exception;
+            }
+        }
+        if (array_key_exists('uq_request_order_order_show_tel', $db->getIndexData('request_order'))
+            || $db->table('request_order')->countAllResults() !== $before + 2) {
+            throw new RuntimeException('Migration duplicate preflight changed data or DDL.');
+        }
+        CLI::write('ORDER_MIGRATION_DUPLICATE_ABORTED rows=' . ($before + 2));
 
         return EXIT_SUCCESS;
     }
@@ -328,6 +437,13 @@ final class ConcurrencyProbe extends BaseCommand
         CLI::write('IMPORT_ISOLATION_VERIFIED owners=2 branches=2 batches=2 prices=111.00,222.00');
 
         return EXIT_SUCCESS;
+    }
+
+    private function orderMigration(BaseConnection $db): AddUniqueOrderBusinessKey
+    {
+        require_once APPPATH . 'Database/Migrations/2026-08-26-090000_AddUniqueOrderBusinessKey.php';
+
+        return new AddUniqueOrderBusinessKey(Database::forge($db));
     }
 
     private function factory(): ResetTokenFactory

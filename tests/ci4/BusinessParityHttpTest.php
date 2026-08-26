@@ -190,6 +190,33 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         self::assertSame(0, $this->db->table('tbl_last_login')->countAllResults());
     }
 
+    public function testC3ReportTrackingHeadersMatchCi3(): void
+    {
+        // reports/tracking.php: 8 column headers become CI3 tracking/report_tracking_test.php text (AC-6).
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'report-header-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+
+        $report = $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/Order/ReportTrackingListing');
+        $report->assertStatus(200);
+        $report->assertSee('เลขที่ CMG');
+        $report->assertSee('รับเข้า');
+        $report->assertSee('อัพเดทล่าสุด');
+        $report->assertSee('ศูนย์ส่งคืนสาขา');
+        $report->assertSee('ลูกค้ามารับคืน');
+        $report->assertSee('Logistics');
+        $report->assertSee('ราคาซ่อม');
+        $report->assertSee('Warannty');                 // CI3 typo preserved
+        $report->assertDontSee('<th>CMG No.</th>');
+        $report->assertDontSee('<th>Warranty</th>');
+        // trackID/orderID stay raw on purpose (already CI3-parity, out of scope)
+        $report->assertSee('<th>trackID</th>');
+    }
+
     public function testTrackingReportConsolidatesStatusFiltersAndSearch(): void
     {
         $adminId = (new ShadowUserStore($this->db))->create(

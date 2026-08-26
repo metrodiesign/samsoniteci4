@@ -4,25 +4,31 @@
 /** @var int $status */
 /** @var int $page */
 /** @var string $search */
+/** @var string $sdate */
 /** @var array{title: string, bulk_endpoint: ?string, statuses: list<int>, row_action: ?string}|null $profile */
 /** @var array<string, string> $statusUpdates */
 /** @var bool $canWrite */
 /** @var list<array<string, mixed>> $providers */
 
 $hasBulk = $canWrite && $profile !== null && $profile['bulk_endpoint'] !== null;
+$nextQuery = array_filter([
+    'status' => $status, 'page' => $page + 1, 'sdate' => $sdate, 'search' => $search,
+], static fn (int|string $value): bool => $value !== '');
 ?>
-<section aria-labelledby="orders-title">
-    <h1 id="orders-title"><?= $profile !== null ? esc($profile['title']) : 'Orders — status ' . $status ?></h1>
+<section aria-labelledby="page-title">
     <form method="get" action="/orders">
         <input type="hidden" name="status" value="<?= $status ?>">
-        <label for="order-search">Search</label>
-        <input id="order-search" name="search" value="<?= esc($search) ?>" maxlength="128">
+        <label for="order-date">Date :</label>
+        <input id="order-date" name="sdate" value="<?= esc($sdate) ?>" placeholder="Date">
+        <label for="order-search">Detail : </label>
+        <input id="order-search" name="search" value="<?= esc($search) ?>" maxlength="128" placeholder="Search">
         <button type="submit">Search</button>
     </form>
     <?php if ($hasBulk): ?>
     <form method="post" action="<?= esc($profile['bulk_endpoint']) ?>">
         <?= csrf_field() ?>
     <?php endif ?>
+    <div class="table-wrap">
     <table>
         <thead><tr>
             <?php if ($hasBulk): ?><th><input type="checkbox" id="selectall_tracking"></th><?php endif ?>
@@ -59,6 +65,7 @@ $hasBulk = $canWrite && $profile !== null && $profile['bulk_endpoint'] !== null;
             <?php endforeach ?>
         </tbody>
     </table>
+    </div>
     <?php if ($hasBulk): ?>
         <?php if ($status === 1): ?>
         <label for="bulk-provider">Provider</label>
@@ -85,6 +92,6 @@ $hasBulk = $canWrite && $profile !== null && $profile['bulk_endpoint'] !== null;
         });
     </script>
     <?php endif ?>
-    <?php if (count($rows) === 50): ?><a href="/orders?status=<?= $status ?>&amp;page=<?= $page + 1 ?>">Next</a><?php endif ?>
+    <?php if (count($rows) === 50): ?><a href="/orders?<?= esc(http_build_query($nextQuery)) ?>">Next</a><?php endif ?>
     <?php if (($profile['row_action'] ?? null) === 'rate'): ?><?= view('orders_rating_modal') ?><?php endif ?>
 </section>

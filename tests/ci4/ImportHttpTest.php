@@ -218,7 +218,11 @@ final class ImportHttpTest extends CIUnitTestCase
     public function testLegacyListingPreviewAndConfirmRoutesUseOwnedBatchWorkflow(): void
     {
         foreach (['/UploadexcelListing', '/UploadexcelpriceListing', '/UploadneworderexcelListing'] as $path) {
-            $this->withSession($this->session(1, 1))->get($path)->assertStatus(200);
+            $form = $this->withSession($this->session(1, 1))->get($path);
+            $form->assertStatus(200);
+            // t5 AC-6: the upload form carries a reset button and the CI3 "Upload" submit text.
+            self::assertStringContainsString('type="reset"', $form->getBody());
+            self::assertStringContainsString('>Upload</button>', $form->getBody());
         }
         $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
         $flows = [

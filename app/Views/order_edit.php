@@ -40,18 +40,27 @@ $select = static function (string $name, array $items, string $idKey, string $la
 
 $warantyType = (string) ($row['warantyType'] ?? '0');
 ?>
-<section aria-labelledby="order-edit-title">
-    <h1 id="order-edit-title">Edit <?= esc($row['trackID'] ?? '') ?></h1>
+<section aria-labelledby="page-title">
     <form method="post" action="/orders/<?= (int) $row['request_id'] ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
 
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"<?= (string) ($row['detailAgent'] ?? '') === '1' ? ' checked' : '' ?>> Urgent/ซ่อมด่วน</label>
 
+        <?php
+        // Label verbatim จาก CI3 tracking/edit_order.php (customer_tel ต่างจากหน้า add)
+        /** @var array<string, string> $editLabels */
+        $editLabels = [
+            'customer_name' => 'customer Fullname/ชื่อลูกค้า',
+            'customer_tel' => 'customer Tel/เบอร์โทรลูกค้า',
+            'customer_email' => 'customer Email/อีเมล์ลูกค้า',
+            'note' => 'Note/หมายเหตุ',
+        ];
+        ?>
         <?php foreach ([
             'customer_name' => 'customerFullname', 'customer_tel' => 'customerTel',
             'customer_email' => 'customerEmail', 'note' => 'detailNote',
         ] as $field => $column): ?>
-            <label for="edit-<?= esc($field) ?>"><?= esc($field) ?></label>
+            <label for="edit-<?= esc($field) ?>"><?= esc($editLabels[$field] ?? $field) ?></label>
             <input id="edit-<?= esc($field) ?>" name="<?= esc($field) ?>" value="<?= esc((string) ($row[$column] ?? '')) ?>">
         <?php endforeach ?>
 
@@ -110,6 +119,7 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
 
         <label for="edit-image">Repair image (up to 5, replaces current)</label>
         <input id="edit-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple>
-        <button type="submit">Update order</button>
+        <button type="submit">Submit</button>
+        <button type="reset">Reset</button>
     </form>
 </section>

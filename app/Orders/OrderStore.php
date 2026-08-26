@@ -185,6 +185,11 @@ final class OrderStore
         if ($row === null) {
             return 'not_found';
         }
+        // A branch user may no longer act on the TRANSPORTING (2) / STATUS REPAIR (3) queues, so it
+        // cannot soft-delete (which rewrites action_status to 8) an order sourced from either queue.
+        if ($actorBranch !== null && in_array((int) $row['action_status'], [2, 3], true)) {
+            return 'forbidden';
+        }
         if ((int) $row['action_status'] === 8) {
             return 'conflict';
         }

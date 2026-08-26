@@ -1,19 +1,11 @@
 <?php
 
-/** @var list<array<string, mixed>> $rows */
 /** @var array<string, mixed>|null $row */
 /** @var list<array{id: int, name: string}> $menuGroups */
-/** @var string $search */
 $selected = array_filter(array_map('intval', explode(',', (string) ($row['group_type'] ?? ''))));
 $action = '/menu' . ($row === null ? '' : '/' . (int) $row['id']);
 ?>
-<section aria-labelledby="menu-title">
-    <h1 id="menu-title">Menu groups</h1>
-    <form method="get" action="/menu">
-        <label for="menu-search">Search</label>
-        <input id="menu-search" name="search" value="<?= esc($search) ?>" maxlength="128">
-        <button type="submit">Search</button>
-    </form>
+<section aria-labelledby="page-title">
     <form method="post" action="<?= esc($action) ?>">
         <?= csrf_field() ?>
         <label for="menu-name">Name</label>
@@ -27,11 +19,7 @@ $action = '/menu' . ($row === null ? '' : '/' . (int) $row['id']);
                 </label>
             <?php endforeach ?>
         </fieldset>
-        <button type="submit"><?= $row === null ? 'Create' : 'Update' ?></button>
+        <button type="submit">Submit</button>
+        <button type="reset">Reset</button>
     </form>
-    <ul>
-        <?php foreach ($rows as $item): ?>
-            <li><a href="/menu/<?= (int) $item['id'] ?>"><?= esc($item['name']) ?></a></li>
-        <?php endforeach ?>
-    </ul>
 </section>

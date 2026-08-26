@@ -23,6 +23,7 @@ final class MenuHttpTest extends CIUnitTestCase
         parent::setUp();
         foreach ([
             'group_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, group_type VARCHAR(250) NOT NULL, name VARCHAR(250) NOT NULL, cdate DATETIME NOT NULL',
+            'group_type' => 'group_type_id INTEGER PRIMARY KEY, group_type_name VARCHAR(250) NOT NULL, icon_menu VARCHAR(250) NOT NULL',
             'tbl_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, menu_name VARCHAR(250) NOT NULL, menu_link VARCHAR(250) NOT NULL, group_type INTEGER NOT NULL, cdate DATETIME NOT NULL',
             'request_order' => 'request_id INTEGER PRIMARY KEY, branchID INTEGER, action_status INTEGER',
         ] as $table => $definition) {
@@ -36,12 +37,20 @@ final class MenuHttpTest extends CIUnitTestCase
             ['id' => 1, 'group_type' => '1,2', 'name' => 'CENTRAL', 'cdate' => $now],
             ['id' => 4, 'group_type' => '1,3', 'name' => 'BRANCH', 'cdate' => $now],
         ]);
+        $this->db->table('group_type')->insertBatch([
+            ['group_type_id' => 1, 'group_type_name' => 'DASHBOARD', 'icon_menu' => 'fa fa-dashboard'],
+            ['group_type_id' => 2, 'group_type_name' => 'MASTER ADMIN', 'icon_menu' => 'fa fa-cogs'],
+            ['group_type_id' => 3, 'group_type_name' => 'ORDER', 'icon_menu' => 'fa fa-shopping-cart'],
+        ]);
         $this->db->table('tbl_menu')->insertBatch([
             ['id' => 1, 'menu_name' => 'DASH LINK', 'menu_link' => 'dashboard', 'group_type' => 1, 'cdate' => $now],
             ['id' => 2, 'menu_name' => 'ADMIN MASTER LINK', 'menu_link' => 'brandListing', 'group_type' => 2, 'cdate' => $now],
             ['id' => 3, 'menu_name' => 'BRANCH ORDER LINK', 'menu_link' => 'orders', 'group_type' => 3, 'cdate' => $now],
             ['id' => 4, 'menu_name' => 'REPORT LINK', 'menu_link' => 'ReportTrackingListing', 'group_type' => 2, 'cdate' => $now],
             ['id' => 5, 'menu_name' => 'RETIRED TEST LINK', 'menu_link' => 'ReportTrackingListingTest', 'group_type' => 2, 'cdate' => $now],
+            ['id' => 6, 'menu_name' => 'TRANSPORTING', 'menu_link' => 'TrackingListing', 'group_type' => 3, 'cdate' => $now],
+            ['id' => 7, 'menu_name' => 'STATUS REPAIR', 'menu_link' => 'TrackingcloseListing', 'group_type' => 3, 'cdate' => $now],
+            ['id' => 8, 'menu_name' => 'DELIVERED', 'menu_link' => 'TrackingreturnListing', 'group_type' => 3, 'cdate' => $now],
         ]);
         $users = new ShadowUserStore($this->db);
         $this->adminId = $users->create('menu-admin@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 1, null);
@@ -78,7 +87,16 @@ final class MenuHttpTest extends CIUnitTestCase
         $match->assertStatus(200);
         $match->assertSee('CENTRAL');
         $match->assertDontSee('BRANCH');
+        $match->assertSee('Menu Group name');
+        $match->assertSee('>Edit</a>');
+        $match->assertDontSee('Delete');
         self::assertStringContainsString('value="CENTRAL"', $match->getBody());
+
+        $missing = $this->withSession($session)->get('/menu?search=ABSENT');
+        $missing->assertStatus(200);
+        $missing->assertSee('Menu Group name');
+        $missing->assertDontSee('CENTRAL');
+        self::assertStringContainsString('value="ABSENT"', $missing->getBody());
 
         $overlong = $this->withSession($session)->get('/menu?search=' . str_repeat('x', 129));
         $overlong->assertStatus(200);
@@ -88,9 +106,22 @@ final class MenuHttpTest extends CIUnitTestCase
 
     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
     {
-        $visible = (new MenuStore($this->db))->visible(1);
-        self::assertSame(['DASH LINK', 'ADMIN MASTER LINK', 'REPORT LINK'], array_column($visible, 'menu_name'));
-        self::assertSame(['dashboard', 'master/brand', 'ReportTrackingListing'], array_column($visible, 'menu_link'));
+        $groups = (new MenuStore($this->db))->visible(1);
+        // Group order follows the CSV '1,2' of group_menu id 1; names/icons come from group_type.
+        self::assertSame([1, 2], array_column($groups, 'group_id'));
+        self::assertSame(['DASHBOARD', 'MASTER ADMIN'], array_column($groups, 'group_name'));
+
+        $flatNames = [];
+        $flatLinks = [];
+        foreach ($groups as $group) {
+            foreach ($group['items'] as $item) {
+                $flatNames[] = $item['menu_name'];
+                $flatLinks[] = $item['menu_link'];
+            }
+        }
+        self::assertSame(['DASH LINK', 'ADMIN MASTER LINK', 'REPORT LINK'], $flatNames);
+        self::assertSame(['dashboard', 'master/brand', 'ReportTrackingListing'], $flatLinks);
+
         $admin = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard');
         $admin->assertStatus(200);
         $admin->assertSee('ADMIN MASTER LINK');
@@ -102,6 +133,88 @@ final class MenuHttpTest extends CIUnitTestCase
         $branch->assertStatus(200);
         $branch->assertSee('BRANCH ORDER LINK');
         $branch->assertDontSee('ADMIN MASTER LINK');
+        // AC-5: pin the $branchId the controller forwards into visible(). Mutating
+        // BaseController::layout() to pass null instead of $branchId lets these two hidden
+        // order queues render for a branch user, turning both assertions red.
+        $branch->assertDontSee('TRANSPORTING');
+        $branch->assertDontSee('STATUS REPAIR');
+    }
+
+    public function testBranchUserHidesOrderQueuesAndRenumbersContinuously(): void
+    {
+        $store = new MenuStore($this->db);
+
+        // Central user (BranchID null) sees the full ORDER group numbered 1..4.
+        $central = $this->groupItems($store->visible(4, null), 3);
+        self::assertSame(
+            ['1. BRANCH ORDER LINK', '2. TRANSPORTING', '3. STATUS REPAIR', '4. DELIVERED'],
+            array_column($central, 'menu_name'),
+        );
+
+        // Branch user (BranchID set) loses the two hidden queues; numbering stays 1..2
+        // with no skipped number (hide happens before renumbering).
+        $branch = $this->groupItems($store->visible(4, 1), 3);
+        self::assertSame(['1. BRANCH ORDER LINK', '2. DELIVERED'], array_column($branch, 'menu_name'));
+        self::assertNotContains('TrackingListing', array_column($branch, 'menu_link'));
+        self::assertNotContains('TrackingcloseListing', array_column($branch, 'menu_link'));
+    }
+
+    public function testDedupIsPerGroupNotGlobalSoSharedLinksShowInEachGroup(): void
+    {
+        // AC-1 / AC-3: a link belonging to two group_types in the same CSV selection must show
+        // in BOTH groups (CI3 parity), while a link repeated WITHIN one group is still shown
+        // once. Reverting $seen in MenuStore::visible() to a global set (declared once outside
+        // the per-type loop) drops the group-3 occurrence and turns assertContains red.
+        $now = '2026-08-22 09:00:00';
+        $this->db->table('tbl_menu')->insertBatch([
+            ['id' => 9, 'menu_name' => 'SHARED LINK', 'menu_link' => 'dashboard', 'group_type' => 3, 'cdate' => $now],
+            ['id' => 10, 'menu_name' => 'SHARED LINK DUP', 'menu_link' => 'dashboard', 'group_type' => 3, 'cdate' => $now],
+        ]);
+
+        $groups = (new MenuStore($this->db))->visible(4, null);
+        $group1Links = array_column($this->groupItems($groups, 1), 'menu_link');
+        $group3Links = array_column($this->groupItems($groups, 3), 'menu_link');
+
+        // Cross-group: 'dashboard' kept in group 1 AND reappears in group 3 (per-group dedup).
+        self::assertContains('dashboard', $group1Links);
+        self::assertContains('dashboard', $group3Links);
+        // Within group 3 the two duplicate 'dashboard' rows collapse to one.
+        self::assertSame(1, count(array_keys($group3Links, 'dashboard', true)));
+    }
+
+    public function testGroupWithNoVisibleItemsIsNotRendered(): void
+    {
+        // AC-4: a CSV group_type that resolves to zero items (group_type 5 has no tbl_menu rows)
+        // must not produce an empty sidebar heading. Removing the `$items === []` guard in
+        // MenuStore::visible() pushes a headed-but-empty group and turns this red.
+        $this->db->table('group_menu')->insert([
+            'id' => 7, 'group_type' => '1,5', 'name' => 'HAS EMPTY', 'cdate' => '2026-08-22 09:00:00',
+        ]);
+
+        $groups = (new MenuStore($this->db))->visible(7, null);
+        self::assertSame([1], array_column($groups, 'group_id'));
+    }
+
+    public function testSidebarAnchorCountMatchesVisibleItems(): void
+    {
+        $store = new MenuStore($this->db);
+        $expected = 0;
+        foreach ($store->visible(1, null) as $group) {
+            $expected += count($group['items']);
+        }
+
+        $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
+        self::assertSame(1, preg_match('#<nav aria-label="Main navigation">(.*?)</nav>#s', $body, $m));
+        self::assertSame($expected, substr_count($m[1], '<a '));
+    }
+
+    public function testDashboardRendersSinglePageHeaderH1(): void
+    {
+        $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
+        self::assertStringContainsString('class="page-header"', $body);
+        // The blue header owns the only page heading; the view's own <h1> must be gone.
+        self::assertSame(1, substr_count($body, '<h1 id="page-title">Dashboard</h1>'));
+        self::assertSame(0, substr_count($body, 'id="dashboard-title"'));
     }
 
     public function testAnonymousLayoutRendersNoNavigationAndNeedsNoMenuTables(): void
@@ -109,7 +222,7 @@ final class MenuHttpTest extends CIUnitTestCase
         // AC-2 / AC-5: an unauthenticated page that uses the layout must render no
         // navigation and must not depend on the menu tables. Drop them first so a
         // page that still returns 200 proves the anonymous path never queries them.
-        foreach (['tbl_menu', 'group_menu'] as $table) {
+        foreach (['tbl_menu', 'group_menu', 'group_type'] as $table) {
             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
             $this->db->query("DROP TABLE IF EXISTS {$name}");
         }
@@ -123,6 +236,102 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('<nav', $body);
         self::assertStringNotContainsString('Main navigation', $body);
         self::assertStringNotContainsString('Sign out', $body);
+    }
+
+    public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
+    {
+        $this->db->table('group_menu')->insert([
+            'group_type' => '1', 'name' => '<script>alert(1)</script>', 'cdate' => '2026-08-22 09:00:00',
+        ]);
+        $escapedId = (int) $this->db->insertID();
+        $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+        $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
+
+        self::assertStringContainsString('<table>', $body);
+        self::assertStringContainsString('<th>ฺId</th> <th>Menu Group name</th> <th>Actions</th>', $decoded);
+        self::assertStringContainsString('<td>1</td>', $body);
+        self::assertStringContainsString('<td>CENTRAL</td>', $body);
+        self::assertStringContainsString('<a href="/menu/1">Edit</a>', $body);
+        self::assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $body);
+        self::assertStringNotContainsString('<script>alert(1)</script>', $body);
+        self::assertStringContainsString('<a href="/menu/' . $escapedId . '">Edit</a>', $body);
+        self::assertStringContainsString('Add New', $body);
+        self::assertStringContainsString('href="/menu/new"', $body);
+        self::assertStringNotContainsString('Delete', $body);
+        self::assertStringNotContainsString('<form method="post"', $body);
+        self::assertStringNotContainsString('type="reset"', $body);
+    }
+
+    public function testMenuAddPageShowsBlankFormWithResetButNoListing(): void
+    {
+        // AC-2: /menu/new renders a blank entity form with a reset button and no menu listing.
+        $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu/new')->getBody();
+        self::assertStringContainsString('<form method="post"', $body);
+        self::assertStringContainsString('type="reset"', $body);
+        self::assertStringContainsString('>Submit</button>', $body);
+        self::assertStringContainsString('name="name" value=""', $body); // blank form
+        // No listing: the BRANCH row link (id 4) only appears on the list page.
+        self::assertStringNotContainsString('href="/menu/4"', $body);
+    }
+
+    public function testMenuEditPageShowsFilledFormWithCheckedGroupsButNoListing(): void
+    {
+        // AC-3: /menu/<id> renders the row's values (name + checked group_type boxes) with a
+        // reset button and no listing. Group_menu id 1 has group_type '1,2'.
+        $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu/1')->getBody();
+        self::assertStringContainsString('value="CENTRAL"', $body);          // name prefilled
+        self::assertStringContainsString('value="1" checked', $body);        // group 1 selected
+        self::assertStringContainsString('value="2" checked', $body);        // group 2 selected
+        self::assertStringNotContainsString('value="3" checked', $body);     // group 3 not selected
+        self::assertStringContainsString('type="reset"', $body);
+        self::assertStringContainsString('action="/menu/1"', $body);
+        self::assertStringNotContainsString('href="/menu/4"', $body);        // no other-row link
+    }
+
+    public function testMenuAddPageDeniedWithoutAdminLikeEditPage(): void
+    {
+        // AC-5: guest and non-admin are refused /menu/new with the same result as /menu/<id>.
+        // Guest denial comes from the web-auth filter (a response); non-admin denial comes from
+        // the controller's assertAdmin() (a PageNotFoundException). The probe captures either so
+        // the parity holds across both mechanisms. Dropping web-auth from menu/new flips the
+        // guest branch from a filter response to a controller throw, breaking this parity.
+        $probe = function (array $session, string $path): string {
+            try {
+                return 'status:' . $this->withSession($session)->get($path)->response()->getStatusCode();
+            } catch (\CodeIgniter\Exceptions\PageNotFoundException) {
+                return 'not-found';
+            }
+        };
+
+        self::assertNotSame('status:200', $probe([], '/menu/new'));
+        self::assertSame($probe([], '/menu/1'), $probe([], '/menu/new'));
+
+        $branch = $this->session($this->branchId, 2, 4, 1);
+        self::assertNotSame('status:200', $probe($branch, '/menu/new'));
+        self::assertSame($probe($branch, '/menu/1'), $probe($branch, '/menu/new'));
+    }
+
+    public function testMenuListingSearchFormCarriesNoResetButton(): void
+    {
+        // AC-7: the search/filter form on the listing must not carry a reset button.
+        $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+        self::assertStringContainsString('<form method="get" action="/menu">', $body);
+        self::assertStringNotContainsString('type="reset"', $body);
+    }
+
+    /**
+     * @param list<array{group_id: int, group_name: string, icon: string, items: list<array{menu_name: string, menu_link: string}>}> $groups
+     * @return list<array{menu_name: string, menu_link: string}>
+     */
+    private function groupItems(array $groups, int $groupId): array
+    {
+        foreach ($groups as $group) {
+            if ($group['group_id'] === $groupId) {
+                return $group['items'];
+            }
+        }
+
+        return [];
     }
 
     /** @param array<string, mixed> $payload */

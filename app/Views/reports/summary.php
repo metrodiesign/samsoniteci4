@@ -6,7 +6,7 @@ $exportFilters = array_filter([
 $exportUrl = site_url('reports/summary/export') . ($exportFilters === [] ? '' : '?' . http_build_query($exportFilters));
 $nextUrl = site_url('reportsummary/' . ($page + 100)) . ($exportFilters === [] ? '' : '?' . http_build_query($exportFilters));
 ?>
-<section><h1>Report summary</h1><p><?= count($rows) ?> matching order(s).</p>
+<section><p><?= count($rows) ?> matching order(s).</p>
 <?php if ($error): ?><div class="alert" role="alert"><?= esc($error) ?></div><?php endif ?>
 <form class="card filters" method="post" action="<?= site_url('reportsummary') ?>">
 <?= csrf_field() ?>

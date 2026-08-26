@@ -34,7 +34,7 @@ final class Order extends BaseController
         7 => ['title' => 'COMPLETED', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null],
     ];
 
-    public function listing(?string $fixedStatus = null): string
+    public function listing(?string $fixedStatus = null): string|ResponseInterface
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
         $rawPage = $this->request->getGet('page');
@@ -48,6 +48,13 @@ final class Order extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
         $session = service('session');
+        // Single choke point for the TRANSPORTING (2) / STATUS REPAIR (3) queues: every entry that
+        // resolves $status here — /TrackingListing, /TrackingcloseListing and /orders?status= — is
+        // denied to any branch user (BranchID not null), so the route filter cannot be side-stepped
+        // with a guessable query string. The route-level `branchless` filter stays as a second layer.
+        if (in_array($status, [2, 3], true) && $session->get('BranchID') !== null) {
+            return $this->response->setStatusCode(403)->setJSON(['error' => 'forbidden']);
+        }
         $branchId = (int) $session->get('role') === 1 ? null : (int) $session->get('BranchID');
         $db = db_connect();
         $store = new OrderStore($db);
@@ -57,9 +64,9 @@ final class Order extends BaseController
             $rows,
         ));
 
-        return $this->layout((self::PROFILES[$status]['title'] ?? ('Orders status ' . $status)), view('orders', [
+        return $this->layout((self::PROFILES[$status]['title'] ?? ('Orders — status ' . $status)), view('orders', [
             'rows' => $rows,
-            'status' => $status, 'page' => $page, 'search' => $search,
+            'status' => $status, 'page' => $page, 'search' => $search, 'sdate' => $sdate,
             'profile' => self::PROFILES[$status] ?? null,
             'statusUpdates' => $statusUpdates,
             'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
@@ -149,6 +156,7 @@ final class Order extends BaseController
             'updated' => redirect()->to($redirect),
             'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_transition']),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
+            'forbidden' => $this->response->setStatusCode(403)->setJSON(['error' => 'forbidden']),
             'conflict' => $this->response->setStatusCode(409)->setJSON(['error' => 'invalid_order_state']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'transition_unavailable']),
         };
@@ -158,7 +166,7 @@ final class Order extends BaseController
     {
         $row = $this->accessibleOrder($rawId);
 
-        return $this->layout('Edit order', view('order_edit', ['row' => $row] + $this->formMasterData()));
+        return $this->layout('Edit ' . (string) ($row['trackID'] ?? ''), view('order_edit', ['row' => $row] + $this->formMasterData()));
     }
 
     public function print(string $rawId): string
@@ -211,8 +219,14 @@ final class Order extends BaseController
     private function formMasterData(): array
     {
         $db = db_connect();
+        $session = service('session');
+        $books = $db->table('book')->select('book_id, book_detail, branch_id')->where('status', 1);
+        if ((int) $session->get('role') !== 1) {
+            $books->where('branch_id', (int) $session->get('BranchID'));
+        }
 
         return [
+            'books' => $books->orderBy('branch_id', 'ASC')->orderBy('book_id', 'ASC')->get()->getResultArray(),
             'types' => $db->table('type')->select('type_id, type_details')
                 ->orderBy('type_id', 'ASC')->get()->getResultArray(),
             'brands' => $db->table('brand')->select('brand_id, brand_details')
@@ -304,6 +318,7 @@ final class Order extends BaseController
         return match ($result) {
             'deleted' => $this->response->setStatusCode(204),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
+            'forbidden' => $this->response->setStatusCode(403)->setJSON(['error' => 'forbidden']),
             'conflict' => $this->response->setStatusCode(409)->setJSON(['error' => 'order_state_conflict']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']),
         };

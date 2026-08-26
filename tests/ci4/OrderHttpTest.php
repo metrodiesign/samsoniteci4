@@ -6,6 +6,7 @@ use App\Authentication\ShadowUserStore;
 use App\Orders\OrderSequence;
 use CodeIgniter\Events\Events;
 use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\Security\Exceptions\SecurityException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -28,7 +29,8 @@ final class OrderHttpTest extends CIUnitTestCase
         $encryption->key = str_repeat("\x40", 32);
         Services::injectMock('encrypter', Services::encrypter($encryption, false));
         foreach ([
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), warantyType INTEGER, detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), warantyType INTEGER, detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250), CONSTRAINT uq_request_order_order_show_tel UNIQUE (orderIDShow, customerTel)',
+            'book' => 'book_id INTEGER PRIMARY KEY, branch_id INTEGER NOT NULL, book_detail VARCHAR(3) NOT NULL, status INTEGER NOT NULL',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100) NOT NULL, action_id INTEGER, update_id INTEGER, cdate DATETIME NOT NULL',
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250) NOT NULL, status_name_th VARCHAR(250)',
             'provider' => 'provider_id INTEGER PRIMARY KEY, provider_name VARCHAR(250) NOT NULL',
@@ -57,6 +59,12 @@ final class OrderHttpTest extends CIUnitTestCase
             ['branch_id' => 1, 'branch_type' => 1, 'branch_user_name' => 'branch-a', 'branch_name' => 'BRANCH A', 'default_suffix' => 'WPA', 'book_order' => 'WPA', 'customer_ref' => 'WPA'],
             ['branch_id' => 2, 'branch_type' => 2, 'branch_user_name' => 'branch-b', 'branch_name' => 'BRANCH B', 'default_suffix' => 'WPB', 'book_order' => 'WPB', 'customer_ref' => 'WPB'],
         ]);
+        $this->db->table('book')->insertBatch([
+            ['book_id' => 1, 'branch_id' => 1, 'book_detail' => 'ABC', 'status' => 1],
+            ['book_id' => 2, 'branch_id' => 1, 'book_detail' => 'OLD', 'status' => 0],
+            ['book_id' => 3, 'branch_id' => 2, 'book_detail' => 'XYZ', 'status' => 1],
+            ['book_id' => 4, 'branch_id' => 2, 'book_detail' => 'ABC', 'status' => 1],
+        ]);
         $this->db->table('brand')->insert(['brand_id' => 1, 'brand_details' => 'BRAND A']);
         $this->db->table('type')->insert(['type_id' => 1, 'type_details' => 'TYPE A']);
         $this->db->table('provider')->insert(['provider_id' => 1, 'provider_name' => 'PROVIDER A']);
@@ -77,7 +85,7 @@ final class OrderHttpTest extends CIUnitTestCase
             $this->db->table('statusaction')->insert(['status_id' => $status, 'status_name' => 'STATUS ' . $status, 'status_name_th' => 'สถานะ ' . $status]);
             $this->db->table('request_order')->insert([
                 'request_id' => 91000 + $status, 'requestDate' => sprintf('2026-08-%02d 00:00:00', $status),
-                'trackID' => 'WP00C-TRACK-00' . $status, 'numberID' => 'N' . $status,
+                'trackID' => 'WP00C-TRACK-00' . $status, 'bookID' => '1', 'numberID' => 'N' . $status,
                 'orderID' => 'O' . $status, 'orderIDShow' => 'WPC/' . $status,
                 'customerFullname' => 'CUSTOMER ' . $status, 'customerTel' => '0000000000',
                 'branchID' => $status <= 6 ? 1 : 2, 'branch_type_id' => $status <= 6 ? 1 : 2,
@@ -87,6 +95,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $users = new ShadowUserStore($this->db);
         $users->create('order-admin@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 1, null);
         $users->create('order-branch@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 2, 1);
+        $users->create('order-branch-read@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 3, 1);
     }
 
     public function testAllStatusListingsLegacyRoutesSearchAndBranchScope(): void
@@ -151,12 +160,15 @@ final class OrderHttpTest extends CIUnitTestCase
         $listing->assertSee('Send');
         self::assertStringNotContainsString('Send to provider', $listingBody);
 
+        // TRANSPORTING (2) and STATUS REPAIR (3) are now blocked for branch users (wp03f t2), so their
+        // browser forms are asserted through an admin session; the return queue stays branch-visible.
+        $admin = $this->session(1, 1, null);
         foreach ([
-            '/TrackingListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [3, 4]],
-            '/TrackingcloseListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [4]],
-            '/TrackingreturnListing' => ['/sendorder_deliver', 'status_id', 'Send', [5]],
-        ] as $route => [$action, $field, $button, $optionValues]) {
-            $response = $this->withSession($session)->get($route);
+            '/TrackingListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [3, 4], $admin],
+            '/TrackingcloseListing' => ['/sendorderUpdateStatus', 'status_id', 'Send', [4], $admin],
+            '/TrackingreturnListing' => ['/sendorder_deliver', 'status_id', 'Send', [5], $session],
+        ] as $route => [$action, $field, $button, $optionValues, $actor]) {
+            $response = $this->withSession($actor)->get($route);
             $response->assertStatus(200);
             $body = $response->getBody();
             self::assertStringContainsString('action="' . $action . '"', $body);
@@ -172,6 +184,95 @@ final class OrderHttpTest extends CIUnitTestCase
             }
             self::assertSame(count($optionValues), substr_count($body, '<option'));
         }
+    }
+
+    public function testBranchUserIsForbiddenFromTransportingAndStatusRepairListings(): void
+    {
+        // AC-1: a branch user (BranchID not null) is denied the two hidden queues by route filter.
+        $branch = $this->session(2, 2, 1);
+        foreach (['/TrackingListing', '/TrackingcloseListing'] as $route) {
+            $this->withSession($branch)->get($route)->assertStatus(403);
+        }
+    }
+
+    public function testBranchlessAdminStillSeesTransportingAndStatusRepairListings(): void
+    {
+        // AC-2: an admin (BranchID null) still gets 200 with the queue rows on both routes.
+        $admin = $this->session(1, 1, null);
+        $transporting = $this->withSession($admin)->get('/TrackingListing');
+        $transporting->assertStatus(200);
+        $transporting->assertSee('WP00C-TRACK-002');
+        $repair = $this->withSession($admin)->get('/TrackingcloseListing');
+        $repair->assertStatus(200);
+        $repair->assertSee('WP00C-TRACK-003');
+    }
+
+    public function testBranchUserBlockedOnQueueTwoThreeButNotOtherTransitions(): void
+    {
+        $branch = $this->session(2, 2, 1);
+
+        // AC-3: a branch user cannot transition an order sourced from queue 2 (from=2) or 3 (from=3),
+        // and no row in request_order or status_log is touched. Both disjuncts of the gate are covered.
+        foreach ([['91002', '3'], ['91003', '4']] as [$id, $target]) {
+            $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => [$id], 'status_id' => $target], $branch)
+                ->assertStatus(403);
+        }
+        self::assertSame(2, (int) $this->db->table('request_order')->where('request_id', 91002)->get()->getRow('action_status'));
+        self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 91003)->get()->getRow('action_status'));
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+
+        // AC-4 (discriminator): the COMPLETE queue (from=5 -> 7) shares /sendorderUpdateStatus and must
+        // still succeed for the same branch user, proving the gate keys on source status, not the endpoint.
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91005'], 'status_id' => '7'], $branch)
+            ->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame(7, (int) $this->db->table('request_order')->where('request_id', 91005)->get()->getRow('action_status'));
+
+        // AC-5: the provider (from=1) and deliver (from=4) transitions are untouched for the same branch user.
+        $this->postTransition('/sendorderUpdate', ['select_list_id' => ['91001'], 'provider_id' => '1'], $branch)
+            ->assertRedirectTo('/sendorderListing');
+        self::assertSame(2, (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'));
+        $this->postTransition('/sendorder_deliver', ['select_list_id' => ['91004'], 'status_id' => '5'], $branch)
+            ->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame(5, (int) $this->db->table('request_order')->where('request_id', 91004)->get()->getRow('action_status'));
+    }
+
+    public function testBranchUserCannotReachTransportingOrStatusRepairViaQueryString(): void
+    {
+        // AC-1: /orders?status= resolves the same $status as the named routes, so the branch user
+        // must be denied 2 and 3 there too — the guessable query string cannot side-step the gate.
+        $branch = $this->session(2, 2, 1);
+        $this->withSession($branch)->get('/orders?status=2')->assertStatus(403);
+        $this->withSession($branch)->get('/orders?status=3')->assertStatus(403);
+
+        // AC-2: an admin (BranchID null) still reaches both queues through the query string.
+        $admin = $this->session(1, 1, null);
+        $this->withSession($admin)->get('/orders?status=2')->assertSee('WP00C-TRACK-002');
+        $this->withSession($admin)->get('/orders?status=3')->assertSee('WP00C-TRACK-003');
+    }
+
+    public function testBranchUserStillReachesEveryOtherQueueThroughQueryString(): void
+    {
+        // AC-6 (discriminator): only queues 2 and 3 are gated; every other status stays 200 for the
+        // branch user, proving the gate keys on the resolved status and does not over-block.
+        $branch = $this->session(2, 2, 1);
+        foreach ([1, 4, 5, 6, 7, 8] as $status) {
+            $this->withSession($branch)->get('/orders?status=' . $status)->assertStatus(200);
+        }
+    }
+
+    public function testBranchUserCannotSoftDeleteTransportingOrStatusRepairOrder(): void
+    {
+        // AC-3: soft-delete rewrites action_status to 8; a branch user must be forbidden (403) from
+        // doing so to an order sourced from queue 2 or 3, and the row must stay untouched.
+        $branch = $this->session(2, 2, 1);
+        foreach ([91002 => 2, 91003 => 3] as $id => $status) {
+            $this->postTransition('/orders/' . $id . '/delete', [], $branch)->assertStatus(403);
+            self::assertSame($status, (int) $this->db->table('request_order')->where('request_id', $id)->get()->getRow('action_status'));
+        }
+
+        // AC-4 (discriminator): the same branch user still soft-deletes an order it may act on (status 1).
+        $this->postTransition('/orders/91001/delete', [], $branch)->assertStatus(204);
+        self::assertSame(8, (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'));
     }
 
     public function testBulkTransitionUpdatesEverySelectedOrder(): void
@@ -313,21 +414,67 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame(1, $uploadQueries, 'listing must batch Status Update into one uploadstaus query per page');
     }
 
-    public function testListingDateFilterMatchesExactDayAndIgnoresMalformedInput(): void
+    public function testEveryListingShowsCi3DateAndDetailFilters(): void
+    {
+        $admin = $this->session(1, 1, null);
+        foreach (range(1, 8) as $status) {
+            $response = $this->withSession($admin)->get('/orders?status=' . $status);
+            $response->assertStatus(200);
+            $body = $response->getBody();
+            self::assertStringContainsString('<label for="order-date">Date :</label>', $body);
+            self::assertStringContainsString('name="sdate" value="" placeholder="Date"', $body);
+            self::assertStringContainsString('<label for="order-search">Detail : </label>', $body);
+            self::assertStringContainsString('name="search" value="" maxlength="128" placeholder="Search"', $body);
+        }
+    }
+
+    public function testListingDateFilterMatchesExactDayPersistsAndIgnoresMalformedInput(): void
     {
         $admin = $this->session(1, 1, null);
 
         $match = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('02/08/2026'));
         $match->assertStatus(200);
         $match->assertSee('WP00C-TRACK-002');
+        self::assertStringContainsString('name="sdate" value="02/08/2026" placeholder="Date"', $match->getBody());
 
         $miss = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('03/08/2026'));
         $miss->assertStatus(200);
         $miss->assertDontSee('WP00C-TRACK-002');
+        self::assertStringContainsString('name="sdate" value="03/08/2026" placeholder="Date"', $miss->getBody());
 
         $malformed = $this->withSession($admin)->get('/TrackingListing?sdate=abc');
         $malformed->assertStatus(200);
         $malformed->assertSee('WP00C-TRACK-002');
+        self::assertStringContainsString('name="sdate" value="abc" placeholder="Date"', $malformed->getBody());
+    }
+
+    public function testListingPaginationPreservesResolvedDateAndSearchFilters(): void
+    {
+        $rows = [];
+        for ($index = 1; $index <= 50; $index++) {
+            $rows[] = [
+                'request_id' => 92000 + $index, 'requestDate' => '2026-08-02 00:00:00',
+                'trackID' => sprintf('WP03F-PAGE-%03d', $index), 'orderID' => 'NEEDLE-' . $index,
+                'customerFullname' => 'PAGINATION CUSTOMER', 'customerTel' => '0000000000',
+                'branchID' => 1, 'branch_type_id' => 1, 'UserID' => 9002, 'action_status' => 1,
+            ];
+        }
+        $this->db->table('request_order')->insertBatch($rows);
+
+        $response = $this->withSession($this->session(1, 1, null))->get(
+            '/orders?status=1&sdate=' . rawurlencode('02/08/2026') . '&search=needle',
+        );
+        $response->assertStatus(200);
+        self::assertStringContainsString(
+            'href="/orders?status=1&amp;page=2&amp;sdate=02%2F08%2F2026&amp;search=needle">Next</a>',
+            $response->getBody(),
+        );
+
+        $withoutFilters = $this->withSession($this->session(1, 1, null))->get('/orders?status=1');
+        self::assertStringContainsString(
+            'href="/orders?status=1&amp;page=2">Next</a>',
+            $withoutFilters->getBody(),
+        );
     }
 
     public function testOrderSequenceStartsAfterExistingLegacyTrackingId(): void
@@ -356,13 +503,202 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame('WPB26080002', $sequence->next($now, 'WPB'));
     }
 
+    public function testNewOrderFormScopesCanonicalBooksAndDefinesLocalPreviewContract(): void
+    {
+        $admin = $this->withSession($this->session(1, 1, null))->get('/orders/new');
+        $admin->assertStatus(200);
+        $adminBody = $admin->getBody();
+        self::assertStringContainsString('name="book_id" required', $adminBody);
+        self::assertStringContainsString('value="1" data-book-detail="ABC" data-branch-id="1"', $adminBody);
+        self::assertStringContainsString('value="3" data-book-detail="XYZ" data-branch-id="2"', $adminBody);
+        self::assertStringContainsString('value="4" data-book-detail="ABC" data-branch-id="2"', $adminBody);
+        self::assertStringNotContainsString('OLD', $adminBody);
+        self::assertStringNotContainsString('name="order_id"', $adminBody);
+        self::assertStringContainsString('inputmode="numeric" pattern="[0-9]+" maxlength="96" required', $adminBody);
+        self::assertStringContainsString('<output id="order-id-preview"', $adminBody);
+        self::assertStringContainsString("form.addEventListener('reset'", $adminBody);
+        self::assertStringNotContainsString('fetch(', $adminBody);
+        self::assertStringNotContainsString('XMLHttpRequest', $adminBody);
+
+        foreach ([2, 3] as $role) {
+            $branchBody = $this->withSession($this->session($role, $role, 1))->get('/orders/new')->getBody();
+            self::assertStringContainsString('value="1" data-book-detail="ABC" data-branch-id="1"', $branchBody);
+            self::assertStringNotContainsString('data-branch-id="2"', $branchBody);
+            self::assertStringNotContainsString('XYZ', $branchBody);
+        }
+    }
+
+    public function testCreateOrderDerivesCanonicalIdentifiersAndKeepsDigitBoundaries(): void
+    {
+        $payload = $this->validOrderPayload([
+            'submission_id' => str_repeat('a', 32),
+            'number_id' => '000001',
+            'order_id' => 'CLIENT-ORDER',
+            'bookshort' => 'BAD',
+            'orderID' => 'BAD-ORDER',
+            'orderIDShow' => 'BAD/ORDER',
+        ]);
+        $this->postOrder($payload)->assertRedirect();
+        $row = $this->db->table('request_order')->where('customerFullname', 'VALID CUSTOMER')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame('1', (string) $row['bookID']);
+        self::assertSame('000001', (string) $row['numberID']);
+        self::assertSame('ABC000001', (string) $row['orderID']);
+        self::assertSame('ABC/000001', (string) $row['orderIDShow']);
+
+        $this->postOrderAs($this->validOrderPayload([
+            'submission_id' => str_repeat('4', 32), 'number_id' => '000002', 'customer_tel' => '5555555555',
+        ]), $this->session(3, 3, 1))->assertRedirect();
+        self::assertSame('ABC/000002', (string) $this->db->table('request_order')
+            ->where('customerTel', '5555555555')->get()->getRow('orderIDShow'));
+
+        $this->postOrderAs($this->validOrderPayload([
+            'submission_id' => str_repeat('5', 32), 'number_id' => '000003', 'customer_tel' => '6666666666',
+            'branch_id' => '2', 'book_id' => '3',
+        ]), $this->session(1, 1, null))->assertRedirect();
+        self::assertSame('XYZ/000003', (string) $this->db->table('request_order')
+            ->where('customerTel', '6666666666')->get()->getRow('orderIDShow'));
+
+        $max = str_repeat('7', 96);
+        $this->postOrder($this->validOrderPayload([
+            'submission_id' => str_repeat('b', 32), 'number_id' => $max, 'customer_tel' => '1111111111',
+            'order_id' => ['ignored-array'],
+        ]))->assertRedirect();
+        self::assertSame($max, (string) $this->db->table('request_order')
+            ->where('customerTel', '1111111111')->get()->getRow('numberID'));
+
+        $this->postOrder($this->validOrderPayload([
+            'submission_id' => str_repeat('c', 32), 'number_id' => str_repeat('8', 97),
+        ]))->assertStatus(422);
+        $this->assertCreateCounts(12, 4, 4);
+    }
+
+    public function testCreateOrderUsesCharacterLengthForCanonicalBookLabels(): void
+    {
+        $this->db->table('book')->insertBatch([
+            ['book_id' => 5, 'branch_id' => 1, 'book_detail' => 'กขค', 'status' => 1],
+            ['book_id' => 6, 'branch_id' => 1, 'book_detail' => 'กขคง', 'status' => 1],
+        ]);
+
+        $this->postOrder($this->validOrderPayload([
+            'submission_id' => str_repeat('7', 32), 'book_id' => '5', 'number_id' => '0042',
+            'customer_tel' => '7777777777',
+        ]))->assertRedirect();
+        $row = $this->db->table('request_order')->where('customerTel', '7777777777')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame('5', (string) $row['bookID']);
+        self::assertSame('0042', (string) $row['numberID']);
+        self::assertSame('กขค0042', (string) $row['orderID']);
+        self::assertSame('กขค/0042', (string) $row['orderIDShow']);
+
+        $this->postOrder($this->validOrderPayload([
+            'submission_id' => str_repeat('8', 32), 'book_id' => '6', 'number_id' => '0043',
+            'customer_tel' => '8888888888',
+        ]))->assertStatus(422);
+        self::assertSame(0, $this->db->table('request_order')->where('customerTel', '8888888888')->countAllResults());
+        $this->assertCreateCounts(9, 1, 1);
+    }
+
+    public function testCreateOrderRejectsMalformedOrInaccessibleBookAndNumberWithoutMetadataLeak(): void
+    {
+        $bookCases = [
+            'missing' => null, 'empty' => '', 'zero' => '0', 'negative' => '-1', 'float' => '1.0',
+            'exponent' => '1e0', 'array' => ['1'], 'whitespace' => ' 1 ', 'unknown' => '999', 'inactive' => '2',
+            'cross-branch' => '3',
+        ];
+        foreach ($bookCases as $label => $bookId) {
+            $payload = $this->validOrderPayload(['submission_id' => md5('book-' . $label)]);
+            if ($bookId === null) {
+                unset($payload['book_id']);
+            } else {
+                $payload['book_id'] = $bookId;
+            }
+            $response = $this->postOrder($payload);
+            $response->assertStatus(422);
+            self::assertSame(['error' => 'invalid_order'], json_decode($response->getJSON(), true, 8, JSON_THROW_ON_ERROR));
+            $this->assertCreateCounts(8, 0, 0);
+        }
+
+        foreach ([
+            'missing' => null, 'empty' => '', 'letter' => 'A1', 'slash' => '1/2',
+            'sql' => "1' OR 1=1--", 'html' => '<b>1</b>', 'unicode' => '๑', 'whitespace' => ' 1 ',
+        ] as $label => $numberId) {
+            $payload = $this->validOrderPayload(['submission_id' => md5('number-' . $label)]);
+            if ($numberId === null) {
+                unset($payload['number_id']);
+            } else {
+                $payload['number_id'] = $numberId;
+            }
+            $this->postOrder($payload)->assertStatus(422);
+            $this->assertCreateCounts(8, 0, 0);
+        }
+
+        $this->postOrderAs($this->validOrderPayload([
+            'submission_id' => str_repeat('d', 32), 'branch_id' => '1', 'book_id' => '3',
+        ]), $this->session(1, 1, null))->assertStatus(422);
+        $this->postOrderAs($this->validOrderPayload([
+            'submission_id' => str_repeat('6', 32), 'branch_id' => '1', 'book_id' => '3',
+        ]), $this->session(3, 3, 1))->assertStatus(422);
+        $this->assertCreateCounts(8, 0, 0);
+    }
+
+    public function testCreateOrderUsesGlobalDisplayAndTelephoneBusinessKey(): void
+    {
+        $first = $this->validOrderPayload([
+            'submission_id' => str_repeat('e', 32), 'number_id' => '7701', 'customer_tel' => '2222222222',
+        ]);
+        $this->postOrder($first)->assertRedirect();
+        $this->db->table('request_order')->where('orderIDShow', 'ABC/7701')->update(['action_status' => 8]);
+
+        $this->postOrder([...$first, 'submission_id' => str_repeat('f', 32)])->assertStatus(409);
+        $this->postOrder([...$first, 'submission_id' => str_repeat('1', 32), 'customer_tel' => '3333333333'])
+            ->assertRedirect();
+        $this->postOrderAs([...$first, 'submission_id' => str_repeat('2', 32), 'branch_id' => '2', 'book_id' => '4'],
+            $this->session(1, 1, null))->assertStatus(409);
+
+        self::assertSame(1, $this->db->table('request_order')
+            ->where('orderIDShow', 'ABC/7701')->where('customerTel', '2222222222')->countAllResults());
+        self::assertSame(1, $this->db->table('request_order')
+            ->where('orderIDShow', 'ABC/7701')->where('customerTel', '3333333333')->countAllResults());
+        $this->assertCreateCounts(10, 2, 2);
+    }
+
+    public function testCreateOrderRollsBackNonBusinessDatabaseFailureAndAllowsRetry(): void
+    {
+        $trigger = $this->db->escapeIdentifiers($this->db->prefixTable('fail_order_status_log'));
+        $statusLog = $this->db->escapeIdentifiers($this->db->prefixTable('status_log'));
+        $this->db->query("CREATE TRIGGER {$trigger} BEFORE INSERT ON {$statusLog} BEGIN SELECT RAISE(FAIL, 'UNIQUE constraint failed: unrelated_table.other'); END");
+        $payload = $this->validOrderPayload([
+            'submission_id' => str_repeat('3', 32), 'number_id' => '8801', 'customer_tel' => '4444444444',
+        ]);
+        try {
+            $this->postOrder($payload)->assertStatus(503);
+            $this->assertCreateCounts(8, 0, 0);
+        } finally {
+            $this->db->query("DROP TRIGGER IF EXISTS {$trigger}");
+        }
+
+        $this->postOrder($payload)->assertRedirect();
+        $this->assertCreateCounts(9, 1, 1);
+    }
+
+    public function testCreateOrderCsrfFilterRejectsBeforeWorkflow(): void
+    {
+        try {
+            $this->withSession($this->session(2, 2, 1))->post('/orders/new', $this->validOrderPayload());
+            self::fail('Expected CSRF rejection.');
+        } catch (SecurityException) {
+            $this->assertCreateCounts(8, 0, 0);
+        }
+    }
+
     public function testCreateOrderWritesOrderLogEncryptedSmsIntentAndSafeImageAtomically(): void
     {
         $png = $this->imageFixture('png');
         $this->setUploads([['tmp' => $png, 'name' => 'repair.png', 'type' => 'image/png']]);
         $payload = [
             'submission_id' => str_repeat('a', 32), 'number_id' => '1001', 'order_id' => 'ORDER-1001',
-            'book_id' => 'WPA', 'customer_name' => 'NEW CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'NEW CUSTOMER', 'customer_tel' => '0000000000',
             'customer_tel2' => '027619999',
             'customer_email' => 'customer@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
@@ -398,7 +734,7 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $valid = [
             'submission_id' => str_repeat('b', 32), 'number_id' => '2001', 'order_id' => 'ORDER-2001',
-            'book_id' => 'WPA', 'customer_name' => 'VALID CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'VALID CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'customer@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -431,7 +767,7 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $payload = [
             'submission_id' => str_repeat('e', 32), 'number_id' => '3001', 'order_id' => 'ORDER-3001',
-            'book_id' => 'WPA', 'customer_name' => 'FULL CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'FULL CUSTOMER', 'customer_tel' => '0000000000',
             'customer_tel2' => '027619999', 'customer_email' => 'full@example.invalid',
             'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_agent' => '1', 'detail_date_purchase' => '15/01/2026',
@@ -481,7 +817,7 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $payload = [
             'submission_id' => str_repeat('f', 32), 'number_id' => '4001', 'order_id' => 'ORDER-4001',
-            'book_id' => 'WPA', 'customer_name' => 'MINIMAL CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'MINIMAL CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => '', 'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => '',
             'detail_sku_name' => 'PLAIN BAG', 'create_by_user' => 'RECEIVER NAME',
             'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
@@ -505,7 +841,7 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $payload = [
             'submission_id' => str_repeat('1', 32), 'number_id' => '4101', 'order_id' => 'ORDER-4101',
-            'book_id' => 'WPA', 'customer_name' => 'WARANTY ZERO CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'WARANTY ZERO CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => '', 'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => '',
             'detail_sku_name' => 'PLAIN BAG', 'create_by_user' => 'RECEIVER NAME',
             'waranty_type' => '0', 'detail_number_waranty' => 'SHOULD-VANISH',
@@ -530,7 +866,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('fixed')->insert(['fixed_id' => 7, 'fixed_details' => 'FIXED SEVEN']);
         $base = [
             'submission_id' => str_repeat('a', 32), 'number_id' => '5001', 'order_id' => 'ORDER-5001',
-            'book_id' => 'WPA', 'customer_name' => 'ADV CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'ADV CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'adv@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -729,6 +1065,9 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('<option value="7"', $body);
         // The per-row rating button stays on the same page as the bulk form.
         self::assertStringContainsString('class="rate-open"', $body);
+        // AC-6: the rating modal partial no longer carries an inline <style> block (its rules
+        // moved to admin.css), so a page that renders the modal has no <style in the document.
+        self::assertStringNotContainsString('<style', $body);
     }
 
     public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
@@ -773,7 +1112,7 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame(3, (int) $this->db->table('request_order')->where('request_id', 91003)->get()->getRow('action_status'));
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
 
-        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91007'], 'status_id' => '4'])
+        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91007'], 'status_id' => '4'], $this->session(2, 2, 1))
             ->assertStatus(404);
         $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => [], 'status_id' => '3'])
             ->assertStatus(422);
@@ -791,7 +1130,9 @@ final class OrderHttpTest extends CIUnitTestCase
         $edit = [
             'customer_name' => 'EDITED CUSTOMER', 'customer_tel' => '1111111111',
             'customer_email' => 'edited@example.invalid', 'type_id' => '1', 'brand_id' => '1',
-            'note' => 'Edited note', 'action_status' => '7',
+            'note' => 'Edited note', 'action_status' => '7', 'trackID' => 'TAMPERED',
+            'bookID' => '999', 'numberID' => 'TAMPERED', 'orderID' => 'TAMPERED',
+            'orderIDShow' => 'TAMPERED/1', 'branchID' => '2',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
             'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
         ];
@@ -800,6 +1141,12 @@ final class OrderHttpTest extends CIUnitTestCase
             ->assertRedirectTo('/orders?status=1');
         $row = $this->db->table('request_order')->where('request_id', 91001)->get()->getRowArray();
         self::assertSame('EDITED CUSTOMER', $row['customerFullname']);
+        self::assertSame('WP00C-TRACK-001', (string) $row['trackID']);
+        self::assertSame('1', (string) $row['bookID']);
+        self::assertSame('N1', (string) $row['numberID']);
+        self::assertSame('O1', (string) $row['orderID']);
+        self::assertSame('WPC/1', (string) $row['orderIDShow']);
+        self::assertSame(1, (int) $row['branchID']);
         // AC-6: action_status=7 in the post never changes the status (edit leaves the column out).
         self::assertSame(1, (int) $row['action_status']);
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
@@ -814,7 +1161,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->withSession($this->session(2, 2, 1))->post('/orders/91007', $edit)->assertStatus(404);
         self::assertSame('CUSTOMER 7', $this->db->table('request_order')->where('request_id', 91007)->get()->getRow('customerFullname'));
 
-        $this->postTransition('/orders/91001/delete', [])->assertStatus(204);
+        $this->postTransition('/orders/91001/delete', [], $this->session(2, 2, 1))->assertStatus(204);
         self::assertSame(8, (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'));
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
     }
@@ -938,7 +1285,7 @@ final class OrderHttpTest extends CIUnitTestCase
         ]);
         $payload = [
             'submission_id' => str_repeat('7', 32), 'number_id' => '6001', 'order_id' => 'ORDER-6001',
-            'book_id' => 'WPA', 'customer_name' => 'IMAGE CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'IMAGE CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'img@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -988,7 +1335,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->setUploads([['tmp' => $png, 'name' => 'note.txt', 'type' => 'text/plain']]);
         $payload = [
             'submission_id' => str_repeat('8', 32), 'number_id' => '6101', 'order_id' => 'ORDER-6101',
-            'book_id' => 'WPA', 'customer_name' => 'EXT CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'EXT CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'ext@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -1025,7 +1372,7 @@ final class OrderHttpTest extends CIUnitTestCase
         ]);
         $payload = [
             'submission_id' => str_repeat('9', 32), 'number_id' => '6201', 'order_id' => 'ORDER-6201',
-            'book_id' => 'WPA', 'customer_name' => 'ROLLBACK CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'ROLLBACK CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'rollback@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -1061,7 +1408,7 @@ final class OrderHttpTest extends CIUnitTestCase
         ]);
         $payload = [
             'submission_id' => str_repeat('0', 32), 'number_id' => '6301', 'order_id' => 'ORDER-6301',
-            'book_id' => 'WPA', 'customer_name' => 'WORKFLOW FAIL CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'WORKFLOW FAIL CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'wf@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'create_by_user' => 'RECEIVER NAME',
@@ -1088,7 +1435,7 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $base = [
             'submission_id' => str_repeat('a', 32), 'number_id' => '7000', 'order_id' => 'ORDER-7000',
-            'book_id' => 'WPA', 'customer_name' => 'ADV IMG CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'ADV IMG CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'advimg@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'Synthetic repair',
             'detail_sku_name' => 'BAG SPORT', 'create_by_user' => 'RECEIVER NAME',
@@ -1161,7 +1508,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->setUploads([['tmp' => $png, 'name' => 'a.png', 'type' => 'image/png']]);
         $payload = [
             'submission_id' => str_repeat('2', 32), 'number_id' => '8001', 'order_id' => 'ORDER-8001',
-            'book_id' => 'WPA', 'customer_name' => 'RECEIPT CUSTOMER', 'customer_tel' => '0000000000',
+            'book_id' => '1', 'customer_name' => 'RECEIPT CUSTOMER', 'customer_tel' => '0000000000',
             'customer_tel2' => '027619999', 'customer_email' => 'receipt@example.invalid',
             'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'RECEIPT NOTE',
             'detail_agent' => '1', 'detail_date_purchase' => '15/01/2026',
@@ -1183,7 +1530,7 @@ final class OrderHttpTest extends CIUnitTestCase
             $body = $print->getBody();
             // Always-present blocks (2, 3, 4, 5, 6, 7, 10, 11, 18, 21) driven by the row + master data.
             self::assertStringContainsString((string) $order['trackID'], $body);         // block 2
-            self::assertStringContainsString('WPA/8001', $body);                          // block 3 (orderIDShow)
+            self::assertStringContainsString('ABC/8001', $body);                          // block 3 (orderIDShow)
             self::assertStringContainsString('RECEIPT CUSTOMER', $body);                  // block 5
             self::assertStringContainsString('receipt@example.invalid', $body);           // block 6
             self::assertStringContainsString('0000000000', $body);                        // block 7
@@ -1425,10 +1772,10 @@ final class OrderHttpTest extends CIUnitTestCase
     {
         $png = $this->imageFixture('png');
         $this->setUploads([['tmp' => $png, 'name' => 'seed.png', 'type' => 'image/png']]);
-        $numberId = 'IMG' . substr($submission, 0, 8);
+        $numberId = '9' . substr($submission, 0, 8);
         $payload = [
             'submission_id' => $submission, 'number_id' => $numberId,
-            'order_id' => 'ORDER-' . substr($submission, 0, 8), 'book_id' => 'WPA',
+            'order_id' => 'ORDER-' . substr($submission, 0, 8), 'book_id' => '1',
             'customer_name' => 'SEED CUSTOMER', 'customer_tel' => '0000000000',
             'customer_email' => 'seedimg@example.invalid', 'type_id' => '1', 'brand_id' => '1',
             'branch_id' => '1', 'note' => 'SEED NOTE',
@@ -1536,23 +1883,42 @@ final class OrderHttpTest extends CIUnitTestCase
     }
 
     /** @param array<string, mixed> $payload */
-    private function postTransition(string $path, array $payload)
+    /** @param array<string, int|bool|null>|null $session admin (branchless) actor by default */
+    private function postTransition(string $path, array $payload, ?array $session = null)
     {
         service('superglobals')->setFilesArray([]);
         $payload['csrf_test_name'] = service('security')->getHash();
 
-        return $this->withSession($this->session(2, 2, 1))->post($path, $payload);
+        return $this->withSession($session ?? $this->session(1, 1, null))->post($path, $payload);
+    }
+
+    /** @param array<string, mixed> $overrides @return array<string, mixed> */
+    private function validOrderPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'submission_id' => str_repeat('9', 32), 'number_id' => '9001', 'book_id' => '1',
+            'customer_name' => 'VALID CUSTOMER', 'customer_tel' => '0000000000',
+            'customer_email' => 'valid@example.invalid', 'type_id' => '1', 'brand_id' => '1',
+            'branch_id' => '1', 'note' => 'Synthetic repair', 'detail_sku_name' => 'BAG SPORT',
+            'create_by_user' => 'RECEIVER NAME', 'condition' => ['1'], 'estimateprice' => ['1'], 'fixed' => ['1'],
+        ], $overrides);
     }
 
     /** @param array<string, mixed> $payload */
     private function postOrder(array $payload, bool $clearFiles = true)
+    {
+        return $this->postOrderAs($payload, $this->session(2, 2, 1), $clearFiles);
+    }
+
+    /** @param array<string, mixed> $payload @param array<string, int|bool|null> $session */
+    private function postOrderAs(array $payload, array $session, bool $clearFiles = true)
     {
         if ($clearFiles) {
             service('superglobals')->setFilesArray([]);
         }
         $payload['csrf_test_name'] = service('security')->getHash();
 
-        return $this->withSession($this->session(2, 2, 1))->post('/orders/new', $payload);
+        return $this->withSession($session)->post('/orders/new', $payload);
     }
 
     private function assertCreateCounts(int $orders, int $logs, int $intents): void
@@ -1560,6 +1926,31 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame($orders, $this->db->table('request_order')->countAllResults());
         self::assertSame($logs, $this->db->table('status_log')->countAllResults());
         self::assertSame($intents, $this->db->table('ci4_delivery_intents')->where('kind', 'sms')->countAllResults());
+    }
+
+    public function testC3LabelParityOrderFormsAndReportHeaders(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        // order_new (add): CI3 tracking/add_order.php labels (AC-4).
+        $new = $this->withSession($admin)->get('/orders/new');
+        $new->assertStatus(200);
+        $new->assertSee('number ID/เลขที');            // CI3 typo (missing tone mark) preserved
+        $new->assertSee('book Short/เล่มที่');
+        $new->assertSee('customer Fullname/ชื่อลูกค้า');
+        $new->assertSee('MOBILE TEL/เบอร์มือถือลูกค้า');
+        $new->assertSee('Note/หมายเหตุ');
+        $new->assertDontSee('>number_id</label>');      // AC-1
+        $new->assertDontSee('>customer_tel</label>');
+        self::assertStringContainsString('type="reset"', $new->getBody()); // t5 AC-6
+
+        // order_edit: customer_tel uses a different CI3 string than the add page (AC-4).
+        $edit = $this->withSession($admin)->get('/orders/91002');
+        $edit->assertStatus(200);
+        $edit->assertSee('customer Fullname/ชื่อลูกค้า');
+        $edit->assertSee('customer Tel/เบอร์โทรลูกค้า');
+        $edit->assertDontSee('MOBILE TEL/เบอร์มือถือลูกค้า'); // add-page tel text absent here
+        self::assertStringContainsString('type="reset"', $edit->getBody()); // t5 AC-6
     }
 
     /** @return array<string, int|bool|null> */

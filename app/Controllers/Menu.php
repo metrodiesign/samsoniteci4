@@ -13,7 +13,14 @@ final class Menu extends BaseController
     {
         $this->assertAdmin();
 
-        return $this->render(null, $this->searchTerm());
+        return $this->renderList($this->searchTerm());
+    }
+
+    public function add(): string
+    {
+        $this->assertAdmin();
+
+        return $this->renderForm(null);
     }
 
     public function edit(string $rawId): string
@@ -25,7 +32,7 @@ final class Menu extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->render($row, $this->searchTerm());
+        return $this->renderForm($row);
     }
 
     public function create(): RedirectResponse|ResponseInterface
@@ -46,12 +53,20 @@ final class Menu extends BaseController
         return $this->save($id);
     }
 
+    private function renderList(string $search): string
+    {
+        $store = new MenuStore(db_connect());
+        $actions = $this->actionLink('/menu/new', 'Add New');
+
+        return $this->layout('Menu groups', view('menu_list', ['rows' => $store->all($search), 'search' => $search]), ['actions' => $actions]);
+    }
+
     /** @param array<string, mixed>|null $row */
-    private function render(?array $row, string $search): string
+    private function renderForm(?array $row): string
     {
         $store = new MenuStore(db_connect());
 
-        return $this->layout('Menu groups', view('menu', ['rows' => $store->all($search), 'row' => $row, 'menuGroups' => $store->menuGroups(), 'search' => $search]));
+        return $this->layout('Menu groups', view('menu_form', ['row' => $row, 'menuGroups' => $store->menuGroups()]));
     }
 
     private function searchTerm(): string

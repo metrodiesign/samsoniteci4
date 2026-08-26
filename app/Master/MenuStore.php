@@ -89,8 +89,20 @@ final class MenuStore
         return $this->db->table('group_menu')->where('id', $id)->update($values) ? 'updated' : 'failed';
     }
 
-    /** @return list<array{menu_name: string, menu_link: string}> */
-    public function visible(int $groupId): array
+    private const ORDER_GROUP_TYPE = 3;
+
+    private const BRANCH_HIDDEN_LINKS = ['TrackingListing', 'TrackingcloseListing'];
+
+    /**
+     * Visible sidebar menu, grouped by group_type in the current group's CSV order.
+     *
+     * When $branchId is not null (a branch user, per AuthenticationFilter/LoginService)
+     * the two order queues in BRANCH_HIDDEN_LINKS are dropped by menu_link identity, and the
+     * ORDER group (group_type 3) is renumbered over the survivors so its labels stay 1..n.
+     *
+     * @return list<array{group_id: int, group_name: string, icon: string, items: list<array{menu_name: string, menu_link: string}>}>
+     */
+    public function visible(int $groupId, ?int $branchId = null): array
     {
         if ($groupId < 1
             || ! $this->db->tableExists($this->db->prefixTable('group_menu'), false)
@@ -104,29 +116,97 @@ final class MenuStore
         if ($types === []) {
             return [];
         }
+        // Preserve CSV order, first occurrence of a duplicate group id wins.
+        $orderedTypes = [];
+        foreach ($types as $type) {
+            if (! in_array($type, $orderedTypes, true)) {
+                $orderedTypes[] = $type;
+            }
+        }
         $rows = $this->db->table('tbl_menu')
-            ->select('menu_name, menu_link')
-            ->whereIn('group_type', array_values(array_unique($types)))
+            ->select('menu_name, menu_link, group_type')
+            ->whereIn('group_type', $orderedTypes)
             ->orderBy('id', 'ASC')
             ->get()
             ->getResultArray();
 
-        $visible = [];
-        $seen = [];
-        foreach ($rows as $item) {
-            $legacyLink = (string) $item['menu_link'];
-            if (in_array($legacyLink, self::RETIRED_LINKS, true)) {
-                continue;
+        $meta = $this->groupTypeMeta();
+
+        $groups = [];
+        foreach ($orderedTypes as $type) {
+            $items = [];
+            $ordinal = 0;
+            $seen = []; // per-group dedup: a duplicate link is dropped only within the same group
+                        // (a link shared across groups shows in each, matching CI3)
+            foreach ($rows as $item) {
+                if ((int) $item['group_type'] !== $type) {
+                    continue;
+                }
+                $legacyLink = (string) $item['menu_link'];
+                if (in_array($legacyLink, self::RETIRED_LINKS, true)) {
+                    continue;
+                }
+                $link = self::LINK_REPLACEMENTS[$legacyLink] ?? $legacyLink;
+                if (preg_match('/\A[a-zA-Z0-9_\/-]+\z/D', $link) !== 1 || isset($seen[$link])) {
+                    continue;
+                }
+                if ($branchId !== null && in_array($link, self::BRANCH_HIDDEN_LINKS, true)) {
+                    continue; // hidden before numbering so the ORDER group does not skip a number
+                }
+                $seen[$link] = true;
+                $name = (string) $item['menu_name'];
+                if ($type === self::ORDER_GROUP_TYPE) {
+                    $ordinal++;
+                    $name = $ordinal . '. ' . $name;
+                }
+                $items[] = ['menu_name' => $name, 'menu_link' => $link];
             }
-            $link = self::LINK_REPLACEMENTS[$legacyLink] ?? $legacyLink;
-            if (preg_match('/\A[a-zA-Z0-9_\/-]+\z/D', $link) !== 1 || isset($seen[$link])) {
-                continue;
+            if ($items === []) {
+                continue; // a group with no visible items renders no empty heading in the sidebar
             }
-            $seen[$link] = true;
-            $visible[] = ['menu_name' => (string) $item['menu_name'], 'menu_link' => $link];
+            $groups[] = [
+                'group_id'   => $type,
+                'group_name' => $meta[$type]['name'] ?? '',
+                'icon'       => $meta[$type]['icon'] ?? '',
+                'items'      => $items,
+            ];
         }
 
-        return $visible;
+        // No group_type table (unmigrated database): collapse into a single unnamed,
+        // default-icon group so the sidebar still renders every visible link.
+        if ($meta === null) {
+            $merged = [];
+            foreach ($groups as $group) {
+                foreach ($group['items'] as $item) {
+                    $merged[] = $item;
+                }
+            }
+
+            return [['group_id' => 0, 'group_name' => '', 'icon' => '', 'items' => $merged]];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Group name/icon keyed by group_type id, or null when the table is absent.
+     *
+     * @return array<int, array{name: string, icon: string}>|null
+     */
+    private function groupTypeMeta(): ?array
+    {
+        if (! $this->db->tableExists($this->db->prefixTable('group_type'), false)) {
+            return null;
+        }
+        $meta = [];
+        foreach ($this->db->table('group_type')->select('group_type_id, group_type_name, icon_menu')->get()->getResultArray() as $row) {
+            $meta[(int) $row['group_type_id']] = [
+                'name' => (string) $row['group_type_name'],
+                'icon' => (string) $row['icon_menu'],
+            ];
+        }
+
+        return $meta;
     }
 
     /** @return list<array{id: int, name: string}> */

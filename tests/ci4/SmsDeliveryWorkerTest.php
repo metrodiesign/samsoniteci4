@@ -33,6 +33,7 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
         $this->encrypter = Services::encrypter($config, false);
         foreach ([
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER, default_suffix VARCHAR(10)',
+            'book' => 'book_id INTEGER PRIMARY KEY, branch_id INTEGER NOT NULL, book_detail VARCHAR(3) NOT NULL, status INTEGER NOT NULL',
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250)',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250)',
             'condition' => 'condition_id INTEGER PRIMARY KEY, condition_details VARCHAR(250)',
@@ -49,6 +50,7 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
         $this->db->table('ci4_order_sequences')->truncate();
         $this->db->resetDataCache();
         $this->db->table('branch')->insert(['branch_id' => 1, 'branch_type' => 1, 'default_suffix' => 'WPA']);
+        $this->db->table('book')->insert(['book_id' => 1, 'branch_id' => 1, 'book_detail' => 'ABC', 'status' => 1]);
         $this->db->table('brand')->insert(['brand_id' => 1, 'brand_details' => 'BRAND A']);
         $this->db->table('type')->insert(['type_id' => 1, 'type_details' => 'TYPE A']);
         $this->db->table('condition')->insert(['condition_id' => 1, 'condition_details' => 'CONDITION A']);
@@ -146,8 +148,8 @@ final class SmsDeliveryWorkerTest extends CIUnitTestCase
     private function seed(string $marker): SmsDeliveryIntentStore
     {
         (new OrderCreationWorkflow($this->db, $this->encrypter))->create(1, 2, 1, [
-            'submission_id' => str_repeat($marker, 32), 'number_id' => '10' . $marker,
-            'order_id' => 'ORDER-' . $marker, 'book_id' => 'WPA', 'customer_name' => 'SMS CUSTOMER',
+            'submission_id' => str_repeat($marker, 32), 'number_id' => (string) (100 + ord($marker)),
+            'order_id' => 'ORDER-' . $marker, 'book_id' => '1', 'customer_name' => 'SMS CUSTOMER',
             'customer_tel' => '0000000000', 'customer_email' => 'sms@example.invalid',
             'type_id' => '1', 'brand_id' => '1', 'branch_id' => '1', 'note' => 'Synthetic SMS',
             'detail_sku_name' => 'SMS BAG', 'create_by_user' => 'SMS RECEIVER',

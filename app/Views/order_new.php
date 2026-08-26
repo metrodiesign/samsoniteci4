@@ -1,6 +1,7 @@
 <?php
 /**
  * @var string $submissionId
+ * @var list<array<string, mixed>> $books
  * @var list<array<string, mixed>> $types
  * @var list<array<string, mixed>> $brands
  * @var list<array<string, mixed>> $branches
@@ -26,16 +27,39 @@ $select = static function (string $name, array $items, string $idKey, string $la
     echo '</select>';
 };
 ?>
-<section aria-labelledby="order-new-title">
-    <h1 id="order-new-title">New repair order</h1>
-    <form method="post" action="/orders/new" enctype="multipart/form-data">
+<section aria-labelledby="page-title">
+    <form id="order-new-form" method="post" action="/orders/new" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="submission_id" value="<?= esc($submissionId) ?>">
 
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"> Urgent/ซ่อมด่วน</label>
 
-        <?php foreach (['number_id', 'order_id', 'book_id', 'customer_name', 'customer_tel', 'customer_email', 'note'] as $field): ?>
-            <label for="order-<?= esc($field) ?>"><?= esc($field) ?></label>
+        <label for="order-number_id">number ID/เลขที</label>
+        <input id="order-number_id" name="number_id" inputmode="numeric" pattern="[0-9]+" maxlength="96" required>
+
+        <label for="order-book_id">book Short/เล่มที่</label>
+        <select id="order-book_id" name="book_id" required>
+            <option value=""></option>
+            <?php foreach ($books as $book): ?>
+                <option value="<?= (int) $book['book_id'] ?>" data-book-detail="<?= esc((string) $book['book_detail'], 'attr') ?>" data-branch-id="<?= (int) $book['branch_id'] ?>"><?= esc((string) $book['book_detail']) ?></option>
+            <?php endforeach ?>
+        </select>
+
+        <label for="order-id-preview">order ID/เลขที่ใบสั่งซ่อม</label>
+        <output id="order-id-preview" aria-live="polite"></output>
+
+        <?php
+        // Label ต่อ field verbatim จาก CI3 tracking/add_order.php
+        /** @var array<string, string> $orderLabels */
+        $orderLabels = [
+            'customer_name' => 'customer Fullname/ชื่อลูกค้า',
+            'customer_tel' => 'MOBILE TEL/เบอร์มือถือลูกค้า',
+            'customer_email' => 'customer Email/อีเมล์ลูกค้า',
+            'note' => 'Note/หมายเหตุ',
+        ];
+        ?>
+        <?php foreach (['customer_name', 'customer_tel', 'customer_email', 'note'] as $field): ?>
+            <label for="order-<?= esc($field) ?>"><?= esc($orderLabels[$field] ?? $field) ?></label>
             <input id="order-<?= esc($field) ?>" name="<?= esc($field) ?>">
         <?php endforeach ?>
 
@@ -94,6 +118,35 @@ $select = static function (string $name, array $items, string $idKey, string $la
 
         <label for="order-image">Repair image (up to 5)</label>
         <input id="order-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple>
-        <button type="submit">Create order</button>
+        <button type="submit">Submit</button>
+        <button type="reset">Reset</button>
     </form>
 </section>
+<script>
+(() => {
+    const form = document.getElementById('order-new-form');
+    const branch = document.getElementById('order-branch_id');
+    const book = document.getElementById('order-book_id');
+    const number = document.getElementById('order-number_id');
+    const preview = document.getElementById('order-id-preview');
+    const sync = () => {
+        const branchId = branch.value;
+        for (const option of book.options) {
+            if (option.value === '') continue;
+            const visible = branchId !== '' && option.dataset.branchId === branchId;
+            option.hidden = !visible;
+            option.disabled = !visible;
+        }
+        if (book.selectedOptions[0]?.disabled) book.value = '';
+        const selected = book.selectedOptions[0];
+        preview.value = selected?.dataset.bookDetail && /^[0-9]{1,96}$/.test(number.value)
+            ? `${selected.dataset.bookDetail}/${number.value}`
+            : '';
+    };
+    branch.addEventListener('change', sync);
+    book.addEventListener('change', sync);
+    number.addEventListener('input', sync);
+    form.addEventListener('reset', () => setTimeout(sync, 0));
+    sync();
+})();
+</script>

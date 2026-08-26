@@ -5,6 +5,7 @@ namespace Config;
 use App\Filters\ApiCsrfFilter;
 use App\Filters\AuthenticationFilter;
 use App\Filters\AuthorizationFilter;
+use App\Filters\BranchlessFilter;
 use CodeIgniter\Config\Filters as BaseFilters;
 use CodeIgniter\Filters\Cors;
 use CodeIgniter\Filters\CSRF;
@@ -30,6 +31,7 @@ class Filters extends BaseFilters
     public array $aliases = [
         'api-csrf'      => ApiCsrfFilter::class,
         'authorized'    => [AuthenticationFilter::class, AuthorizationFilter::class],
+        'branchless'    => BranchlessFilter::class,
         'web-auth'      => AuthenticationFilter::class,
         'csrf'          => CSRF::class,
         'toolbar'       => DebugToolbar::class,
