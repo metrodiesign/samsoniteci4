@@ -40,6 +40,7 @@ final class OrderHttpTest extends CIUnitTestCase
             'estimateprice' => 'estimateprice_id INTEGER PRIMARY KEY, estimateprice_details VARCHAR(250) NOT NULL',
             'fixed' => 'fixed_id INTEGER PRIMARY KEY, fixed_details VARCHAR(250) NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER NOT NULL, branch_user_name VARCHAR(100), branch_name VARCHAR(250) NOT NULL, default_suffix VARCHAR(10), book_order VARCHAR(10), customer_ref VARCHAR(50)',
+            'branch_type' => 'branch_type_id INTEGER PRIMARY KEY, branch_type_details VARCHAR(250) NOT NULL, branch_type_image VARCHAR(250)',
             'tracking_status' => 'status_id INTEGER PRIMARY KEY, description_th VARCHAR(250)',
             'uploadstaus' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, tracking_id VARCHAR(100), Telephone VARCHAR(100), tracking_status INTEGER, cdate DATETIME',
             'rating' => 'rating_id INTEGER PRIMARY KEY AUTOINCREMENT, add_id INTEGER NOT NULL, rating INTEGER NOT NULL, order_id VARCHAR(100) NOT NULL, branchID INTEGER NOT NULL, cdate DATETIME NOT NULL',
@@ -58,6 +59,10 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->db->table('branch')->insertBatch([
             ['branch_id' => 1, 'branch_type' => 1, 'branch_user_name' => 'branch-a', 'branch_name' => 'BRANCH A', 'default_suffix' => 'WPA', 'book_order' => 'WPA', 'customer_ref' => 'WPA'],
             ['branch_id' => 2, 'branch_type' => 2, 'branch_user_name' => 'branch-b', 'branch_name' => 'BRANCH B', 'default_suffix' => 'WPB', 'book_order' => 'WPB', 'customer_ref' => 'WPB'],
+        ]);
+        $this->db->table('branch_type')->insertBatch([
+            ['branch_type_id' => 1, 'branch_type_details' => 'TYPE ONE'],
+            ['branch_type_id' => 2, 'branch_type_details' => 'TYPE TWO'],
         ]);
         $this->db->table('book')->insertBatch([
             ['book_id' => 1, 'branch_id' => 1, 'book_detail' => 'ABC', 'status' => 1],
@@ -2031,6 +2036,38 @@ final class OrderHttpTest extends CIUnitTestCase
         $edit->assertSee('customer Tel/เบอร์โทรลูกค้า');
         $edit->assertDontSee('MOBILE TEL/เบอร์มือถือลูกค้า'); // add-page tel text absent here
         self::assertStringContainsString('type="reset"', $edit->getBody()); // t5 AC-6
+    }
+
+    public function testCi3OrderFormCarriesRequestDateBranchTypeAndBranchShort(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        // CI3 tracking/add_order.php ships these three labels in mixed case; the uppercase look
+        // on screen comes from CSS text-transform, so the literal text stays as CI3 wrote it.
+        $new = $this->withSession($admin)->get('/orders/new');
+        $new->assertStatus(200);
+        $new->assertSee('request Date/วันที่ส่งซ่อม');
+        $new->assertSee('Branch Type/ประเภทของสาขา');
+        $new->assertSee('branch short/ตัวย่อสาขา');
+        $new->assertSee('Select Branch Type');
+        $new->assertSee('TYPE ONE');
+        $body = $new->getBody();
+        // CI3 Order::add() prefills date('d/m/Y') and keeps the field readonly.
+        self::assertStringContainsString('value="' . date('d/m/Y') . '"', $body);
+        self::assertMatchesRegularExpression('#<input[^>]+name="request_date"[^>]+readonly#', $body);
+        // branch short is derived from the branch, never typed.
+        self::assertMatchesRegularExpression('#<input[^>]+name="branch_short"[^>]+readonly#', $body);
+        // The branch options carry the two data attributes the cascade reads.
+        self::assertStringContainsString('data-branch-type="1"', $body);
+        self::assertStringContainsString('data-branch-short="WPA"', $body);
+
+        // The edit form shows the stored request date, its branch type and short, all locked.
+        $edit = $this->withSession($admin)->get('/orders/91002');
+        $edit->assertStatus(200);
+        $edit->assertSee('request Date/วันที่ส่งซ่อม');
+        $edit->assertSee('Branch Type/ประเภทของสาขา');
+        $edit->assertSee('branch short/ตัวย่อสาขา');
+        self::assertStringContainsString('value="WPA"', $edit->getBody());
     }
 
     /** @return array<string, int|bool|null> */

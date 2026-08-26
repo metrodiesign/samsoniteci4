@@ -125,6 +125,9 @@ final class Order extends BaseController
         return $this->layout('NEW REQUEST REPAIR', view('order_new', [
             'submissionId' => bin2hex(random_bytes(16)),
             'caption' => 'Enter Request order Details',
+            // CI3 Order::add() prefills the readonly field with date('d/m/Y'); the stored value
+            // still comes from the server clock inside OrderCreationWorkflow.
+            'requestDate' => date('d/m/Y'),
         ] + $this->formMasterData()));
     }
 
@@ -281,8 +284,13 @@ final class Order extends BaseController
                 ->orderBy('type_id', 'ASC')->get()->getResultArray(),
             'brands' => $db->table('brand')->select('brand_id, brand_details')
                 ->orderBy('brand_id', 'ASC')->get()->getResultArray(),
-            'branches' => $db->table('branch')->select('branch_id, branch_name')
+            // branch_type and default_suffix ride along so the form can show CI3's `Branch Type`
+            // and `branch short` fields. Both stay display-only: the create workflow re-derives
+            // them from the chosen branch, so a tampered POST changes nothing.
+            'branches' => $db->table('branch')->select('branch_id, branch_name, branch_type, default_suffix')
                 ->orderBy('branch_id', 'ASC')->get()->getResultArray(),
+            'branchTypes' => $db->table('branch_type')->select('branch_type_id, branch_type_details')
+                ->orderBy('branch_type_id', 'ASC')->get()->getResultArray(),
         ] + $this->checkboxCatalogues();
     }
 
