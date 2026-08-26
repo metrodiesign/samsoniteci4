@@ -4,9 +4,12 @@
 /** @var array<string, mixed>|null $row */
 /** @var string $type */
 /** @var array<string, list<array<string, mixed>>> $fkOptions */
+/** @var string $caption */
 $action = '/master/' . rawurlencode($type) . ($row === null ? '' : '/' . (int) $row[$definition['pk']]);
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form method="post" action="<?= esc($action) ?>"<?= $type === 'branchtype' ? ' enctype="multipart/form-data"' : '' ?>>
         <?= csrf_field() ?>
         <?php foreach ($definition['fields'] as $field => $rule): ?>
@@ -43,4 +46,5 @@ $action = '/master/' . rawurlencode($type) . ($row === null ? '' : '/' . (int) $
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>

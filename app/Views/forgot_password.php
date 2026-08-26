@@ -1,5 +1,6 @@
-<section class="card login-card" aria-labelledby="forgot-title">
-    <h1 id="forgot-title">Forgot Password</h1>
+<div class="login-banner" role="presentation"></div>
+<div class="login-logo">Tracking</div>
+<section class="card login-card" aria-label="Forgot Password">
     <p class="muted">Enter your account email and we will send reset instructions.</p>
 
     <div class="alert" id="reset-message" role="status" hidden></div>

@@ -5,14 +5,17 @@
 /** @var string $search */
 /** @var string $type */
 /** @var int $page */
+/** @var string $caption */
 $listFields = $definition['listFields'] ?? array_keys($definition['fields']);
 ?>
 <section aria-labelledby="page-title">
-    <form method="get" action="/master/<?= esc($type) ?>">
-        <label for="master-search">Search</label>
-        <input id="master-search" name="search" value="<?= esc($search) ?>" maxlength="128">
-        <button type="submit">Search</button>
-    </form>
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
+        <form class="box-tools" method="get" action="/master/<?= esc($type) ?>">
+            <label for="master-search">Search</label>
+            <input id="master-search" name="search" value="<?= esc($search) ?>" maxlength="128">
+            <button type="submit">Search</button>
+        </form>
     <div class="table-wrap">
     <table>
         <thead>
@@ -54,4 +57,5 @@ $listFields = $definition['listFields'] ?? array_keys($definition['fields']);
     </table>
     </div>
     <?php if (count($rows) === 50): ?><a href="/master/<?= esc($type) ?>?<?= $search === '' ? '' : 'search=' . rawurlencode($search) . '&amp;' ?>page=<?= $page + 1 ?>">Next</a><?php endif ?>
+    </div>
 </section>

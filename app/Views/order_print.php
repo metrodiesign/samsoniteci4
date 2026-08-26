@@ -50,16 +50,22 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
 </head>
 <body class="A4">
 <section class="sheet">
-    <input class="no-print" type="button" value="Print" onclick="this.style.display='none';window.print();">
+    <input class="no-print" id="btnPrint" name="btnPrint" type="button" value="Print" onclick="this.style.display='none';window.print();">
 
     <table style="width: 100%; text-align: left;">
+        <?php // CI3 puts the receipt title in a header cell of its own and the company block
+              // in the row below it; keep both the elements and the split. ?>
         <tr>
-            <td style="width: 50%;">
+            <th style="width: 50%;">
                 <h1 style="line-height: 1; color: #014c8f;">ใบรับซ่อม</h1>
-                <h2 style="font-size: 18px; line-height: 1; color: #014c8f;">บริษัท แซมโซไนท์ (ประเทศไทย) จำกัด<br>SAMSONITE (THAILAND) CO., LTD<br>สาขา <?= esc($branchName) ?></h2>
-            </td>
-            <td style="width: 50%;">
+            </th>
+            <td rowspan="2" style="width: 50%;">
                 <img src="/assets/images/main-logo.png" alt="" style="max-width: 230px; width: 230px; height: auto;">
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h2 style="font-size: 18px; line-height: 1; color: #014c8f;">บริษัท แซมโซไนท์ (ประเทศไทย) จำกัด<br>SAMSONITE (THAILAND) CO., LTD<br>สาขา <?= esc($branchName) ?></h2>
             </td>
         </tr>
     </table>

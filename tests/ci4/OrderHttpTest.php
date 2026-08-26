@@ -421,11 +421,91 @@ final class OrderHttpTest extends CIUnitTestCase
             $response = $this->withSession($admin)->get('/orders?status=' . $status);
             $response->assertStatus(200);
             $body = $response->getBody();
-            self::assertStringContainsString('<label for="order-date">Date :</label>', $body);
+            self::assertStringContainsString('<label for="order-date">from Date :</label>', $body);
             self::assertStringContainsString('name="sdate" value="" placeholder="Date"', $body);
             self::assertStringContainsString('<label for="order-search">Detail : </label>', $body);
             self::assertStringContainsString('name="search" value="" maxlength="128" placeholder="Search"', $body);
+            // CI3 exposes the To Date field on queue 1 only; every other queue has one date box.
+            self::assertSame(
+                $status === 1,
+                str_contains($body, '<label for="order-date-to">To Date : </label>'),
+                'To Date belongs to queue 1 only, status ' . $status,
+            );
         }
+    }
+
+    public function testListingHeadingsAndHeadersMatchCi3PerQueue(): void
+    {
+        $admin = $this->session(1, 1, null);
+        // Header casing is inconsistent in CI3 and the visual comparison reads it verbatim.
+        /** @var array<int, array{0: string, 1: string, 2: string, 3: list<string>}> $expected */
+        $expected = [
+            1 => ['NEW REQUEST REPAIR', 'Add, Edit, Delete', 'Request order List', ['TrackID', 'OrderID', 'Action status']],
+            2 => ['TRANSPORTING', '', 'TRANSPORTING List', ['trackID', 'orderID', 'Action status', 'status Update']],
+            3 => ['STATUS REPAIR', '', 'STATUS REPAIR List', ['trackID', 'orderID', 'Action Status', 'Status Update']],
+            4 => ['DELIVER TO CUSTOMER', '', 'DELIVER TO CUSTOMER List', ['trackID', 'orderID', 'Action Status', 'Status Update']],
+            5 => ['COMPLETE FEEDBACK', '', '', ['TrackID', 'OrderID', 'Action Status', 'Status Update']],
+            7 => ['COMPLETED JOB', '', '', ['Track Id', 'Order Id', 'Full Name', 'Request Date', 'Completed Date']],
+        ];
+
+        foreach ($expected as $status => [$title, $subtitle, $listTitle, $headers]) {
+            $body = (string) $this->withSession($admin)->get('/orders?status=' . $status)->getBody();
+            // The subtitle follows the title inside <h1> on its own line, so match the opening
+            // tag boundary rather than a closing one.
+            self::assertStringContainsString('>' . $title, $body, 'title, status ' . $status);
+            if ($subtitle !== '') {
+                self::assertStringContainsString($subtitle, $body, 'subtitle, status ' . $status);
+            }
+            self::assertSame(
+                $listTitle !== '',
+                str_contains($body, '<h3 class="box-title">' . $listTitle . '</h3>'),
+                'list title, status ' . $status,
+            );
+            foreach ($headers as $header) {
+                self::assertStringContainsString('<th>' . $header . '</th>', $body, $header . ', status ' . $status);
+            }
+        }
+    }
+
+    public function testQueueOneCarriesAddNewAndRowActionsWhileOtherQueuesDoNot(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        $queueOne = (string) $this->withSession($admin)->get('/orders?status=1')->getBody();
+        self::assertStringContainsString('>Add New<', $queueOne);
+        self::assertStringContainsString('title="Edit"', $queueOne);
+        self::assertStringContainsString('title="Delete"', $queueOne);
+        self::assertStringContainsString('title="Print"', $queueOne);
+        self::assertStringContainsString('id="order-delete-csrf"', $queueOne);
+
+        // CI3 leaves queues 2-4 with checkboxes only: no Add New and no per-row controls.
+        foreach ([2, 3, 4] as $status) {
+            $body = (string) $this->withSession($admin)->get('/orders?status=' . $status)->getBody();
+            self::assertStringNotContainsString('>Add New<', $body, 'status ' . $status);
+            self::assertStringNotContainsString('title="Edit"', $body, 'status ' . $status);
+            self::assertStringNotContainsString('title="Print"', $body, 'status ' . $status);
+            self::assertStringContainsString('Select ALL tracking', $body, 'status ' . $status);
+        }
+    }
+
+    public function testQueueOneDateRangeFiltersBetweenFromAndToInclusive(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $range = static fn (string $from, string $to): string => '/orders?status=1&sdate='
+            . rawurlencode($from) . '&edate=' . rawurlencode($to);
+
+        $wide = $this->withSession($admin)->get($range('01/08/2026', '31/08/2026'));
+        $wide->assertStatus(200);
+        $wide->assertSee('WP00C-TRACK-001');
+
+        // The upper bound is inclusive of the whole day, so a same-day range still matches.
+        $sameDay = $this->withSession($admin)->get($range('01/08/2026', '01/08/2026'));
+        $sameDay->assertStatus(200);
+        $sameDay->assertSee('WP00C-TRACK-001');
+
+        $before = $this->withSession($admin)->get($range('01/07/2026', '31/07/2026'));
+        $before->assertStatus(200);
+        $before->assertDontSee('WP00C-TRACK-001');
     }
 
     public function testListingDateFilterMatchesExactDayPersistsAndIgnoresMalformedInput(): void

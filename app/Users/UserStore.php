@@ -205,19 +205,48 @@ final class UserStore
     }
 
     /** @return list<array<string, mixed>>|null */
-    public function history(int $actorRole, ?int $actorBranch, int $userId, int $page): ?array
+    public function history(int $actorRole, ?int $actorBranch, int $userId, int $page, string $search = ''): ?array
     {
         if ($page < 1 || $this->findAccessible($actorRole, $actorBranch, $userId) === null) {
             return null;
         }
-
-        return $this->db->table('tbl_last_login')
-            ->select('id, machineIp, userAgent, agentString, platform, createdDtm')
+        $query = $this->db->table('tbl_last_login')
+            // sessionData is CI3's `Session Data` column: a JSON snapshot of role/GroupID/BranchID
+            // for that sign-in. It carries no session id or token, so rendering it is safe.
+            ->select('id, sessionData, machineIp, userAgent, agentString, platform, createdDtm')
             ->where('userId', $userId)
             ->orderBy('id', 'DESC')
-            ->limit(5, ($page - 1) * 5)
-            ->get()
-            ->getResultArray();
+            ->limit(5, ($page - 1) * 5);
+        $this->historySearch($query, $search);
+
+        return $query->get()->getResultArray();
+    }
+
+    /** Total history rows for the same filter, so the view can render CI3's numbered pager. */
+    public function historyCount(int $actorRole, ?int $actorBranch, int $userId, string $search = ''): int
+    {
+        if ($this->findAccessible($actorRole, $actorBranch, $userId) === null) {
+            return 0;
+        }
+        $query = $this->db->table('tbl_last_login')->where('userId', $userId);
+        $this->historySearch($query, $search);
+
+        return $query->countAllResults();
+    }
+
+    private function historySearch(\CodeIgniter\Database\BaseBuilder $query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+        $query->groupStart()
+            ->like('machineIp', $search)
+            ->orLike('userAgent', $search)
+            ->orLike('agentString', $search)
+            ->orLike('platform', $search)
+            ->orLike('sessionData', $search)
+            ->orLike('createdDtm', $search)
+            ->groupEnd();
     }
 
     /** @return list<array{id: int, name: string}> */

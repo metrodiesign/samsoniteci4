@@ -29,6 +29,6 @@ final class Dashboard extends BaseController
         $groupId = service('session')->get('GroupID');
         $tiles = is_int($groupId) ? (self::TILES_BY_GROUP[$groupId] ?? self::REPORTS_TILE) : self::REPORTS_TILE;
 
-        return $this->layout('Dashboard', view('dashboard', ['tiles' => $tiles]));
+        return $this->layout('Dashboard', view('dashboard', ['tiles' => $tiles]), ['subtitle' => 'Control panel']);
     }
 }

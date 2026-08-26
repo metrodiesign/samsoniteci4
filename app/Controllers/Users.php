@@ -80,7 +80,10 @@ final class Users extends BaseController
 
     public function passwordForm(): string
     {
-        return $this->layout('Change password', view('change_password', ['changed' => $this->request->getGet('changed') === '1']));
+        return $this->layout('Change Password', view('change_password', [
+            'changed' => $this->request->getGet('changed') === '1',
+            'caption' => 'Enter Details',
+        ]), ['subtitle' => 'Set new password for your account']);
     }
 
     public function changePassword(): RedirectResponse|ResponseInterface
@@ -112,12 +115,25 @@ final class Users extends BaseController
     {
         $id = $this->positiveInteger($rawId);
         $page = $this->positiveInteger($rawPage);
-        $rows = $id === null || $page === null ? null : $this->store()->history($this->role(), $this->branch(), $id, $page);
-        if ($rows === null) {
+        $rawSearch = $this->request->getGet('searchText');
+        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+        $rows = $id === null || $page === null
+            ? null
+            : $this->store()->history($this->role(), $this->branch(), $id, $page, $search);
+        if ($rows === null || $id === null) {
             throw PageNotFoundException::forPageNotFound();
         }
+        $owner = $this->store()->findAccessible($this->role(), $this->branch(), $id) ?? [];
 
-        return $this->layout('Login history', view('login_history', ['rows' => $rows, 'userId' => $id, 'page' => $page]));
+        return $this->layout('Login History', view('login_history', [
+            'rows' => $rows,
+            'userId' => $id,
+            'page' => $page,
+            'search' => $search,
+            'pages' => (int) ceil($this->store()->historyCount($this->role(), $this->branch(), $id, $search) / 5),
+            'ownerName' => (string) ($owner['name'] ?? ''),
+            'ownerEmail' => (string) ($owner['email'] ?? ''),
+        ]), ['subtitle' => 'Add, Edit, Delete']);
     }
 
     public function ownHistory(): string
@@ -143,20 +159,20 @@ final class Users extends BaseController
 
     private function renderList(string $search): string
     {
-        return $this->layout('Users', view('users_list', [
+        return $this->layout('User Management', view('users_list', ['caption' => 'Users List'] + [
             'rows' => $this->store()->all($this->role(), $this->branch(), $search),
             'search' => $search,
-        ]), ['actions' => $this->actionLink('/users/new', 'Add New')]);
+        ]), ['actions' => $this->actionLink('/users/new', 'Add New'), 'subtitle' => 'Add, Edit, Delete']);
     }
 
     /** @param array<string, mixed>|null $row */
     private function renderForm(?array $row): string
     {
-        return $this->layout('Users', view('users_form', [
+        return $this->layout('User Management', view('users_form', ['caption' => 'Enter User Details'] + [
             'row' => $row,
             'actorRole' => $this->role(),
             'actorBranch' => $this->branch(),
-        ]));
+        ]), ['subtitle' => 'Add / Edit User']);
     }
 
     private function save(?int $id): RedirectResponse|ResponseInterface

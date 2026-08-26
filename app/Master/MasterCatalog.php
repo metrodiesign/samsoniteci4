@@ -139,4 +139,51 @@ final class MasterCatalog
     {
         return self::REFERENCES[$type] ?? [];
     }
+
+    /**
+     * Page and card headings copied verbatim from the CI3 master views, inconsistent casing
+     * included (`Branch type Management`, `fixed Management`, `Enter brand Details`). The
+     * visual parity comparison reads these strings, so do not normalise them.
+     *
+     * @var array<string, array{list: string, listCaption: string, form: string, formCaption: string}>
+     */
+    private const TITLES = [
+        'branch' => ['list' => 'Branch Management', 'listCaption' => 'Branch List', 'form' => 'Branch Management', 'formCaption' => 'Enter Branch Details'],
+        'branchtype' => ['list' => 'Branch Type Management', 'listCaption' => 'Branch Type List', 'form' => 'Branch type Management', 'formCaption' => 'Enter branch type Details'],
+        'statustype' => ['list' => 'Status Type Management', 'listCaption' => 'Status Type List', 'form' => 'Status type Management', 'formCaption' => 'Enter Status type Details'],
+        'producttype' => ['list' => 'Products Type Management', 'listCaption' => 'Products Type List', 'form' => 'Products type Management', 'formCaption' => 'Enter Products type Details'],
+        'book' => ['list' => 'Book Management', 'listCaption' => 'Book List', 'form' => 'Book Management', 'formCaption' => 'Enter Book Details'],
+        'brand' => ['list' => 'Brand Management', 'listCaption' => 'Brand List', 'form' => 'Brand Management', 'formCaption' => 'Enter brand Details'],
+        'condition' => ['list' => 'Condition Management', 'listCaption' => 'Condition List', 'form' => 'Condition Management', 'formCaption' => 'Enter condition Details'],
+        'estimateprice' => ['list' => 'Estimateprice Management', 'listCaption' => 'Estimateprice List', 'form' => 'Estimateprice Management', 'formCaption' => 'Enter Estimateprice Details'],
+        'fixed' => ['list' => 'fixed Management', 'listCaption' => 'fixed List', 'form' => 'fixed Management', 'formCaption' => 'Enter fixed Details'],
+        'provider' => ['list' => 'Provider Management', 'listCaption' => 'Provider List', 'form' => 'Provider Management', 'formCaption' => 'Enter Provider Details'],
+    ];
+
+    /** CI3's `Add / Edit <thing>` subtitle on the form page, per type. */
+    private const FORM_SUBTITLES = [
+        'branch' => 'Add / Edit Branch',
+        'branchtype' => 'Add / Edit Branch',
+        'statustype' => 'Add / Edit Status',
+        'producttype' => 'Add / Edit Products type',
+        'book' => 'Add / Edit Book',
+        'brand' => 'Add / Edit Brand',
+        'condition' => 'Add / Edit Condition',
+        'estimateprice' => 'Add / Edit Estimateprice',
+        'fixed' => 'Add / Edit fixed',
+        'provider' => 'Add / Edit Provider',
+    ];
+
+    /** @return array{title: string, subtitle: string, caption: string} */
+    public static function heading(string $type, bool $form): array
+    {
+        $titles = self::TITLES[$type] ?? null;
+        if ($titles === null) {
+            return ['title' => 'Master data: ' . $type, 'subtitle' => '', 'caption' => ''];
+        }
+
+        return $form
+            ? ['title' => $titles['form'], 'subtitle' => self::FORM_SUBTITLES[$type] ?? '', 'caption' => $titles['formCaption']]
+            : ['title' => $titles['list'], 'subtitle' => 'Add, Edit, Delete', 'caption' => $titles['listCaption']];
+    }
 }

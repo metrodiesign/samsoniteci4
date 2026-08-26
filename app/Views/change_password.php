@@ -1,5 +1,7 @@
 <?php /** @var bool $changed */ ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <?php if ($changed): ?><p role="status">Password changed</p><?php endif ?>
     <form method="post" action="/change-password">
         <?= csrf_field() ?>
@@ -12,4 +14,5 @@
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>

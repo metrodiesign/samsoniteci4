@@ -36,10 +36,17 @@ final class ContactHttpTest extends CIUnitTestCase
     {
         $englishForm = $this->get('/contact');
         $englishForm->assertStatus(200);
-        $englishForm->assertSee('Contact us');
+        $englishForm->assertSee('REPAIR CENTER');
+        $englishForm->assertSee('CUSTOMER');
+        $englishForm->assertSee('MORE INFOMATION');
+        $englishForm->assertSee('Google Map');
+        $englishForm->assertSee('https://goo.gl/maps/uH7TMBuW1w22');
         $thaiForm = $this->get('/contact-th');
         $thaiForm->assertStatus(200);
-        $thaiForm->assertSee('ติดต่อเรา');
+        $thaiForm->assertSee('ศูนย์บริการซ่อม');
+        $thaiForm->assertSee('ลูกค้าสัมพันธ์');
+        $thaiForm->assertSee('ข้อมูลเพิ่มเติม');
+        $thaiForm->assertSee('แผนที่');
 
         $english = $this->post('/contact', $this->payload('a1', 'SYNTHETIC CONTACT EN'));
         $english->assertRedirectTo('/contact?submitted=1');
@@ -126,6 +133,18 @@ final class ContactHttpTest extends CIUnitTestCase
         $admin->assertStatus(200);
         $admin->assertSee('SYNTHETIC CONTACT B');
         $admin->assertDontSee('SYNTHETIC CONTACT A');
+
+        // CI3 column set and search field name; `search` above still works for old links.
+        $listing = (string) $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/contact-list?searchText=CONTACT+B')
+            ->getBody();
+        foreach (['Id', 'Name', 'Email', 'Samsoniteid', 'Phone', 'Detail', 'Date'] as $header) {
+            self::assertStringContainsString('<th>' . $header . '</th>', $listing, $header);
+        }
+        self::assertStringContainsString('<h3 class="box-title">Contact List</h3>', $listing);
+        self::assertStringContainsString('name="searchText"', $listing);
+        self::assertStringContainsString('SYNTHETIC CONTACT B', $listing);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT A', $listing);
 
         $this->expectException(PageNotFoundException::class);
         $this->expectExceptionCode(404);

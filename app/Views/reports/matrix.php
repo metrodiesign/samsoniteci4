@@ -16,10 +16,41 @@
 <?php endif ?>
 </form>
 <div class="card table-wrap">
+<?php if ($caption !== ''): ?><h3 class="box-title"><?= esc($caption) ?></h3><?php endif ?>
+<?php if ($sectionTitle !== ''): ?><h2><?= esc($sectionTitle) ?></h2><?php endif ?>
 <?php if ($kind === 'ratings'): ?>
-<table><thead><tr><th>Item</th><th>Total</th><th>Detail</th></tr></thead><tbody>
+<?php
+// Question wording and numbering copied from CI3 `application/views/report.php`: add_id 1-4 are
+// the four satisfaction questions, add_id 5-8 are the four sub-items of question 5, and
+// question 6 is the free-text section rendered as the No / Note table below.
+$questions = [
+    1 => '1. ความพึงพอใจในการให้บริการของเจ้าหน้าที่ ณ จุดรับซ่อม',
+    2 => '2. ความพึงพอใจในการให้บริการของศูนย์บริการ',
+    3 => '3. ความพึงพอใจในคุณภาพงานซ่อม',
+    4 => '4. ระยะเวลาที่ใช้ในการซ่อม',
+    5 => '5.1 ระยะเวลาซ่อม',
+    6 => '5.2 ค่าบริการซ่อม',
+    7 => '5.3 คุณภาพงานซ่อม',
+    8 => '5.4 ความพึงพอใจในการบริการ',
+];
+?>
 <?php foreach ($rows as $row): ?>
-<tr data-question="<?= (int) $row['question'] ?>" data-total="<?= (int) $row['total'] ?>"><td>Question <?= (int) $row['question'] ?></td><td><?= (int) $row['total'] ?></td><td><?php foreach ($row['scores'] as $score => $value): ?><?= (int) $score ?>: <?= esc($value['percentage']) ?>% <?php endforeach ?></td></tr>
+<?php $question = (int) $row['question']; ?>
+<?php if ($question === 5): ?><h4>5. ลำดับความสำคัญที่ลูกค้าพิจารณา</h4><?php endif ?>
+<div class="rating-group" data-question="<?= $question ?>" data-total="<?= (int) $row['total'] ?>">
+    <h4><?= esc($questions[$question] ?? ('Question ' . $question)) ?></h4>
+    <h5>Total <?= number_format((int) $row['total']) ?></h5>
+    <ul class="rating-scores">
+        <?php foreach ($row['scores'] as $score => $value): ?>
+            <li data-score="<?= (int) $score ?>"><?= (int) $score ?>: <?= esc($value['percentage']) ?>%</li>
+        <?php endforeach ?>
+    </ul>
+</div>
+<?php endforeach ?>
+<h4>6. ข้อเสนอแนะเพิ่มเติม</h4>
+<table><thead><tr><th>No</th><th>Note</th></tr></thead><tbody>
+<?php foreach ($ratingComments as $index => $comment): ?>
+<tr><td><?= $index + 1 ?></td><td><?= esc((string) $comment['comment']) ?></td></tr>
 <?php endforeach ?>
 </tbody></table>
 <?php else: ?>

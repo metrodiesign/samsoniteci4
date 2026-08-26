@@ -12,10 +12,22 @@ use InvalidArgumentException;
 
 final class Reports extends BaseController
 {
+    /**
+     * Page heading, card caption and in-card section title copied from the CI3 report views:
+     * `report.php`, `report_job_byday.php`, `report_job_pending.php`,
+     * `report_total_job_pending.php`, `report_in_progress_average.php` and
+     * `report_in_progress_job.php`. CI3 repeats "In Progress Report" as both the page title
+     * and the card caption; that is the original, not a copy-paste slip.
+     *
+     * @var array<string, array{0: string, 1: string, 2: string}>
+     */
     private const HEADINGS = [
-        'ratings' => 'Ratings', 'jobs-by-day' => 'Jobs by day', 'pending' => 'Pending jobs',
-        'pending-total' => 'Pending totals', 'in-progress-average' => 'In-progress average',
-        'in-progress' => 'In-progress jobs',
+        'ratings' => ['Rating Report', '', ''],
+        'jobs-by-day' => ['KPI', 'KPI Report', 'Completed Job'],
+        'pending' => ['KPI', 'KPI Report', 'Pending Job'],
+        'pending-total' => ['KPI', 'KPI Report', ''],
+        'in-progress-average' => ['In Progress Report', 'In Progress Report', ''],
+        'in-progress' => ['In Progress Report', 'In Progress Report', ''],
     ];
 
     public function matrix(string $kind): string|ResponseInterface
@@ -40,10 +52,14 @@ final class Reports extends BaseController
             $error = $exception->getMessage();
         }
         $role = (int) service('session')->get('role');
-        $html = $this->layout(self::HEADINGS[$kind], view('reports/matrix', [
+        [$title, $caption, $sectionTitle] = self::HEADINGS[$kind];
+        $html = $this->layout($title, view('reports/matrix', [
+            'caption' => $caption,
+            'sectionTitle' => $sectionTitle,
+            'ratingComments' => $kind === 'ratings' ? (new ReportMatrix($db))->ratingComments($start, $end, $branchId) : [],
             'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
             'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
-            'heading' => self::HEADINGS[$kind], 'kind' => $kind, 'rows' => $rows,
+            'heading' => $title, 'kind' => $kind, 'rows' => $rows,
             'showBranchSelect' => service('session')->get('BranchID') === null,
             'startDate' => $start,
             'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
@@ -79,7 +95,7 @@ final class Reports extends BaseController
         }
         $db = db_connect();
         $role = (int) service('session')->get('role');
-        $html = $this->layout('Report summary', view('reports/summary', [
+        $html = $this->layout('Report Summary', view('reports/summary', [
             'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name')->orderBy('branch_id')->get()->getResultArray() : [],
             'branchId' => $branchId,
             'brands' => $db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray(),
@@ -128,7 +144,7 @@ final class Reports extends BaseController
             ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=UTF-8')
             ->setHeader('Content-Disposition', 'attachment; filename="' . $type . '-report.xls"')
             ->setHeader('X-Content-Type-Options', 'nosniff')
-            ->setBody(view('reports/export', ['rows' => $rows, 'title' => self::HEADINGS[$type] ?? ucfirst($type)]));
+            ->setBody(view('reports/export', ['rows' => $rows, 'title' => self::HEADINGS[$type][0] ?? ucfirst($type)]));
     }
 
     public function legacyExport(string $type, string ...$ignored): ResponseInterface

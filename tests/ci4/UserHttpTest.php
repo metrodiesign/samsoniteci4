@@ -215,6 +215,37 @@ final class UserHttpTest extends CIUnitTestCase
         $this->withSession($this->session(9002, 2, 1, 4))->get('/api/books?branch_id=2')->assertStatus(404);
     }
 
+    public function testLoginHistoryCarriesCi3ColumnsSearchAndNumberedPager(): void
+    {
+        for ($index = 1; $index <= 6; $index++) {
+            $this->db->table('tbl_last_login')->insert([
+                'userId' => 9002, 'sessionData' => '{"role":2,"BranchID":1}', 'machineIp' => '127.0.0.' . $index,
+                'userAgent' => 'Browser', 'agentString' => 'HIST-' . $index, 'platform' => 'Test',
+                'createdDtm' => sprintf('2026-08-%02d 09:00:00', $index),
+            ]);
+        }
+        $body = (string) $this->withSession($this->session(9002, 2, 1, 4))->get('/users/9002/history')->getBody();
+
+        // CI3 column set, including the Session Data column CI4 used to drop entirely.
+        foreach (['Session Data', 'IP Address', 'User Agent', 'Agent Full String', 'Platform', 'Date-Time'] as $header) {
+            self::assertStringContainsString('<th>' . $header . '</th>', $body, $header);
+        }
+        self::assertStringContainsString('<td>{"role":2,"BranchID":1}</td>', $body);
+        self::assertStringContainsString('name="searchText"', $body);
+        // 6 rows over a page size of 5 gives CI3's two numbered links plus Next.
+        self::assertStringContainsString('/users/9002/history/2', $body);
+        self::assertStringContainsString('>Next</a>', $body);
+
+        $filtered = (string) $this->withSession($this->session(9002, 2, 1, 4))
+            ->get('/users/9002/history/1?searchText=127.0.0.3')
+            ->getBody();
+        self::assertStringContainsString('HIST-3', $filtered);
+        self::assertStringNotContainsString('HIST-6', $filtered);
+        // A filter that narrows to one page must drop the pager with it.
+        self::assertStringNotContainsString('>Next</a>', $filtered);
+
+    }
+
     public function testUserRoutesDenyAnonymousViewerEscalationAndCrossBranchMutation(): void
     {
         $this->get('/users')->assertStatus(401);

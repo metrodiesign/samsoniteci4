@@ -1,5 +1,6 @@
-<section class="card login-card" aria-labelledby="reset-title">
-    <h1 id="reset-title">Reset Password</h1>
+<div class="login-banner" role="presentation"></div>
+<div class="login-logo">Tracking</div>
+<section class="card login-card" aria-label="Reset Password">
     <p class="muted">Choose a new password for your account.</p>
 
     <div class="alert" id="reset-message" role="status" hidden></div>

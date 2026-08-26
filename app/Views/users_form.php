@@ -14,8 +14,11 @@ $userLabels = [
     'role_id' => 'Role',
     'branch_id' => 'Branch',
 ];
+/** @var string $caption */
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form method="post" action="<?= esc($action) ?>">
         <?= csrf_field() ?>
         <?php foreach (['username', 'name', 'email', 'mobile', 'group_id', 'role_id', 'branch_id'] as $field): ?>
@@ -30,4 +33,5 @@ $userLabels = [
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>

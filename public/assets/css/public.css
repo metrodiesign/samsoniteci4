@@ -1,5 +1,18 @@
 /* public.css — bootstrap grid shim (design §2.4)
-   แทน assets/bootstrap ทั้งชุด เหลือเฉพาะ .container / .row ที่หน้า public ใช้จริง */
+   แทน assets/bootstrap ทั้งชุด เหลือเฉพาะคลาส grid ที่หน้า public ใช้จริง
+   .row ต้องเป็น float grid แบบ bootstrap 3 ไม่ใช่ flex: main.css ตั้งลูกของ .row
+   (`.con-center-track`, `.contact-wrapper`) ให้พึ่ง block/inline-block ตาม CI3
+   ถ้า .row เป็น flex ลูกจะหดตามเนื้อหา ทำให้บล็อกไม่กึ่งกลาง ปุ่มตกบรรทัด และเอกสารล้นแนวนอน */
+/* CI3 loads bootstrap on these pages, which sets border-box globally. main.css was
+   authored against that: `.container`, `.search-txt` and `.main-input` are all
+   `width: 100%` with their own padding, so under the browser default content-box they
+   each push the document ~30px past the viewport (measured 413-437 at 390px wide). */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 .container {
     width: 100%;
     max-width: 1170px;
@@ -8,9 +21,84 @@
     padding-right: 15px;
     padding-left: 15px;
 }
+
 .row {
-    display: flex;
-    flex-wrap: wrap;
     margin-right: -15px;
     margin-left: -15px;
+}
+
+.row::before,
+.row::after {
+    content: " ";
+    display: table;
+}
+
+.row::after {
+    clear: both;
+}
+
+.col-xs-12,
+.col-sm-12,
+.col-md-4,
+.col-md-12,
+.col-lg-5,
+.col-lg-6,
+.col-lg-8 {
+    position: relative;
+    min-height: 1px;
+    padding-right: 15px;
+    padding-left: 15px;
+}
+
+.col-xs-12 {
+    float: left;
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .col-sm-12 {
+        float: left;
+        width: 100%;
+    }
+}
+
+@media (min-width: 992px) {
+    .col-md-4 {
+        float: left;
+        width: 33.33333333%;
+    }
+
+    .col-md-12 {
+        float: left;
+        width: 100%;
+    }
+}
+
+@media (min-width: 1200px) {
+    .col-lg-5 {
+        float: left;
+        width: 41.66666667%;
+    }
+
+    .col-lg-6 {
+        float: left;
+        width: 50%;
+    }
+
+    .col-lg-8 {
+        float: left;
+        width: 66.66666667%;
+    }
+}
+
+.text-right {
+    text-align: right;
+}
+
+/* .main-btn-sm in main.css was written for <input type="submit">. CI3's Google Map
+   control is a submit button sitting outside any form; CI4 uses a plain link instead,
+   which needs the box model and the underline reset to look the same. */
+a.main-btn-sm {
+    display: inline-block;
+    text-decoration: none;
 }

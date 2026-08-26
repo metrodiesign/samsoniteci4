@@ -165,14 +165,16 @@ final class MasterData extends BaseController
             unset($row);
         }
         $actions = $this->actionLink('/master/' . rawurlencode($type) . '/new', 'Add New');
+        $heading = MasterCatalog::heading($type, false);
 
-        return $this->layout('Master data: ' . $type, view('master_list', [
+        return $this->layout($heading['title'], view('master_list', [
             'definition' => $definition,
             'rows'       => $rows,
             'search'     => $search,
             'type'       => $type,
             'page'       => $page,
-        ]), ['actions' => $actions]);
+            'caption'    => $heading['caption'],
+        ]), ['actions' => $actions, 'subtitle' => $heading['subtitle']]);
     }
 
     /**
@@ -189,12 +191,15 @@ final class MasterData extends BaseController
             }
         }
 
-        return $this->layout('Master data: ' . $type, view('master_form', [
+        $heading = MasterCatalog::heading($type, true);
+
+        return $this->layout($heading['title'], view('master_form', [
             'definition' => $definition,
             'row'        => $row,
             'type'       => $type,
             'fkOptions'  => $fkOptions,
-        ]));
+            'caption'    => $heading['caption'],
+        ]), ['subtitle' => $heading['subtitle']]);
     }
 
     private function positiveInteger(mixed $value): ?int

@@ -58,7 +58,9 @@ final class Menu extends BaseController
         $store = new MenuStore(db_connect());
         $actions = $this->actionLink('/menu/new', 'Add New');
 
-        return $this->layout('Menu groups', view('menu_list', ['rows' => $store->all($search), 'search' => $search]), ['actions' => $actions]);
+        return $this->layout('Menu Management', view('menu_list', [
+            'rows' => $store->all($search), 'search' => $search, 'caption' => 'Menu List',
+        ]), ['actions' => $actions, 'subtitle' => 'Add, Edit, Delete']);
     }
 
     /** @param array<string, mixed>|null $row */
@@ -66,7 +68,9 @@ final class Menu extends BaseController
     {
         $store = new MenuStore(db_connect());
 
-        return $this->layout('Menu groups', view('menu_form', ['row' => $row, 'menuGroups' => $store->menuGroups()]));
+        return $this->layout('Menu Management', view('menu_form', [
+            'row' => $row, 'menuGroups' => $store->menuGroups(), 'caption' => 'Enter Menu Details',
+        ]), ['subtitle' => 'Add / Edit Menu']);
     }
 
     private function searchTerm(): string

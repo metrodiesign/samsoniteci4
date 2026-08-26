@@ -1,3 +1,4 @@
+<h2 class="dashboard-heading">REPORTS</h2>
 <nav aria-label="Dashboard shortcuts">
     <ul class="dashboard-actions">
         <?php foreach ($tiles as $tile): ?>

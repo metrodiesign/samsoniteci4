@@ -87,18 +87,18 @@ final class Background extends BaseController
 
     private function renderList(): string
     {
-        return $this->layout('Website backgrounds', view('background_list', [
+        return $this->layout('background Web EN Edit', view('background_list', ['caption' => 'background web List'] + [
             'rows' => (new BackgroundStore(db_connect()))->all(),
-        ]));
+        ]), ['subtitle' => '']);
     }
 
     /** @param array<string, mixed>|null $row */
     private function renderForm(?array $row): string
     {
-        return $this->layout('Website backgrounds', view('background_form', [
+        return $this->layout('background Web EN Management', view('background_form', [
             'fields' => BackgroundStore::FIELDS,
             'row' => $row,
-        ]));
+        ]), ['subtitle' => 'Add / Edit Branch']);
     }
 
     private function save(?int $id): RedirectResponse|ResponseInterface
