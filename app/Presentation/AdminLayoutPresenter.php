@@ -20,6 +20,16 @@ final class AdminLayoutPresenter
         $isLoggedIn = ($session['isLoggedIn'] ?? false) === true;
         $groupId = (int) ($session['GroupID'] ?? 0);
         $branchId = ($session['BranchID'] ?? null) === null ? null : (int) $session['BranchID'];
+        $showBranchAutocomplete = $isLoggedIn && $groupId <= 3;
+        $branchOptions = [];
+        if ($showBranchAutocomplete) {
+            foreach ($this->menus->branches() as $branch) {
+                $branchOptions[] = [
+                    'label' => $branch['name'],
+                    'value' => base_url('ReportTrackingListing/0/' . $branch['id']),
+                ];
+            }
+        }
 
         return [
             'pageTitle' => $title,
@@ -31,9 +41,10 @@ final class AdminLayoutPresenter
             'last_login' => (string) ($session['lastLogin'] ?? ''),
             'GroupID' => $groupId,
             'BranchID' => $branchId,
-            'BranchName' => '',
+            'BranchName' => $isLoggedIn ? $this->menus->branchName($branchId) : '',
             'menuItems' => $isLoggedIn ? $this->menus->visible($groupId, $branchId) : [],
-            'branchOptions' => [],
+            'showBranchAutocomplete' => $showBranchAutocomplete,
+            'branchOptions' => $branchOptions,
             'layoutProfile' => $profile,
         ];
     }

@@ -60,7 +60,7 @@ def create_ci3_fixture(root):
     tracked.write_text("tracked", encoding="utf-8")
     (assets / "tracked.css").write_text("tracked", encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.test"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
     subprocess.run(["git", "-C", str(root), "add", "application", "assets"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "fixture"], check=True)

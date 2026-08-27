@@ -53,24 +53,28 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
         $body = (string) $response->response()->getBody();
 
         foreach ([
-            '<title>Access Denied | Samsonite Tracking</title>',
-            '<body class="admin">',
-            '<nav aria-label="Main navigation">',
-            '<main class="content">',
+            '<title>Access Denied</title>',
+            '<body class="skin-blue sidebar-mini">',
+            '<div class="wrapper">',
+            '<header class="main-header">',
+            '<aside class="main-sidebar">',
+            '<ul class="sidebar-menu">',
             '<div class="content-wrapper">',
             '<section class="content-header">',
             '<small>You are not authorize user to use this</small>',
             '<section class="content">',
             '<img src="/assets/images/access.png" alt="Access Denied Image">',
+            '<footer class="main-footer">',
         ] as $contract) {
             self::assertStringContainsString($contract, $body, $contract);
         }
         self::assertSame(1, preg_match(
-            '#<main class="content">(?:\s|<!--.*?-->)*<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Access Denied\s*<small>You are not authorize user to use this</small>#s',
+            '#<aside class="main-sidebar">.*?</aside>(?:\s|<!--.*?-->)*<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Access Denied\s*<small>You are not authorize user to use this</small>#s',
             $body,
         ));
         self::assertStringNotContainsString('class="page-header"', $body);
         self::assertStringNotContainsString('id="page-title"', $body);
+        self::assertStringNotContainsString('<main class="content">', $body);
     }
 
     public function testBranchlessDenialUsesTheSameHtmlRepresentationWithoutController(): void
@@ -136,9 +140,10 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
     public function testJsonAjaxAndAnonymousDenialsDoNotQueryMenuData(): void
     {
         $menuQueries = [];
-        $listener = static function (Query $query) use (&$menuQueries): void {
+        $branchTable = '`' . $this->db->prefixTable('branch') . '`';
+        $listener = static function (Query $query) use (&$menuQueries, $branchTable): void {
             $sql = $query->getQuery();
-            if (str_contains($sql, 'group_menu') || str_contains($sql, 'tbl_menu')) {
+            if (str_contains($sql, 'group_menu') || str_contains($sql, 'tbl_menu') || str_contains($sql, $branchTable)) {
                 $menuQueries[] = $sql;
             }
         };
@@ -267,16 +272,16 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
         $this->withSession($this->adminSession())->get('/test/access/authorized-allowed')->assertStatus(200);
 
         $before = $this->renderNormalBaseLayout('Before denial');
-        self::assertStringContainsString('<div class="page-header">', $before);
-        self::assertStringContainsString('id="page-title">Before denial', $before);
+        self::assertStringContainsString('<section class="content-header">', $before);
+        self::assertStringContainsString('<h1>Before denial</h1>', $before);
 
         $denied = $this->htmlAuthorizationRequest();
         $denied->assertStatus(403);
-        self::assertStringNotContainsString('class="page-header"', (string) $denied->response()->getBody());
+        self::assertSame(1, substr_count((string) $denied->response()->getBody(), '<section class="content-header">'));
 
         $after = $this->renderNormalBaseLayout('After denial');
-        self::assertStringContainsString('<div class="page-header">', $after);
-        self::assertStringContainsString('id="page-title">After denial', $after);
+        self::assertStringContainsString('<section class="content-header">', $after);
+        self::assertStringContainsString('<h1>After denial</h1>', $after);
         self::assertStringNotContainsString('Access Denied</h1>', $after);
     }
 

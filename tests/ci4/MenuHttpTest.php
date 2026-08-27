@@ -26,6 +26,7 @@ final class MenuHttpTest extends CIUnitTestCase
             'group_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, group_type VARCHAR(250) NOT NULL, name VARCHAR(250) NOT NULL, cdate DATETIME NOT NULL',
             'group_type' => 'group_type_id INTEGER PRIMARY KEY, group_type_name VARCHAR(250) NOT NULL, icon_menu VARCHAR(250) NOT NULL',
             'tbl_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, menu_name VARCHAR(250) NOT NULL, menu_link VARCHAR(250) NOT NULL, group_type INTEGER NOT NULL, cdate DATETIME NOT NULL',
+            'branch' => 'branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250) NOT NULL, branch_user_name VARCHAR(250) NOT NULL',
             'request_order' => 'request_id INTEGER PRIMARY KEY, branchID INTEGER, action_status INTEGER',
         ] as $table => $definition) {
             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
@@ -42,6 +43,11 @@ final class MenuHttpTest extends CIUnitTestCase
             ['group_type_id' => 1, 'group_type_name' => 'DASHBOARD', 'icon_menu' => 'fa fa-dashboard'],
             ['group_type_id' => 2, 'group_type_name' => 'MASTER ADMIN', 'icon_menu' => 'fa fa-cogs'],
             ['group_type_id' => 3, 'group_type_name' => 'ORDER', 'icon_menu' => 'fa fa-shopping-cart'],
+        ]);
+        $this->db->table('branch')->insert([
+            'branch_id' => 1,
+            'branch_name' => 'SYNTHETIC BRANCH',
+            'branch_user_name' => 'synthetic-branch',
         ]);
         $this->db->table('tbl_menu')->insertBatch([
             ['id' => 1, 'menu_name' => 'DASH LINK', 'menu_link' => 'dashboard', 'group_type' => 1, 'cdate' => $now],
@@ -87,7 +93,7 @@ final class MenuHttpTest extends CIUnitTestCase
         $match = $this->withSession($session)->get('/menu?search=CENTRAL');
         $match->assertStatus(200);
         $match->assertSee('CENTRAL');
-        $match->assertDontSee('BRANCH');
+        self::assertStringNotContainsString('<td>BRANCH</td>', $match->getBody());
         $match->assertSee('Menu Group name');
         $match->assertSee('>Edit</a>');
         // 'Add, Edit, Delete' is CI3's page subtitle; assert the absence of a delete control,
@@ -127,9 +133,174 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertSame(1, $data['GroupID']);
         self::assertNull($data['BranchID']);
         self::assertSame('', $data['BranchName']);
-        self::assertSame([], $data['branchOptions']);
+        self::assertTrue($data['showBranchAutocomplete']);
+        self::assertSame([
+            ['label' => 'SYNTHETIC BRANCH', 'value' => base_url('ReportTrackingListing/0/1')],
+        ], $data['branchOptions']);
         self::assertSame('admin', $data['layoutProfile']);
         self::assertSame([1, 2], array_column($data['menuItems'], 'group_id'));
+
+        $branchData = (new AdminLayoutPresenter(new MenuStore($this->db)))->present([
+            'isLoggedIn' => true,
+            'name' => 'Synthetic branch presenter',
+            'GroupID' => 4,
+            'BranchID' => 1,
+        ], 'Branch title', '<p>Branch content</p>');
+
+        self::assertSame('SYNTHETIC BRANCH', $branchData['BranchName']);
+        self::assertFalse($branchData['showBranchAutocomplete']);
+        self::assertSame([], $branchData['branchOptions']);
+    }
+
+    public function testAdminShellRestoresCi3HierarchyAssetsAndScripts(): void
+    {
+        $body = (string) $this
+            ->withSession($this->session($this->adminId, 1, 1, null))
+            ->get('/dashboard')
+            ->getBody();
+
+        $this->assertFragmentsInOrder($body, [
+            '<!DOCTYPE html>',
+            'assets/bootstrap/css/bootstrap.min.css',
+            'assets/datatables/1.10.16/css/jquery.dataTables.min.css',
+            'assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css',
+            'assets/font-awesome/css/font-awesome.min.css',
+            'assets/dist/css/AdminLTE.min.css',
+            'assets/dist/css/CustomAdmin.css',
+            'assets/css/main.css',
+            'assets/css/multifreezer.css',
+            'assets/dist/css/skins/_all-skins.min.css',
+            'assets/js/jquerydatepicker/jquery-1.10.2.min.js',
+            'assets/js/jquerydatepicker/jquery-ui.css',
+            'assets/js/jquerydatepicker/jquery-ui-timepicker-addon.css',
+            'assets/js/jquerydatepicker/jquery-ui.min.js',
+            'assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js',
+            'assets/js/jquerydatepicker/jquery-ui-sliderAccess.js',
+            'var baseURL =',
+            'assets/html5shiv/3.7.2/html5shiv.min.js',
+            'assets/respond/1.4.2/respond.min.js',
+            '<body class="skin-blue sidebar-mini">',
+            '<div class="wrapper">',
+            '<header class="main-header">',
+            'class="logo"',
+            'assets/images/print-logo.jpg',
+            '<nav class="navbar navbar-static-top"',
+            'class="sidebar-toggle" data-toggle="offcanvas"',
+            'onclick="history.back(-1)"',
+            '<div class="navbar-custom-menu">',
+            '<aside class="main-sidebar">',
+            '<section class="sidebar">',
+            '<ul class="sidebar-menu">',
+            '<div class="content-wrapper">',
+            '<footer class="main-footer">',
+            '<section id="footer">',
+            'assets/images/img-footer.png',
+            'assets/bootstrap/js/bootstrap.min.js',
+            'assets/dist/js/app.min.js',
+            'assets/js/jquery.validate.js',
+            'assets/js/validation.js',
+            'var windowURL = window.location.href;',
+            'assets/datatables/1.10.16/js/jquery.dataTables.min.js',
+            'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js',
+            "var table = $('#example').DataTable({",
+        ]);
+
+        self::assertMatchesRegularExpression('#<form action="[^"]*/logout" method="post"#', $body);
+        self::assertStringContainsString('<button type="submit"', $body);
+        self::assertMatchesRegularExpression(
+            '#<form action="[^"]*/logout" method="post".*name="csrf_test_name".*<button type="submit"#s',
+            $body,
+        );
+        self::assertStringNotContainsString('href="/logout"', $body);
+        self::assertMatchesRegularExpression(
+            '#<img class="" src="[^"]*/assets/images/img-footer\.png">#',
+            $body,
+        );
+        $dataTablesInitialization = implode("\n", [
+            '    $(document).ready(function() {',
+            "        var table = $('#example').DataTable({",
+            '            scrollY: "300px",',
+            '            scrollX: true,',
+            '            responsive: true,',
+            "            className: 'mdl-data-table__cell--non-numeric',",
+            '            scrollCollapse: true,',
+            '            paging: true,',
+            "            buttons: ['colvis'],",
+            '            fixedColumns: {',
+            '                leftColumns: 1,',
+            '                leftColumns: 2,',
+            '                leftColumns: 3',
+            '            }',
+            '        });',
+            '    });',
+        ]);
+        self::assertStringContainsString($dataTablesInitialization, $body);
+
+        foreach (['<svg', 'id="sidebar-toggle"', 'class="topbar"', '<body class="admin">'] as $replacement) {
+            self::assertStringNotContainsString($replacement, $body, $replacement);
+        }
+    }
+
+    public function testAdminShellUsesDatabaseBranchDataForHeaderAndAutocomplete(): void
+    {
+        $adminBody = (string) $this
+            ->withSession($this->session($this->adminId, 1, 1, null))
+            ->get('/dashboard')
+            ->getBody();
+        self::assertStringContainsString('id="autocomplete"', $adminBody);
+        self::assertStringContainsString('"label":"SYNTHETIC BRANCH"', $adminBody);
+        self::assertStringContainsString('ReportTrackingListing/0/1', $adminBody);
+
+        $branchBody = (string) $this
+            ->withSession($this->session($this->branchId, 2, 4, 1))
+            ->get('/dashboard')
+            ->getBody();
+        self::assertStringContainsString('<b>BRANCH SYNTHETIC BRANCH</b>', $branchBody);
+        self::assertStringNotContainsString('id="autocomplete"', $branchBody);
+    }
+
+    public function testCentralGroupKeepsAutocompleteWhenBranchListIsEmpty(): void
+    {
+        $this->db->table('branch')->truncate();
+
+        $adminBody = (string) $this
+            ->withSession($this->session($this->adminId, 1, 1, null))
+            ->get('/dashboard')
+            ->getBody();
+        self::assertStringContainsString('<i class="fa fa-university"></i>', $adminBody);
+        self::assertStringContainsString('var xsource = [];', $adminBody);
+        self::assertStringContainsString('id="autocomplete"', $adminBody);
+
+        $branchBody = (string) $this
+            ->withSession($this->session($this->branchId, 2, 4, 1))
+            ->get('/dashboard')
+            ->getBody();
+        self::assertStringNotContainsString('id="autocomplete"', $branchBody);
+    }
+
+    public function testBranchAutocompleteHexEscapesMaliciousDatabaseLabels(): void
+    {
+        $malicious = 'Campus "</script><script>alert(\'x\')</script><b>unsafe</b>';
+        $this->db->table('branch')->insert([
+            'branch_id' => 2,
+            'branch_name' => $malicious,
+            'branch_user_name' => 'malicious-fixture',
+        ]);
+
+        $body = (string) $this
+            ->withSession($this->session($this->adminId, 1, 1, null))
+            ->get('/dashboard')
+            ->getBody();
+
+        self::assertStringNotContainsString($malicious, $body);
+        self::assertStringNotContainsString('</script><script>', $body);
+        self::assertStringNotContainsString('<b>unsafe</b>', $body);
+        self::assertStringContainsString('\\u003C/script\\u003E', $body);
+        self::assertSame(1, preg_match('/var xsource = (\[[^\n]*\]);/', $body, $match));
+        $source = json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
+        $index = array_search($malicious, array_column($source, 'label'), true);
+        self::assertNotFalse($index);
+        self::assertSame(base_url('ReportTrackingListing/0/2'), $source[$index]['value']);
     }
 
     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
@@ -232,19 +403,20 @@ final class MenuHttpTest extends CIUnitTestCase
         }
 
         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
-        self::assertSame(1, preg_match('#<nav aria-label="Main navigation">(.*?)</nav>#s', $body, $m));
-        self::assertSame($expected, substr_count($m[1], '<a '));
+        self::assertGreaterThan(0, preg_match_all('#<ul class="treeview-menu"[^>]*>(.*?)</ul>#s', $body, $menus));
+        self::assertSame($expected, substr_count(implode('', $menus[1]), '<a '));
     }
 
-    public function testDashboardRendersSinglePageHeaderH1(): void
+    public function testDashboardRendersCi3ContentHeaderInsideContentWrapper(): void
     {
         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
-        self::assertStringContainsString('class="page-header"', $body);
-        // The blue header owns the only page heading; the view's own <h1> must be gone.
-        // CI3 carries the subtitle inside that same <h1>, so match the opening tag only.
-        self::assertSame(1, substr_count($body, '<h1 id="page-title">Dashboard'));
-        self::assertSame(1, substr_count($body, '<h1 '));
-        self::assertStringContainsString('<small>Control panel</small>', $body);
+        self::assertSame(1, preg_match(
+            '#<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Dashboard\s*<small>Control panel</small>#s',
+            $body,
+        ));
+        self::assertSame(1, substr_count($body, '<h1>'));
+        self::assertStringNotContainsString('class="page-header"', $body);
+        self::assertStringNotContainsString('id="page-title"', $body);
         self::assertSame(0, substr_count($body, 'id="dashboard-title"'));
     }
 
@@ -356,6 +528,17 @@ final class MenuHttpTest extends CIUnitTestCase
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
         self::assertStringContainsString('<form method="get" action="/menu">', $body);
         self::assertStringNotContainsString('type="reset"', $body);
+    }
+
+    /** @param list<string> $fragments */
+    private function assertFragmentsInOrder(string $body, array $fragments): void
+    {
+        $offset = 0;
+        foreach ($fragments as $fragment) {
+            $position = strpos($body, $fragment, $offset);
+            self::assertNotFalse($position, $fragment);
+            $offset = $position + strlen($fragment);
+        }
     }
 
     /**

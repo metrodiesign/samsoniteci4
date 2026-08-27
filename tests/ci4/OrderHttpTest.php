@@ -255,6 +255,19 @@ final class OrderHttpTest extends CIUnitTestCase
         $this->withSession($admin)->get('/orders?status=3')->assertSee('WP00C-TRACK-003');
     }
 
+    public function testControllerBusinessForbiddenRemainsJsonWhenHtmlIsRequested(): void
+    {
+        $response = $this
+            ->withHeaders(['Accept' => 'text/html'])
+            ->withSession($this->session(2, 2, 1))
+            ->get('/orders?status=2');
+
+        $response->assertStatus(403);
+        $response->assertHeader('Content-Type', 'application/json; charset=UTF-8');
+        $response->assertJSONExact(['error' => 'forbidden']);
+        $response->assertDontSee('Access Denied');
+    }
+
     public function testBranchUserStillReachesEveryOtherQueueThroughQueryString(): void
     {
         // AC-6 (discriminator): only queues 2 and 3 are gated; every other status stays 200 for the
@@ -1150,9 +1163,14 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('<option value="7"', $body);
         // The per-row rating button stays on the same page as the bulk form.
         self::assertStringContainsString('class="rate-open"', $body);
-        // AC-6: the rating modal partial no longer carries an inline <style> block (its rules
-        // moved to admin.css), so a page that renders the modal has no <style in the document.
-        self::assertStringNotContainsString('<style', $body);
+        // AC-6: the shared CI3 header intentionally retains its `.error` style. Scope the
+        // regression to the modal and its script as they actually appear in the response.
+        self::assertSame(1, preg_match(
+            '#(<dialog id="rating-modal".*?</dialog>\s*<script>.*?</script>)#s',
+            $body,
+            $modalRegion,
+        ));
+        self::assertStringNotContainsString('<style', $modalRegion[1]);
     }
 
     public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
