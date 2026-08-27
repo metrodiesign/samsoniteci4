@@ -30,8 +30,8 @@ $notFound = $isThai ? 'ไม่พบหมายเลขติดตาม' :
                            style="height: 70px; text-transform: uppercase;">
 
                     <div>
-                        <button type="button" id="btnModal" class="main-btn-sm">HOW TO CHECK</button>
-                        <input type="submit" class="main-btn-sm" value="CHECK NOW">
+                        <button type="button" id="btnModal" class="main-btn-sm"><?= $isThai ? 'วิธีตรวจสอบสถานะ' : 'HOW TO CHECK' ?></button>
+                        <input type="submit" class="main-btn-sm" value="<?= $isThai ? 'ติดตาม' : 'CHECK NOW' ?>">
                     </div>
 
                     <?php if ($trackId !== ''): ?>

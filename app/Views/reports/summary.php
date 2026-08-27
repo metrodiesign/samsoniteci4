@@ -19,8 +19,40 @@ $nextUrl = site_url('reportsummary/' . ($page + 100)) . ($exportFilters === [] ?
 <?php if ($branches !== []): ?><div><label for="summary-branch">Branch</label><select id="summary-branch" name="branch_id"><option value="0">All branches</option><?php foreach ($branches as $branch): ?><option value="<?= (int) $branch['branch_id'] ?>" <?= $branchId === (int) $branch['branch_id'] ? 'selected' : '' ?>><?= esc((string) $branch['branch_name']) ?></option><?php endforeach ?></select></div><?php else: ?><input type="hidden" name="branch_id" value="<?= (int) $branchId ?>"><?php endif ?>
 <button type="submit">Filter</button><a class="button" href="<?= esc($exportUrl) ?>">Export XLS</a>
 </form>
-<div class="card table-wrap"><table><thead><tr><th>No</th><th>Status</th><th>Tracking</th><th>Order</th><th>Branch</th><th>Brand</th><th>Type</th><th>Price</th></tr></thead><tbody>
-<?php foreach ($rows as $index => $row): ?><tr><td><?= $page + $index + 1 ?></td><td><?= esc((string) $row['status_name']) ?></td><td><?= esc((string) $row['trackID']) ?></td><td><?= esc((string) $row['orderIDShow']) ?></td><td><?= esc((string) $row['branch_name']) ?></td><td><?= esc((string) $row['brand_details']) ?></td><td><?= esc((string) $row['type_details']) ?></td><td><?= esc(number_format((float) $row['RepairPrice'], 2, '.', '')) ?></td></tr><?php endforeach ?>
+<?php
+// Column order and wording are CI3's reportsummary view verbatim, "Warannty" typo included.
+// `$columns` maps each header to the row key (or keys, joined like CI3 does for the
+// checkbox groups that carry a free-text "other" value alongside the selected ids).
+$columns = [
+    'Action Status' => ['status_name'],
+    'Branch User' => ['branch_user_name'],
+    'Branch Name' => ['branch_name'],
+    'trackID' => ['trackID'],
+    'orderID' => ['orderIDShow'],
+    'Urgent' => ['detailAgent'],
+    'Fullname' => ['customerFullname'],
+    'Tel' => ['customerTel'],
+    'Email' => ['customerEmail'],
+    'RequestDate' => ['requestDate'],
+    'BRAND ID / ยี่ห้อ' => ['brand_details'],
+    'CATEGORY / ประเภท' => ['type_details'],
+    'SKU NAME / ชื่อสินค้า' => ['detailSKUName'],
+    'WARANTY / หมายเลขประกัน' => ['detailNumberWaranty'],
+    'EQUIPMENT / อุปกรณ์ที่มาพร้อมกับสินค้า' => ['detailEquipment'],
+    'NOTE / หมายเหตุ' => ['detailNote'],
+    'Condition / อาการที่ส่งซ่อม' => ['detailCondition', 'detailConditionOther'],
+    'Estimate Price / ประเมินราคาส่งซ่อม' => ['detailEstimatePrice', 'detailEstimatePriceOther'],
+    'Fixed / สภาพ, ตำหนิ' => ['detailFixed', 'detailFixedOther'],
+    'รับเข้า' => ['date_repair'],
+    'อัพเดทล่าสุด' => ['date_update_status'],
+    'ศูนย์ส่งคืนสาขา' => ['date_deliver'],
+    'ลูกค้ามารับคืน' => ['date_complete'],
+    'ราคาซ่อม' => ['RepairPrice'],
+    'Warannty' => ['waranty_cmg'],
+];
+?>
+<div class="card table-wrap"><table><thead><tr><th>No</th><?php foreach (array_keys($columns) as $header): ?><th><?= esc($header) ?></th><?php endforeach ?></tr></thead><tbody>
+<?php foreach ($rows as $index => $row): ?><tr><td><?= $page + $index + 1 ?></td><?php foreach ($columns as $keys): ?><td><?= esc(implode(' ', array_filter(array_map(static fn (string $key): string => trim((string) ($row[$key] ?? '')), $keys), static fn (string $value): bool => $value !== ''))) ?></td><?php endforeach ?></tr><?php endforeach ?>
 </tbody></table></div>
 <?php if (count($rows) === 100): ?><a href="<?= esc($nextUrl) ?>">Next</a><?php endif ?>
 </section>

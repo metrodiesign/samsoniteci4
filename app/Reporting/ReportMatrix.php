@@ -14,6 +14,23 @@ final class ReportMatrix
     }
 
     /** @return list<array{question:int,total:int,scores:array<int, array{count:int,percentage:string}>}> */
+    /**
+     * Free-text answers to CI3's question 6 ("ข้อเสนอแนะเพิ่มเติม"), scoped by the same date
+     * range and branch as the score matrix so the page reads as one report.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function ratingComments(mixed $startDate, mixed $endDate, ?int $branchId): array
+    {
+        [$start, $end] = $this->dates($startDate, $endDate);
+        $query = $this->db->table('rating_comment')
+            ->select('id, comment')
+            ->where("TRIM(comment) <>", '');
+        $this->scope($query, 'created_at', 'branch_id', $start, $end, $branchId);
+
+        return $query->orderBy('id', 'ASC')->limit(500)->get()->getResultArray();
+    }
+
     public function ratings(mixed $startDate, mixed $endDate, ?int $branchId): array
     {
         [$start, $end] = $this->dates($startDate, $endDate);
@@ -334,10 +351,19 @@ final class ReportMatrix
         $typeId = $this->optionalId($rawTypeId, 'type');
         $statuses = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
         $query = $this->db->table('request_order orders')
+            // The column list mirrors CI3's reportsummary view one for one; it renders 26 columns
+            // and the export shares the same rows, so trimming this select shrinks both.
             ->select([
                 'orders.request_id', 'orders.requestDate', 'orders.trackID', 'orders.orderIDShow',
-                'orders.customerFullname', 'orders.branchID', 'orders.action_status', 'orders.detailBrandId',
-                'orders.detailTypeId', 'orders.RepairPrice', 'branches.branch_name', 'statuses.status_name',
+                'orders.customerFullname', 'orders.customerTel', 'orders.customerEmail',
+                'orders.branchID', 'orders.action_status', 'orders.detailBrandId',
+                'orders.detailTypeId', 'orders.RepairPrice', 'orders.detailAgent', 'orders.detailSKUName',
+                'orders.detailNumberWaranty', 'orders.detailEquipment', 'orders.detailNote',
+                'orders.detailCondition', 'orders.detailConditionOther', 'orders.detailEstimatePrice',
+                'orders.detailEstimatePriceOther', 'orders.detailFixed', 'orders.detailFixedOther',
+                'orders.date_repair', 'orders.date_update_status', 'orders.date_deliver',
+                'orders.date_complete', 'orders.waranty_cmg',
+                'branches.branch_name', 'branches.branch_user_name', 'statuses.status_name',
                 'brands.brand_details', 'types.type_details',
             ])
             ->join('brand brands', 'brands.brand_id = orders.detailBrandId', 'inner')

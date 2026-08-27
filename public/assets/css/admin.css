@@ -101,6 +101,28 @@ tbody tr:hover { background: #f7f9fd; }
 body.bare { display: block; }
 body.bare main { width: min(1100px, 100%); margin: 0 auto; padding: 1.5rem; }
 
+/* --- banner + wordmark above the sign-in card, parity with the CI3 login page --- */
+.login-banner {
+    height: 300px;
+    margin: -1.5rem -1.5rem 0;
+    background: url('../images/bg-login.jpg') center / cover no-repeat;
+    border-bottom: 2px solid #014c8f;
+}
+.login-logo {
+    margin: 2rem auto .5rem;
+    text-align: center;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #014c8f;
+}
+.login-card { margin: 1.5rem auto 8vh; }
+.login-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
 /* --- admin grid shell (design §1.1) --- */
 body.admin {
     display: grid;
@@ -267,3 +289,41 @@ body.bare footer.site-footer { grid-area: auto; }
 #rating-modal.show-en .lang-en { display: block; }
 #rating-modal .star { cursor: pointer; color: #ccc; font-size: 1.4em; }
 #rating-modal .star.on { color: #f5a623; }
+
+/* --- CI3-style card chrome: caption, inline search tools and icon row actions --- */
+.box-title {
+    margin: 0 0 .75rem;
+    font-size: 1.05rem;
+    font-weight: 400;
+    color: #26324b;
+}
+.box-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+.box-tools input {
+    width: auto;
+    min-width: 8rem;
+    flex: 0 1 12rem;
+}
+.icon-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    margin-right: .25rem;
+    border: none;
+    border-radius: 3px;
+    background: #00a7d0;
+    color: #fff;
+    cursor: pointer;
+}
+.icon-action + .icon-action { background: #dd4b39; }
+.icon-action + .icon-action + .icon-action { background: #00a7d0; }
+/* An empty status box must not paint an alert frame over the page. */
+.alert:empty { display: none; }
+.pager { display: flex; gap: .5rem; align-items: center; margin-top: .75rem; }

@@ -30,7 +30,7 @@ final class ReportHttpTest extends CIUnitTestCase
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250), status_name_th VARCHAR(250)',
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250)',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250)',
-            'request_order' => 'request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), number_cmg VARCHAR(100), detailAgent INTEGER, customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, provider_id INTEGER, logistics_etc_detail TEXT, RepairPrice DECIMAL(8,2), waranty_cmg VARCHAR(100)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), number_cmg VARCHAR(100), detailAgent INTEGER, customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, provider_id INTEGER, logistics_etc_detail TEXT, RepairPrice DECIMAL(8,2), waranty_cmg VARCHAR(100), detailNumberWaranty VARCHAR(100), detailEquipment TEXT, detailNote TEXT, detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250)',
             'rating' => 'rating_id INTEGER PRIMARY KEY AUTOINCREMENT, add_id INTEGER, rating INTEGER, order_id VARCHAR(100), branchID INTEGER, cdate DATETIME',
             'rating_comment' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, track_id VARCHAR(100), branch_id INTEGER, comment TEXT, created_at DATETIME',
         ] as $table => $definition) {
@@ -184,10 +184,11 @@ final class ReportHttpTest extends CIUnitTestCase
     public function testAllLegacyHtmlReportRoutesUseExactScopedMatrixTotals(): void
     {
         $routes = [
-            '/user/report' => 'Ratings', '/user/report_job_byday' => 'Jobs by day',
-            '/user/report_job_pending' => 'Pending jobs', '/user/report_total_job_pending' => 'Pending totals',
-            '/user/report_in_progress_average' => 'In-progress average',
-            '/user/report_in_progress_job' => 'In-progress jobs',
+            // Headings are CI3's own wording; `KPI` covers three of the six pages there.
+            '/user/report' => 'Rating Report', '/user/report_job_byday' => 'KPI',
+            '/user/report_job_pending' => 'KPI', '/user/report_total_job_pending' => 'KPI',
+            '/user/report_in_progress_average' => 'In Progress Report',
+            '/user/report_in_progress_job' => 'In Progress Report',
         ];
         foreach ($routes as $route => $heading) {
             $response = $this->withSession($this->session(2, 2, 1))->get($route);

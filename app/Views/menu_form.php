@@ -4,8 +4,11 @@
 /** @var list<array{id: int, name: string}> $menuGroups */
 $selected = array_filter(array_map('intval', explode(',', (string) ($row['group_type'] ?? ''))));
 $action = '/menu' . ($row === null ? '' : '/' . (int) $row['id']);
+/** @var string $caption */
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form method="post" action="<?= esc($action) ?>">
         <?= csrf_field() ?>
         <label for="menu-name">Name</label>
@@ -22,4 +25,5 @@ $action = '/menu' . ($row === null ? '' : '/' . (int) $row['id']);
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>

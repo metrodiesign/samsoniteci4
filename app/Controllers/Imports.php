@@ -13,7 +13,15 @@ final class Imports extends BaseController
     {
         $this->assertKind($kind);
 
-        return $this->layout('Import ' . $kind, view('import_form', ['kind' => $kind]));
+        $titles = [
+            'status' => 'Upload Management',
+            'price' => 'Upload Price Management',
+            'new-order' => 'Upload NEW REQUEST Management',
+        ];
+
+        return $this->layout($titles[$kind] ?? ('Import ' . $kind), view('import_form', [
+            'kind' => $kind, 'caption' => 'Enter Upload Details',
+        ]), ['subtitle' => 'Add / Upload']);
     }
 
     public function preview(string $kind): string|ResponseInterface

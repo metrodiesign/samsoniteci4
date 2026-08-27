@@ -7,6 +7,7 @@
  * @var list<array<string, mixed>> $conditions
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
+ * @var string $caption
  */
 
 $fmtDate = static function ($raw): string {
@@ -41,9 +42,12 @@ $select = static function (string $name, array $items, string $idKey, string $la
 $warantyType = (string) ($row['warantyType'] ?? '0');
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form method="post" action="/orders/<?= (int) $row['request_id'] ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
 
+        <h3>Urgent/ซ่อมด่วน</h3>
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"<?= (string) ($row['detailAgent'] ?? '') === '1' ? ' checked' : '' ?>> Urgent/ซ่อมด่วน</label>
 
         <?php
@@ -122,4 +126,5 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>

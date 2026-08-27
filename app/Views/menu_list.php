@@ -2,8 +2,11 @@
 
 /** @var list<array<string, mixed>> $rows */
 /** @var string $search */
+/** @var string $caption */
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form method="get" action="/menu">
         <label for="menu-search">Search</label>
         <input id="menu-search" name="search" value="<?= esc($search) ?>" maxlength="128">
@@ -28,5 +31,6 @@
             <?php endforeach ?>
         </tbody>
     </table>
+    </div>
     </div>
 </section>

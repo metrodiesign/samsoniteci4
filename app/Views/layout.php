@@ -69,8 +69,10 @@ $iconSvg = static function (string $icon): string {
     </header>
     <main class="content">
         <div class="page-header">
-            <h1 id="page-title"><?= esc($title) ?></h1>
-            <?php if ($subtitle !== ''): ?><small><?= esc($subtitle) ?></small><?php endif ?>
+            <?php // CI3 keeps the subtitle inside the heading (`<h1>Title<br><small>…</small></h1>`),
+                  // so screen readers and the parity comparison both read them as one title block. ?>
+            <h1 id="page-title"><?= esc($title) ?><?php if ($subtitle !== ''): ?>
+                <br><small><?= esc($subtitle) ?></small><?php endif ?></h1>
             <?php if ($actions !== ''): ?><div class="page-actions"><?= $actions ?></div><?php endif ?>
         </div>
         <?= $content ?>

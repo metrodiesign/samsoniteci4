@@ -23,15 +23,50 @@ final class Order extends BaseController
      * form, view-only), `row_action` (T5 rating modal, view-only). status 1 bulk provider
      * (T7 bulk form, view-only); status 6/8 stay generic.
      *
-     * @var array<int, array{title: string, bulk_endpoint: ?string, statuses: list<int>, row_action: ?string}>
+     * `title`, `subtitle`, `list_title`, `add_new`, `to_date` and `headers` mirror the CI3
+     * queue views one for one, including CI3's inconsistent header casing between queues
+     * (`TrackID` on queue 1 and 5, `trackID` on 2-4, `Track Id` on 7). Do not "tidy" them:
+     * the visual parity comparison reads these strings verbatim.
+     *
+     * @var array<int, array{title: string, subtitle: string, list_title: string, add_new: bool, to_date: bool, headers: list<string>, bulk_endpoint: ?string, statuses: list<int>, row_action: ?string}>
      */
     public const PROFILES = [
-        1 => ['title' => 'NEW ORDER', 'bulk_endpoint' => '/sendorderUpdate', 'statuses' => [], 'row_action' => null],
-        2 => ['title' => 'TRANSPORTING', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [3, 4], 'row_action' => null],
-        3 => ['title' => 'STATUS REPAIR', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [4], 'row_action' => null],
-        4 => ['title' => 'DELIVER TO CUSTOMER', 'bulk_endpoint' => '/sendorder_deliver', 'statuses' => [5], 'row_action' => null],
-        5 => ['title' => 'COMPLETE', 'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [7], 'row_action' => 'rate'],
-        7 => ['title' => 'COMPLETED', 'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null],
+        1 => [
+            'title' => 'NEW REQUEST REPAIR', 'subtitle' => 'Add, Edit, Delete',
+            'list_title' => 'Request order List', 'add_new' => true, 'to_date' => true,
+            'headers' => ['Id', 'TrackID', 'OrderID', 'Fullname', 'Tel', 'Email', 'RequestDate', 'Action status'],
+            'bulk_endpoint' => '/sendorderUpdate', 'statuses' => [], 'row_action' => null,
+        ],
+        2 => [
+            'title' => 'TRANSPORTING', 'subtitle' => '',
+            'list_title' => 'TRANSPORTING List', 'add_new' => false, 'to_date' => false,
+            'headers' => ['Id', 'trackID', 'orderID', 'Fullname', 'Tel', 'Email', 'RequestDate', 'Action status', 'status Update'],
+            'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [3, 4], 'row_action' => null,
+        ],
+        3 => [
+            'title' => 'STATUS REPAIR', 'subtitle' => '',
+            'list_title' => 'STATUS REPAIR List', 'add_new' => false, 'to_date' => false,
+            'headers' => ['Id', 'trackID', 'orderID', 'Fullname', 'Tel', 'Email', 'RequestDate', 'Action Status', 'Status Update'],
+            'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [4], 'row_action' => null,
+        ],
+        4 => [
+            'title' => 'DELIVER TO CUSTOMER', 'subtitle' => '',
+            'list_title' => 'DELIVER TO CUSTOMER List', 'add_new' => false, 'to_date' => false,
+            'headers' => ['Id', 'trackID', 'orderID', 'Fullname', 'Tel', 'Email', 'RequestDate', 'Action Status', 'Status Update'],
+            'bulk_endpoint' => '/sendorder_deliver', 'statuses' => [5], 'row_action' => null,
+        ],
+        5 => [
+            'title' => 'COMPLETE FEEDBACK', 'subtitle' => '',
+            'list_title' => '', 'add_new' => false, 'to_date' => false,
+            'headers' => ['Id', 'TrackID', 'OrderID', 'Fullname', 'Tel', 'Email', 'RequestDate', 'Action Status', 'Status Update'],
+            'bulk_endpoint' => '/sendorderUpdateStatus', 'statuses' => [7], 'row_action' => 'rate',
+        ],
+        7 => [
+            'title' => 'COMPLETED JOB', 'subtitle' => '',
+            'list_title' => '', 'add_new' => false, 'to_date' => false,
+            'headers' => ['Id', 'Track Id', 'Order Id', 'Full Name', 'Tel', 'Email', 'Request Date', 'Completed Date', 'Action Status', 'Status Update'],
+            'bulk_endpoint' => null, 'statuses' => [], 'row_action' => null,
+        ],
     ];
 
     public function listing(?string $fixedStatus = null): string|ResponseInterface
@@ -40,10 +75,12 @@ final class Order extends BaseController
         $rawPage = $this->request->getGet('page');
         $rawSearch = $this->request->getGet('search');
         $rawSdate = $this->request->getGet('sdate');
+        $rawEdate = $this->request->getGet('edate');
         $status = is_string($rawStatus) && preg_match('/\A[1-8]\z/D', $rawStatus) === 1 ? (int) $rawStatus : null;
         $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
         $sdate = is_string($rawSdate) ? $rawSdate : '';
+        $edate = is_string($rawEdate) ? $rawEdate : '';
         if ($status === null || $page < 1) {
             throw PageNotFoundException::forPageNotFound();
         }
@@ -58,16 +95,18 @@ final class Order extends BaseController
         $branchId = (int) $session->get('role') === 1 ? null : (int) $session->get('BranchID');
         $db = db_connect();
         $store = new OrderStore($db);
-        $rows = $store->listing($status, $branchId, $search, $page, $sdate);
+        $rows = $store->listing($status, $branchId, $search, $page, $sdate, $edate);
         $statusUpdates = $store->latestStatusUpdates(array_map(
             static fn (array $row): array => ['orderID' => (string) $row['orderID'], 'customerTel' => (string) $row['customerTel']],
             $rows,
         ));
 
+        $profile = self::PROFILES[$status] ?? null;
+
         return $this->layout((self::PROFILES[$status]['title'] ?? ('Orders — status ' . $status)), view('orders', [
             'rows' => $rows,
-            'status' => $status, 'page' => $page, 'search' => $search, 'sdate' => $sdate,
-            'profile' => self::PROFILES[$status] ?? null,
+            'status' => $status, 'page' => $page, 'search' => $search, 'sdate' => $sdate, 'edate' => $edate,
+            'profile' => $profile,
             'statusUpdates' => $statusUpdates,
             'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
             'providers' => $db->table('provider')
@@ -75,12 +114,18 @@ final class Order extends BaseController
                 ->orderBy('provider_id', 'ASC')
                 ->get()
                 ->getResultArray(),
-        ]));
+        ]), [
+            'subtitle' => $profile['subtitle'] ?? '',
+            'actions' => ($profile['add_new'] ?? false) ? $this->actionLink('/orders/new', 'Add New') : '',
+        ]);
     }
 
     public function newOrder(): string
     {
-        return $this->layout('New repair order', view('order_new', ['submissionId' => bin2hex(random_bytes(16))] + $this->formMasterData()));
+        return $this->layout('NEW REQUEST REPAIR', view('order_new', [
+            'submissionId' => bin2hex(random_bytes(16)),
+            'caption' => 'Enter Request order Details',
+        ] + $this->formMasterData()));
     }
 
     public function create(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
@@ -166,7 +211,12 @@ final class Order extends BaseController
     {
         $row = $this->accessibleOrder($rawId);
 
-        return $this->layout('Edit ' . (string) ($row['trackID'] ?? ''), view('order_edit', ['row' => $row] + $this->formMasterData()));
+        // CI3 keeps the queue-1 title on the edit screen too; the track id already shows in the
+        // REQUEST ID / TRACK ID fields.
+        return $this->layout('NEW REQUEST REPAIR', view('order_edit', [
+            'row' => $row,
+            'caption' => 'Enter Request order Details',
+        ] + $this->formMasterData()));
     }
 
     public function print(string $rawId): string
@@ -315,13 +365,18 @@ final class Order extends BaseController
             $id,
         );
 
-        return match ($result) {
+        $response = match ($result) {
             'deleted' => $this->response->setStatusCode(204),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
             'forbidden' => $this->response->setStatusCode(403)->setJSON(['error' => 'forbidden']),
             'conflict' => $this->response->setStatusCode(409)->setJSON(['error' => 'order_state_conflict']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']),
         };
+        // The listing deletes over fetch, so every outcome has to hand back a fresh token
+        // or the second delete in a row is rejected on a stale one (same fix as Users).
+        $security = service('security');
+
+        return $response->setHeader($security->getHeaderName(), $security->getHash());
     }
 
     /** @return array<string, mixed> */

@@ -89,7 +89,9 @@ final class MenuHttpTest extends CIUnitTestCase
         $match->assertDontSee('BRANCH');
         $match->assertSee('Menu Group name');
         $match->assertSee('>Edit</a>');
-        $match->assertDontSee('Delete');
+        // 'Add, Edit, Delete' is CI3's page subtitle; assert the absence of a delete control,
+        // not of the word.
+        self::assertStringNotContainsString('>Delete<', $match->getBody());
         self::assertStringContainsString('value="CENTRAL"', $match->getBody());
 
         $missing = $this->withSession($session)->get('/menu?search=ABSENT');
@@ -213,7 +215,10 @@ final class MenuHttpTest extends CIUnitTestCase
         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
         self::assertStringContainsString('class="page-header"', $body);
         // The blue header owns the only page heading; the view's own <h1> must be gone.
-        self::assertSame(1, substr_count($body, '<h1 id="page-title">Dashboard</h1>'));
+        // CI3 carries the subtitle inside that same <h1>, so match the opening tag only.
+        self::assertSame(1, substr_count($body, '<h1 id="page-title">Dashboard'));
+        self::assertSame(1, substr_count($body, '<h1 '));
+        self::assertStringContainsString('<small>Control panel</small>', $body);
         self::assertSame(0, substr_count($body, 'id="dashboard-title"'));
     }
 
@@ -236,6 +241,13 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('<nav', $body);
         self::assertStringNotContainsString('Main navigation', $body);
         self::assertStringNotContainsString('Sign out', $body);
+        // Parity with CI3: the sign-in page carries the banner, the Tracking wordmark
+        // and the Forgot Password entry point. Without the link there is no route into
+        // password reset from the UI at all.
+        self::assertStringContainsString('login-banner', $body);
+        self::assertStringContainsString('>Tracking<', $body);
+        self::assertStringContainsString('Forgot Password', $body);
+        self::assertStringContainsString('forgot-password', $body);
     }
 
     public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
@@ -257,7 +269,8 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringContainsString('<a href="/menu/' . $escapedId . '">Edit</a>', $body);
         self::assertStringContainsString('Add New', $body);
         self::assertStringContainsString('href="/menu/new"', $body);
-        self::assertStringNotContainsString('Delete', $body);
+        self::assertStringNotContainsString('>Delete<', $body);
+        self::assertStringNotContainsString('title="Delete"', $body);
         self::assertStringNotContainsString('<form method="post"', $body);
         self::assertStringNotContainsString('type="reset"', $body);
     }

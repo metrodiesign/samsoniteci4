@@ -1,8 +1,11 @@
 <?php
 
 /** @var list<array<string, mixed>> $rows */
+/** @var string $caption */
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <div class="table-wrap">
     <table>
         <thead>
@@ -40,5 +43,6 @@
             <?php endforeach ?>
         </tbody>
     </table>
+    </div>
     </div>
 </section>

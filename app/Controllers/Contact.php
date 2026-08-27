@@ -36,7 +36,8 @@ final class Contact extends BaseController
         if ((int) service('session')->get('role') !== 1) {
             throw PageNotFoundException::forPageNotFound();
         }
-        $rawSearch = $this->request->getGet('search');
+        // CI3 names the box `searchText`; keep `search` working so existing links do not break.
+        $rawSearch = $this->request->getGet('searchText') ?? $this->request->getGet('search');
         $search    = is_string($rawSearch) ? trim($rawSearch) : '';
         if (mb_strlen($search) > 128) {
             $search = '';
@@ -54,7 +55,7 @@ final class Contact extends BaseController
                 ->groupEnd();
         }
 
-        return $this->layout('Contact messages', view('contact_listing', [
+        return $this->layout('Contact Management', view('contact_listing', [
             'contacts' => $query->get()->getResultArray(),
             'search'   => $search,
         ]));

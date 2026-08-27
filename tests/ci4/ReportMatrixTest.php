@@ -17,13 +17,13 @@ final class ReportMatrixTest extends CIUnitTestCase
         parent::setUp();
         $name = $this->db->escapeIdentifiers($this->db->prefixTable('request_order'));
         $this->db->query("DROP TABLE IF EXISTS {$name}");
-        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(250), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, RepairPrice DECIMAL(8,2), date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100))");
+        $this->db->query("CREATE TABLE {$name} (request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(250), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, RepairPrice DECIMAL(8,2), date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_complete DATETIME, waranty_cmg VARCHAR(100), detailAgent INTEGER, detailNumberWaranty VARCHAR(100), detailEquipment TEXT, detailNote TEXT, detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), date_deliver DATETIME)");
         $status = $this->db->escapeIdentifiers($this->db->prefixTable('statusaction'));
         $this->db->query("DROP TABLE IF EXISTS {$status}");
         $this->db->query("CREATE TABLE {$status} (status_id INTEGER PRIMARY KEY, status_name VARCHAR(250), status_name_th VARCHAR(250))");
         $branch = $this->db->escapeIdentifiers($this->db->prefixTable('branch'));
         $this->db->query("DROP TABLE IF EXISTS {$branch}");
-        $this->db->query("CREATE TABLE {$branch} (branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250))");
+        $this->db->query("CREATE TABLE {$branch} (branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250), branch_user_name VARCHAR(100))");
         $brand = $this->db->escapeIdentifiers($this->db->prefixTable('brand'));
         $this->db->query("DROP TABLE IF EXISTS {$brand}");
         $this->db->query("CREATE TABLE {$brand} (brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250))");

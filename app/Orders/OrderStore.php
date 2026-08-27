@@ -11,7 +11,7 @@ final class OrderStore
     }
 
     /** @return list<array<string, mixed>> */
-    public function listing(int $status, ?int $branchId, string $search, int $page, string $sdate = ''): array
+    public function listing(int $status, ?int $branchId, string $search, int $page, string $sdate = '', string $edate = ''): array
     {
         $query = $this->db->table('request_order')
             ->select('request_order.request_id, request_order.requestDate, request_order.trackID, request_order.orderID, request_order.orderIDShow, request_order.customerFullname, request_order.customerTel, request_order.customerEmail, request_order.branchID, request_order.action_status, request_order.date_complete, statusaction.status_name')
@@ -23,10 +23,16 @@ final class OrderStore
         if ($branchId !== null) {
             $query->where('request_order.branchID', $branchId);
         }
-        $range = $this->dateRange($sdate);
-        if ($range !== null) {
-            $query->where('request_order.requestDate >=', $range[0])
-                ->where('request_order.requestDate <', $range[1]);
+        // CI3's queue-1 listing filters on a from/to pair; the other queues expose only
+        // the from field. A lone `sdate` therefore keeps its original one-day window.
+        $from = $this->parseDate($sdate);
+        $to = $this->parseDate($edate);
+        if ($from !== null) {
+            $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+        }
+        $upper = $to ?? ($edate === '' ? $from : null);
+        if ($upper !== null) {
+            $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
         }
         if ($search !== '') {
             $query->groupStart()
@@ -72,22 +78,18 @@ final class OrderStore
         return $map;
     }
 
-    /**
-     * Parse dd/mm/yyyy (CE) into [startInclusive, endExclusive]; null when empty or malformed.
-     *
-     * @return array{0: string, 1: string}|null
-     */
-    private function dateRange(string $sdate): ?array
+    /** Parse dd/mm/yyyy (CE); null when empty or malformed. */
+    private function parseDate(string $value): ?\DateTimeImmutable
     {
-        if ($sdate === '') {
+        if ($value === '') {
             return null;
         }
-        $date = \DateTimeImmutable::createFromFormat('!d/m/Y', $sdate);
-        if ($date === false || $date->format('d/m/Y') !== $sdate) {
+        $date = \DateTimeImmutable::createFromFormat('!d/m/Y', $value);
+        if ($date === false || $date->format('d/m/Y') !== $value) {
             return null;
         }
 
-        return [$date->format('Y-m-d 00:00:00'), $date->modify('+1 day')->format('Y-m-d 00:00:00')];
+        return $date;
     }
 
     /** @return array<string, mixed>|null */

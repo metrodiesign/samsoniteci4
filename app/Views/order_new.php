@@ -8,6 +8,7 @@
  * @var list<array<string, mixed>> $conditions
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
+ * @var string $caption
  */
 
 $checks = static function (array $items, string $name, string $idKey, string $labelKey): void {
@@ -28,10 +29,13 @@ $select = static function (string $name, array $items, string $idKey, string $la
 };
 ?>
 <section aria-labelledby="page-title">
+    <div class="card">
+        <h3 class="box-title"><?= esc($caption) ?></h3>
     <form id="order-new-form" method="post" action="/orders/new" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="submission_id" value="<?= esc($submissionId) ?>">
 
+        <h3>Urgent/ซ่อมด่วน</h3>
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"> Urgent/ซ่อมด่วน</label>
 
         <label for="order-number_id">number ID/เลขที</label>
@@ -121,6 +125,7 @@ $select = static function (string $name, array $items, string $idKey, string $la
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    </div>
 </section>
 <script>
 (() => {

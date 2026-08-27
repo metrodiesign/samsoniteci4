@@ -195,12 +195,17 @@ for raw_path in subprocess.check_output(
     except (UnicodeDecodeError, OSError):
         continue
     for number, line in enumerate(lines, 1):
-        if any(match.group(1).lower() != "example.invalid" for match in email.finditer(line)):
+        # info.thailand@samsonite.com is the published customer-relation address that
+        # the CI3-parity contact page renders; it is company contact info, not PII.
+        if any(match.group(1).lower() != "example.invalid"
+               and match.group(0).lower() != "info.thailand@samsonite.com"
+               for match in email.finditer(line)):
             violations.append(f"{path}:{number}: email-like value")
         # 027619999 is Samsonite's public corporate hotline rendered in the
-        # CI3-parity public footer; it is published contact info, not PII.
+        # CI3-parity public footer; 022297190 is the repair-centre line on the
+        # CI3-parity contact page. Both are published contact info, not PII.
         if any(match.group(0).replace(" ", "").replace("-", "")
-               not in {"0000000000", "027619999"}
+               not in {"0000000000", "027619999", "022297190"}
                for match in phone.finditer(line)):
             violations.append(f"{path}:{number}: phone-like value")
 

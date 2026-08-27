@@ -22,10 +22,13 @@ $questions = [
         <button type="button" class="rate-lang" data-lang="th">ไทย</button>
         <button type="button" class="rate-lang" data-lang="en">English</button>
     </div>
-    <h2 id="rating-modal-title">
+    <?php // Rendered as a paragraph, not a heading: this modal is a CI4 addition and CI3's
+          // queue-5 page has no heading of its own here. The dialog keeps its accessible name
+          // through aria-labelledby, which works on any element. ?>
+    <p class="rating-modal-title" id="rating-modal-title">
         <span class="lang-th">กรุณาประเมินความพึงพอใจในบริการของเรา</span>
         <span class="lang-en">Please rate your satisfaction with our service</span>
-    </h2>
+    </p>
     <form id="rating-form">
         <?= csrf_field() ?>
         <input type="hidden" name="request_id" value="">

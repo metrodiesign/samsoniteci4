@@ -1,5 +1,6 @@
-<section class="card login-card" aria-labelledby="login-title">
-    <h1 id="login-title">Sign in</h1>
+<div class="login-banner" role="presentation"></div>
+<div class="login-logo">Tracking</div>
+<section class="card login-card" aria-label="Sign in">
     <p class="muted">Use your Samsonite Tracking account.</p>
 
     <?php if (is_string($error) && $error !== ''): ?>
@@ -9,13 +10,16 @@
     <form action="<?= site_url('loginMe') ?>" method="post">
         <?= csrf_field() ?>
         <div class="field">
-            <label for="username">Username</label>
+            <label for="username">USERNAME</label>
             <input id="username" name="username" maxlength="128" autocomplete="username" required autofocus>
         </div>
         <div class="field">
-            <label for="password">Password</label>
+            <label for="password">PASSWORD</label>
             <input id="password" name="password" type="password" maxlength="128" autocomplete="current-password" required>
         </div>
-        <button type="submit">Sign in</button>
+        <div class="login-actions">
+            <a href="<?= site_url('forgot-password') ?>">Forgot Password</a>
+            <button type="submit">Sign In</button>
+        </div>
     </form>
 </section>
