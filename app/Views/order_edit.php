@@ -4,6 +4,7 @@
  * @var list<array<string, mixed>> $types
  * @var list<array<string, mixed>> $brands
  * @var list<array<string, mixed>> $branches
+ * @var list<array<string, mixed>> $branchTypes
  * @var list<array<string, mixed>> $conditions
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
@@ -50,6 +51,14 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
         <h3>Urgent/ซ่อมด่วน</h3>
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"<?= (string) ($row['detailAgent'] ?? '') === '1' ? ' checked' : '' ?>> Urgent/ซ่อมด่วน</label>
 
+        <?php // Labels verbatim from CI3 tracking/edit_order.php. All three are read-only here:
+              // requestDate, branch and branch type are immutable columns on an existing order. ?>
+        <label for="edit-request_date">request Date/วันที่ส่งซ่อม <span class="remark">*</span></label>
+        <input id="edit-request_date" name="request_date" value="<?= esc($fmtDate($row['requestDate'] ?? '')) ?>" readonly>
+
+        <label for="edit-branch_type">Branch Type/ประเภทของสาขา <span class="remark">*</span></label>
+        <?php $select('branch_type', $branchTypes, 'branch_type_id', 'branch_type_details', (string) ($row['branch_type_id'] ?? ''), true) ?>
+
         <?php
         // Label verbatim จาก CI3 tracking/edit_order.php (customer_tel ต่างจากหน้า add)
         /** @var array<string, string> $editLabels */
@@ -74,8 +83,20 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
         <label for="edit-brand_id">BRAND/ยี่ห้อ</label>
         <?php $select('brand_id', $brands, 'brand_id', 'brand_details', (string) ($row['detailBrandId'] ?? '')) ?>
 
-        <label for="edit-branch_id">สาขา (แก้ไม่ได้)</label>
+        <label for="edit-branch_id">Branch/สาขา (แก้ไม่ได้)</label>
         <?php $select('branch_id', $branches, 'branch_id', 'branch_name', (string) ($row['branchID'] ?? ''), true) ?>
+
+        <?php
+        $branchShort = '';
+        foreach ($branches as $branchRow) {
+            if ((string) $branchRow['branch_id'] === (string) ($row['branchID'] ?? '')) {
+                $branchShort = (string) ($branchRow['default_suffix'] ?? '');
+                break;
+            }
+        }
+        ?>
+        <label for="edit-branch_short">branch short/ตัวย่อสาขา <span class="remark">*</span></label>
+        <input id="edit-branch_short" name="branch_short" value="<?= esc($branchShort) ?>" readonly>
 
         <label for="edit-customer_tel2">MOBILE TEL 2/เบอร์โทรศัพท์ลูกค้า2</label>
         <input id="edit-customer_tel2" name="customer_tel2" value="<?= esc((string) ($row['customerTel2'] ?? '')) ?>">

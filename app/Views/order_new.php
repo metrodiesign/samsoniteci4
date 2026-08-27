@@ -5,6 +5,8 @@
  * @var list<array<string, mixed>> $types
  * @var list<array<string, mixed>> $brands
  * @var list<array<string, mixed>> $branches
+ * @var list<array<string, mixed>> $branchTypes
+ * @var string $requestDate
  * @var list<array<string, mixed>> $conditions
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
@@ -37,6 +39,19 @@ $select = static function (string $name, array $items, string $idKey, string $la
 
         <h3>Urgent/ซ่อมด่วน</h3>
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"> Urgent/ซ่อมด่วน</label>
+
+        <?php // Labels verbatim from CI3 tracking/add_order.php, mixed case included: the uppercase
+              // rendering there comes from CSS text-transform, not from the text itself. ?>
+        <label for="order-request_date">request Date/วันที่ส่งซ่อม <span class="remark">*</span></label>
+        <input id="order-request_date" name="request_date" value="<?= esc($requestDate) ?>" placeholder="DD/MM/YYYY" readonly>
+
+        <label for="order-branch_type">Branch Type/ประเภทของสาขา <span class="remark">*</span></label>
+        <select id="order-branch_type" name="branch_type">
+            <option value="0">Select Branch Type</option>
+            <?php foreach ($branchTypes as $branchType): ?>
+                <option value="<?= (int) $branchType['branch_type_id'] ?>"><?= esc((string) $branchType['branch_type_details']) ?></option>
+            <?php endforeach ?>
+        </select>
 
         <label for="order-number_id">number ID/เลขที</label>
         <input id="order-number_id" name="number_id" inputmode="numeric" pattern="[0-9]+" maxlength="96" required>
@@ -73,8 +88,15 @@ $select = static function (string $name, array $items, string $idKey, string $la
         <label for="order-brand_id">BRAND/ยี่ห้อ</label>
         <?php $select('brand_id', $brands, 'brand_id', 'brand_details', '') ?>
 
-        <label for="order-branch_id">สาขา</label>
-        <?php $select('branch_id', $branches, 'branch_id', 'branch_name', '') ?>
+        <label for="order-branch_id">Branch/สาขา <span class="remark">*</span></label>
+        <select id="order-branch_id" name="branch_id">
+            <?php foreach ($branches as $branch): ?>
+                <option value="<?= (int) $branch['branch_id'] ?>" data-branch-type="<?= (int) $branch['branch_type'] ?>" data-branch-short="<?= esc((string) ($branch['default_suffix'] ?? ''), 'attr') ?>"><?= esc((string) $branch['branch_name']) ?></option>
+            <?php endforeach ?>
+        </select>
+
+        <label for="order-branch_short">branch short/ตัวย่อสาขา <span class="remark">*</span></label>
+        <input id="order-branch_short" name="branch_short" readonly>
 
         <label for="order-customer_tel2">MOBILE TEL 2/เบอร์โทรศัพท์ลูกค้า2</label>
         <input id="order-customer_tel2" name="customer_tel2">
@@ -131,10 +153,24 @@ $select = static function (string $name, array $items, string $idKey, string $la
 (() => {
     const form = document.getElementById('order-new-form');
     const branch = document.getElementById('order-branch_id');
+    const branchType = document.getElementById('order-branch_type');
+    const branchShort = document.getElementById('order-branch_short');
     const book = document.getElementById('order-book_id');
     const number = document.getElementById('order-number_id');
     const preview = document.getElementById('order-id-preview');
     const sync = () => {
+        // CI3 narrows the branch list by branch type and fills branch short from the branch.
+        // "0" is CI3's Select Branch Type placeholder and means no filter.
+        const typeId = branchType.value;
+        let firstVisible = null;
+        for (const option of branch.options) {
+            const visible = typeId === '0' || option.dataset.branchType === typeId;
+            option.hidden = !visible;
+            option.disabled = !visible;
+            if (visible && firstVisible === null) firstVisible = option;
+        }
+        if (branch.selectedOptions[0]?.disabled) branch.value = firstVisible ? firstVisible.value : '';
+        branchShort.value = branch.selectedOptions[0]?.dataset.branchShort ?? '';
         const branchId = branch.value;
         for (const option of book.options) {
             if (option.value === '') continue;
@@ -148,6 +184,7 @@ $select = static function (string $name, array $items, string $idKey, string $la
             ? `${selected.dataset.bookDetail}/${number.value}`
             : '';
     };
+    branchType.addEventListener('change', sync);
     branch.addEventListener('change', sync);
     book.addEventListener('change', sync);
     number.addEventListener('input', sync);
