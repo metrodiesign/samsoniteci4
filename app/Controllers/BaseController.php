@@ -2,6 +2,8 @@
 
 namespace App\Controllers;
 
+use App\Master\MenuStore;
+use App\Presentation\AdminLayoutPresenter;
 use CodeIgniter\Controller;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -49,23 +51,20 @@ abstract class BaseController extends Controller
      *   echoes them raw without esc(), so any caller-supplied value MUST already be escaped by
      *   the caller. Never pass unescaped DB or request data into these slots.
      */
-    protected function layout(string $title, string $content, array $page = []): string
+    protected function layout(string $title, string $content, array $page = [], string $profile = 'admin'): string
     {
-        $session = service('session');
-        $isLoggedIn = $session->get('isLoggedIn') === true;
-        $branchId = $session->get('BranchID') === null ? null : (int) $session->get('BranchID');
+        $sessionData = service('session')->get();
+        $data = (new AdminLayoutPresenter(new MenuStore(db_connect())))->present(
+            is_array($sessionData) ? $sessionData : [],
+            $title,
+            $content,
+            $profile,
+        );
+        $data['subtitle'] = (string) ($page['subtitle'] ?? '');
+        $data['actions'] = (string) ($page['actions'] ?? '');
+        $data['accessDeniedProfile'] = false;
 
-        return view('layout', [
-            'title'      => $title,
-            'content'    => $content,
-            'isLoggedIn' => $isLoggedIn,
-            'name'       => $isLoggedIn ? (string) $session->get('name') : '',
-            'subtitle'   => (string) ($page['subtitle'] ?? ''),
-            'actions'    => (string) ($page['actions'] ?? ''),
-            'menuItems'  => $isLoggedIn
-                ? (new \App\Master\MenuStore(db_connect()))->visible((int) $session->get('GroupID'), $branchId)
-                : [],
-        ]);
+        return view($profile === 'order' ? 'layout_order' : 'layout', $data);
     }
 
     /**

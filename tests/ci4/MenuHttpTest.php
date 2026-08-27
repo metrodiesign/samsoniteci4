@@ -4,6 +4,7 @@ namespace Tests\Ci4;
 
 use App\Authentication\ShadowUserStore;
 use App\Master\MenuStore;
+use App\Presentation\AdminLayoutPresenter;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -104,6 +105,31 @@ final class MenuHttpTest extends CIUnitTestCase
         $overlong->assertStatus(200);
         $overlong->assertSee('CENTRAL');
         $overlong->assertSee('BRANCH');
+    }
+
+    public function testAdminLayoutPresenterMapsTheRealLoginSessionContract(): void
+    {
+        $data = (new AdminLayoutPresenter(new MenuStore($this->db)))->present([
+            'isLoggedIn' => true,
+            'name' => 'Synthetic presenter',
+            'roleText' => 'Admin',
+            'lastLogin' => '2026-08-27 08:15:00',
+            'GroupID' => 1,
+            'BranchID' => null,
+        ], 'Presenter title', '<p>Presenter content</p>');
+
+        self::assertSame('Presenter title', $data['pageTitle']);
+        self::assertSame('Presenter title', $data['title']);
+        self::assertSame('<p>Presenter content</p>', $data['content']);
+        self::assertSame('Synthetic presenter', $data['name']);
+        self::assertSame('Admin', $data['role_text']);
+        self::assertSame('2026-08-27 08:15:00', $data['last_login']);
+        self::assertSame(1, $data['GroupID']);
+        self::assertNull($data['BranchID']);
+        self::assertSame('', $data['BranchName']);
+        self::assertSame([], $data['branchOptions']);
+        self::assertSame('admin', $data['layoutProfile']);
+        self::assertSame([1, 2], array_column($data['menuItems'], 'group_id'));
     }
 
     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
@@ -244,10 +270,10 @@ final class MenuHttpTest extends CIUnitTestCase
         // Parity with CI3: the sign-in page carries the banner, the Tracking wordmark
         // and the Forgot Password entry point. Without the link there is no route into
         // password reset from the UI at all.
-        self::assertStringContainsString('login-banner', $body);
-        self::assertStringContainsString('>Tracking<', $body);
+        self::assertStringContainsString('class="banner-cms"', $body);
+        self::assertStringContainsString('<b>Tracking</b>', $body);
         self::assertStringContainsString('Forgot Password', $body);
-        self::assertStringContainsString('forgot-password', $body);
+        self::assertStringContainsString('forgotPassword', $body);
     }
 
     public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
