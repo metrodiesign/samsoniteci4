@@ -1,0 +1,47 @@
+/*
+ * COMPATIBILITY_SHIM: original Google Fonts URL returned HTTP 403 when fetched
+ * with the recorded Chrome 124 user agent. Static Source Sans Pro artifacts
+ * come from official google/fonts commit a7bc06df72f7e1b4e20342e2b04423e579222316.
+ */
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 300;
+  src: url('SourceSansPro-Light.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: url('SourceSansPro-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 600;
+  src: url('SourceSansPro-SemiBold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 700;
+  src: url('SourceSansPro-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: italic;
+  font-weight: 300;
+  src: url('SourceSansPro-LightItalic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: italic;
+  font-weight: 400;
+  src: url('SourceSansPro-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: italic;
+  font-weight: 600;
+  src: url('SourceSansPro-SemiBoldItalic.ttf') format('truetype');
+}

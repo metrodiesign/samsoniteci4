@@ -8,6 +8,7 @@ use App\Presentation\AdminLayoutPresenter;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
+use PHPUnit\Framework\AssertionFailedError;
 
 final class MenuHttpTest extends CIUnitTestCase
 {
@@ -238,6 +239,220 @@ final class MenuHttpTest extends CIUnitTestCase
 
         foreach (['<svg', 'id="sidebar-toggle"', 'class="topbar"', '<body class="admin">'] as $replacement) {
             self::assertStringNotContainsString($replacement, $body, $replacement);
+        }
+    }
+
+    public function testSharedRuntimeAssetClosureExistsAndIsGitTracked(): void
+    {
+        $documents = [];
+        foreach (['/login', '/forgot-password', '/reset-password', '/contact', '/contact-th', '/tracking', '/tracking-th'] as $route) {
+            $response = $this->get($route);
+            $response->assertStatus(200);
+            $documents[] = (string) $response->getBody();
+        }
+        $documents[] = (string) $this
+            ->withSession($this->session($this->adminId, 1, 1, null))
+            ->get('/dashboard')
+            ->getBody();
+        $documents[] = view('layout_public', [
+            'content' => '',
+            'title' => 'Samsonite',
+            'language' => 'en',
+            'legacyContactProfile' => false,
+            'legacyTrackingProfile' => false,
+        ]);
+        $documents[] = view('access_denied');
+        $documents[] = view('errors/html/error_404');
+
+        $entrypoints = [];
+        foreach ($documents as $document) {
+            $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
+        }
+        $closure = $this->runtimeAssetClosure($entrypoints);
+        self::assertCount(109, $closure);
+
+        foreach ([
+            'public/assets/datatables/1.10.16/images/sort_both.png',
+            'public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2',
+            'public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2',
+            'public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf',
+            'public/assets/js/jquerydatepicker/images/animated-overlay.gif',
+            'public/assets/images/bg-login.jpg',
+            'public/uploads/web/contact_mobile.png',
+            'public/uploads/web/track_mobile.png',
+        ] as $recursiveAsset) {
+            self::assertContains($recursiveAsset, $closure, $recursiveAsset);
+        }
+
+        $trackedFiles = [
+            ...$closure,
+            'public/assets/fonts/source-sans-pro/OFL.txt',
+            'public/assets/licenses/bootstrap-3.3.7-LICENSE',
+            'public/assets/licenses/datatables-1.10.16-license.txt',
+            'public/assets/licenses/fixedcolumns-3.2.4-License.txt',
+            'public/assets/licenses/respond-1.4.2-LICENSE-MIT',
+            'public/assets/licenses/MIT.txt',
+            'public/assets/licenses/OFL-1.1.txt',
+            'tests/ci4/MenuHttpTest.php',
+            'outputs/reference/2026-08-27_tpl01-asset-closure_v1.md',
+        ];
+        $trackedFiles = array_values(array_unique($trackedFiles));
+        sort($trackedFiles);
+        $process = proc_open(
+            ['/usr/bin/env', 'git', 'ls-files', '--error-unmatch', '--', ...$trackedFiles],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            ROOTPATH,
+        );
+        self::assertIsResource($process);
+        stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $error = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+
+        self::assertSame(0, proc_close($process), trim($error));
+
+        $process = proc_open(
+            ['/usr/bin/env', 'git', 'diff', '--quiet', '--no-ext-diff', '--', ...$trackedFiles],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            ROOTPATH,
+        );
+        self::assertIsResource($process);
+        stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $error = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+
+        self::assertSame(0, proc_close($process), trim($error) ?: 'Git index blob differs from worktree runtime input.');
+    }
+
+    public function testRuntimeAssetReferencesScansStyleAttributes(): void
+    {
+        self::assertSame(
+            ['/assets/images/bg-login.jpg'],
+            $this->runtimeAssetReferences('<div style="background-image: url(\'/assets/images/bg-login.jpg\')"></div>'),
+        );
+    }
+
+    public function testCssAssetParserKeepsQuotedImportAndEveryUrlAndSkipsEmbeddedData(): void
+    {
+        self::assertSame(
+            ['a.css', 'b.png?cache=1#icon', 'c.png'],
+            $this->cssAssetReferences(
+                '@import "a.css"; .a{background:url(b.png?cache=1#icon)} .b{src:url(DATA:image/png;base64,AA)} .c{background:url("c.png")}',
+            ),
+        );
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('mismatchedRuntimeOrigins')]
+    public function testRuntimeAssetPathRejectsMismatchedOrigin(string $reference): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->runtimeAssetPath($reference, null);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function mismatchedRuntimeOrigins(): iterable
+    {
+        return [
+            'scheme' => ['https://example.invalid/assets/app.css'],
+            'host'   => ['http://cdn.example.invalid/assets/app.css'],
+            'port'   => ['http://example.invalid:8080/assets/app.css'],
+            'protocol relative' => ['//example.invalid/assets/app.css'],
+        ];
+    }
+
+    public function testRuntimeAssetPathAcceptsOnlyStaticEntrypointPrefixesAndStripsQueryFragment(): void
+    {
+        self::assertSame('public/assets/app.css', $this->runtimeAssetPath('/assets/app.css?v=1#theme', null));
+        self::assertSame('public/uploads/web/banner.png', $this->runtimeAssetPath('/uploads/web/banner.png?x=1#hero', null));
+        self::assertNull($this->runtimeAssetPath('/background-image/assets/app.css', null));
+        self::assertNull($this->runtimeAssetPath('/uploads/website/banner.png', null));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('escapingRuntimePaths')]
+    public function testRuntimeAssetPathRejectsTraversalOutsidePublic(string $reference, ?string $parent): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->runtimeAssetPath($reference, $parent);
+    }
+
+    /** @return iterable<string, array{string, ?string}> */
+    public static function escapingRuntimePaths(): iterable
+    {
+        return [
+            'absolute' => ['/assets/../../outside.css', null],
+            'relative' => ['../../../outside.css', 'public/assets/css/app.css'],
+            'leave and re-enter' => ['/assets/../../public/secret.css', null],
+        ];
+    }
+
+    public function testRuntimeAssetClosureStopsAtCssCycles(): void
+    {
+        $first = ROOTPATH . 'public/assets/css/.asset-closure-cycle-a.css';
+        $second = ROOTPATH . 'public/assets/css/.asset-closure-cycle-b.css';
+        file_put_contents($first, '@import ".asset-closure-cycle-b.css";');
+        file_put_contents($second, '@import ".asset-closure-cycle-a.css";');
+
+        try {
+            self::assertSame(
+                [
+                    'public/assets/css/.asset-closure-cycle-a.css',
+                    'public/assets/css/.asset-closure-cycle-b.css',
+                ],
+                $this->runtimeAssetClosure(['/assets/css/.asset-closure-cycle-a.css']),
+            );
+        } finally {
+            unlink($first);
+            unlink($second);
+        }
+    }
+
+    public function testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts(): void
+    {
+        foreach ([
+            'assets/bootstrap/css/bootstrap.min.css' => 'f75e846cc83bd11432f4b1e21a45f31bc85283d11d372f7b19accd1bf6a2635c',
+            'assets/bootstrap/css/bootstrap.css' => '7e630d90c7234b0df1729f62b8f9e4bbfaf293d91a5a0ac46df25f2a6759e39a',
+            'assets/bootstrap/js/bootstrap.min.js' => '53964478a7c634e8dad34ecc303dd8048d00dce4993906de1bacf67f663486ef',
+            'assets/datatables/1.10.16/css/jquery.dataTables.min.css' => '618d62ceaca1223e16de2c8939a1963a95c34b0ac75852f835f93e5b42f20871',
+            'assets/datatables/1.10.16/js/jquery.dataTables.min.js' => 'a9c575c2bf9b9f836806dc58aa0866cb558806fc5ea1ef2f4250a8c0b1be7278',
+            'assets/datatables/1.10.16/images/sort_asc.png' => '595704c3f3cf4cb65c7d9c8508a99e7480e150095473faed31a07c21b13389b8',
+            'assets/datatables/1.10.16/images/sort_asc_disabled.png' => 'a65b8f4f84d6427a81c360282fc5394d51bf99dada5f159e6aa0fce3c396825c',
+            'assets/datatables/1.10.16/images/sort_both.png' => '3e016c23ae51417382b640ae2d19eb48047532c37ad53894bd185586559ccffb',
+            'assets/datatables/1.10.16/images/sort_desc.png' => 'd08ed0e21f187dd309030d465224da8085119a15a17d616ba0e477bb50c6f10d',
+            'assets/datatables/1.10.16/images/sort_desc_disabled.png' => '6c0f0c1b21ef6807057afc8ddc1a925d1dbd21cb11e9270ec84ff4ac40d9a3fa',
+            'assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css' => '2cac99438be2f9aacaf1a63f220f5a4e0fb5f54d443ecde09652a650b0509f8b',
+            'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js' => 'e44ec8df1b3ae7c386f670b1e9d4b4cad0b55fa28f934f31fd9a893c81c50298',
+            'assets/font-awesome/css/font-awesome.min.css' => '0fb1bbca73646e8e2b93c82e8d8b219647b13d4b440c48e338290b9a685b8de1',
+            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => '541ac58217a8ade1a5e292a65a0661dc9db7a49ae13654943817a4fbc6761afd',
+            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => '799aeb25cc0373fdee0e1b1db7ad6c2f6a0e058dfadaa3379689f583213190bd',
+            'assets/fontawesome/css/font-awesome.css' => '36e0a7e08bee65774168528938072c536437669c1b7458ac77976ec788e4439c',
+            'assets/html5shiv/3.7.2/html5shiv.min.js' => 'e0eac80838c161f29e7c46d54fbc044d12cd164baae13255e562c6be3aa91809',
+            'assets/respond/1.4.2/respond.min.js' => '83a8807ef669fa70d0d9375347f5552897f76c6ae8e2e6f97ef592595462d8d1',
+            'assets/fonts/source-sans-pro/stylesheet.css' => '31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f',
+            'assets/fonts/source-sans-pro/OFL.txt' => 'fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa',
+            'uploads/web/contact_laptop.png' => '2520b9e21373a7822bf2388cd043684a8e0bcdc41071c6a562d539964e7f038f',
+            'uploads/web/contact_mobile.png' => '2520b9e21373a7822bf2388cd043684a8e0bcdc41071c6a562d539964e7f038f',
+            'uploads/web/track_laptop.png' => '16b99ac15ba78c5dd6a462de19b8c349747b7621301a7a1cb3858e09753c813a',
+            'uploads/web/track_mobile.png' => '16b99ac15ba78c5dd6a462de19b8c349747b7621301a7a1cb3858e09753c813a',
+            'assets/licenses/bootstrap-3.3.7-LICENSE' => '8a68c27ad022244b78dc5c9adb4cc5a4c92a994e3e11d356b291f227b2b04eaf',
+            'assets/licenses/datatables-1.10.16-license.txt' => 'c6a873f21550ed804f76013c36e14225704c1aa551fdb870e0c626eb91c19247',
+            'assets/licenses/fixedcolumns-3.2.4-License.txt' => 'e8e92f97216f9ea00cb2735b933a91ec8e3869bed37b6d63a90f76f41508f2de',
+            'assets/licenses/respond-1.4.2-LICENSE-MIT' => '96ef890049d3089064f9965e661057d5c3d42be86421c10cc8e9400a104f0b36',
+            'assets/licenses/MIT.txt' => 'b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5',
+            'assets/licenses/OFL-1.1.txt' => '8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd',
+        ] as $path => $checksum) {
+            self::assertSame($checksum, hash_file('sha256', PUBLICPATH . $path), $path);
+        }
+
+        foreach ([
+            'assets/bootstrap/css/bootstrap.min.css' => 'Bootstrap v3.3.7',
+            'assets/font-awesome/css/font-awesome.min.css' => 'Font Awesome 4.2.0',
+            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => 'Font Awesome 4.3.0',
+            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => 'Font Awesome 4.7.0',
+        ] as $path => $version) {
+            self::assertStringContainsString($version, (string) file_get_contents(PUBLICPATH . $path), $path);
         }
     }
 
@@ -528,6 +743,138 @@ final class MenuHttpTest extends CIUnitTestCase
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
         self::assertStringContainsString('<form method="get" action="/menu">', $body);
         self::assertStringNotContainsString('type="reset"', $body);
+    }
+
+    /** @return list<string> */
+    private function runtimeAssetReferences(string $html): array
+    {
+        preg_match_all(
+            '/<(?:script|img|link)\b[^>]*\b(?:src|href)\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s"\'=<>`]+))/i',
+            $html,
+            $tags,
+            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
+        );
+        $references = [];
+        foreach ($tags as $tag) {
+            $references[] = $tag[1] ?? $tag[2] ?? $tag[3];
+        }
+        preg_match_all('/<style\b[^>]*>(.*?)<\/style>/is', $html, $styles);
+        foreach ($styles[1] as $css) {
+            $references = array_merge($references, $this->cssAssetReferences($css));
+        }
+        preg_match_all(
+            '/\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))/i',
+            $html,
+            $styleAttributes,
+            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
+        );
+        foreach ($styleAttributes as $styleAttribute) {
+            $references = array_merge(
+                $references,
+                $this->cssAssetReferences($styleAttribute[1] ?? $styleAttribute[2] ?? $styleAttribute[3]),
+            );
+        }
+
+        return $references;
+    }
+
+    /** @param list<string> $entrypoints @return list<string> */
+    private function runtimeAssetClosure(array $entrypoints): array
+    {
+        $pending = [];
+        foreach ($entrypoints as $reference) {
+            $path = $this->runtimeAssetPath($reference, null);
+            if ($path !== null) {
+                $pending[] = $path;
+            }
+        }
+        $seen = [];
+
+        while ($pending !== []) {
+            $path = array_pop($pending);
+            if (isset($seen[$path])) {
+                continue;
+            }
+            self::assertFileExists(ROOTPATH . $path, $path);
+            $seen[$path] = true;
+            if (! str_ends_with(strtolower($path), '.css')) {
+                continue;
+            }
+            foreach ($this->cssAssetReferences((string) file_get_contents(ROOTPATH . $path)) as $reference) {
+                $dependency = $this->runtimeAssetPath($reference, $path);
+                if ($dependency !== null) {
+                    $pending[] = $dependency;
+                }
+            }
+        }
+
+        $closure = array_keys($seen);
+        sort($closure);
+
+        return $closure;
+    }
+
+    /** @return list<string> */
+    private function cssAssetReferences(string $css): array
+    {
+        preg_match_all(
+            '/@import\s+(?:url\(\s*)?(?:"([^"]+)"|\'([^\']+)\'|([^\s;)]+))\s*\)?|url\(\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s)]+))\s*\)/i',
+            $css,
+            $matches,
+            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
+        );
+        $references = [];
+        foreach ($matches as $match) {
+            $reference = trim($match[1] ?? $match[2] ?? $match[3] ?? $match[4] ?? $match[5] ?? $match[6]);
+            if ($reference !== '' && preg_match('/^(?:data:|#)/i', $reference) !== 1) {
+                $references[] = $reference;
+            }
+        }
+
+        return $references;
+    }
+
+    private function runtimeAssetPath(string $reference, ?string $parent): ?string
+    {
+        self::assertDoesNotMatchRegularExpression('#^//#', $reference, $reference);
+        $base = parse_url(base_url());
+        $origin = parse_url($reference);
+        self::assertIsArray($origin, $reference);
+        if (isset($origin['host'])) {
+            self::assertSame(strtolower((string) $base['scheme']), strtolower((string) ($origin['scheme'] ?? '')), $reference);
+            self::assertSame(strtolower((string) $base['host']), strtolower((string) $origin['host']), $reference);
+            self::assertSame($base['port'] ?? null, $origin['port'] ?? null, $reference);
+        }
+        $path = $origin['path'] ?? null;
+        self::assertIsString($path, $reference);
+        $path = rawurldecode($path);
+        if ($path === '') {
+            return null;
+        }
+        if ($parent === null && ! str_starts_with($path, '/assets/') && ! str_starts_with($path, '/uploads/web/')) {
+            return null;
+        }
+
+        $candidate = str_starts_with($path, '/')
+            ? 'public/' . ltrim($path, '/')
+            : dirname((string) $parent) . '/' . $path;
+        self::assertStringStartsWith('public/', $candidate, $reference);
+        $segments = [];
+        foreach (explode('/', $candidate) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                self::assertGreaterThan(1, count($segments), $reference);
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+        $resolved = implode('/', $segments);
+        self::assertStringStartsWith('public/', $resolved, $reference);
+
+        return $resolved;
     }
 
     /** @param list<string> $fragments */
