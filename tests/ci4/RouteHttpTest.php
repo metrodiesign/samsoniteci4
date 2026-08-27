@@ -23,7 +23,18 @@ final class RouteHttpTest extends CIUnitTestCase
         $name = $this->db->escapeIdentifiers($this->db->prefixTable('book'));
         $this->db->query("DROP TABLE IF EXISTS {$name}");
         $this->db->query("CREATE TABLE {$name} (book_id INTEGER PRIMARY KEY AUTOINCREMENT, branch_id INTEGER, book_detail VARCHAR(3), status INTEGER, bunber_limit INTEGER, cdate DATETIME)");
+        $branch = $this->db->escapeIdentifiers($this->db->prefixTable('branch'));
+        $this->db->query("DROP TABLE IF EXISTS {$branch}");
+        $this->db->query("CREATE TABLE {$branch} (branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250), branch_short VARCHAR(20), branch_type INTEGER, default_suffix VARCHAR(20), status INTEGER)");
         $this->db->resetDataCache();
+        $this->db->table('branch')->insert([
+            'branch_id' => 1,
+            'branch_name' => 'SYNTHETIC ROUTE BRANCH',
+            'branch_short' => 'WPA',
+            'branch_type' => 1,
+            'default_suffix' => 'WPA',
+            'status' => 1,
+        ]);
         $this->db->table('book')->insert([
             'branch_id' => 1, 'book_detail' => 'WPA', 'status' => 1,
             'bunber_limit' => 999, 'cdate' => '2026-08-22 00:00:00',
@@ -103,7 +114,15 @@ final class RouteHttpTest extends CIUnitTestCase
 
     public function testStateChangingPostOnlyEndpointsRejectGet(): void
     {
-        foreach (['/loginMe', '/logout', '/password-reset/request', '/password-reset/complete', '/rating'] as $path) {
+        foreach ([
+            '/loginMe',
+            '/logout',
+            '/resetPasswordUser',
+            '/createPasswordUser',
+            '/password-reset/request',
+            '/password-reset/complete',
+            '/rating',
+        ] as $path) {
             $this->assert404($path, false);
             $this->assert404($path, true);
         }
