@@ -64,6 +64,7 @@ $routes->get('orders/new', 'Order::newOrder', ['filter' => ['web-auth', 'authori
 $routes->post('orders/new', 'Order::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('Orders', 'Order::newOrder', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->post('addNewOrders', 'Order::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->post('order/do_upload_multi/(:segment)', 'Order::previewUpload/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorderUpdate', 'Order::sendToProvider', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorderUpdateStatus', 'Order::updateStatus', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorder_deliver', 'Order::deliver', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);

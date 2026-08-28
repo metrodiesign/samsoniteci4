@@ -128,7 +128,7 @@ final class Order extends BaseController
             // CI3 Order::add() prefills the readonly field with date('d/m/Y'); the stored value
             // still comes from the server clock inside OrderCreationWorkflow.
             'requestDate' => date('d/m/Y'),
-        ] + $this->formMasterData()));
+        ] + $this->formMasterData()), profile: 'order');
     }
 
     public function create(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
@@ -153,7 +153,7 @@ final class Order extends BaseController
                 (int) $session->get('userId'),
                 (int) $session->get('role'),
                 $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
-                $this->request->getPost(),
+                $this->orderInput(),
                 $stored,
             );
 
@@ -171,6 +171,29 @@ final class Order extends BaseController
             log_message('error', 'Order creation unavailable: {exception}', ['exception' => $exception::class]);
 
             return $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']);
+        }
+    }
+
+    public function previewUpload(string $submissionId): ResponseInterface
+    {
+        $csrf = ['csrf_token' => csrf_token(), 'csrf_hash' => csrf_hash()];
+        try {
+            if (preg_match('/\A[a-f0-9]{32}\z/D', $submissionId) !== 1) {
+                throw new InvalidArgumentException('Invalid order upload token');
+            }
+            $file = $this->request->getFile('upl');
+            if (! $file instanceof UploadedFile) {
+                throw new InvalidArgumentException('Invalid order image');
+            }
+            (new OrderImageStore(WRITEPATH . 'uploads/orders'))->validate($file);
+
+            return $this->response->setJSON(['status' => 'success'] + $csrf);
+        } catch (InvalidArgumentException) {
+            return $this->response->setStatusCode(422)->setJSON(['status' => 'error'] + $csrf);
+        } catch (Throwable $exception) {
+            log_message('error', 'Order image preview validation unavailable: {exception}', ['exception' => $exception::class]);
+
+            return $this->response->setStatusCode(503)->setJSON(['status' => 'error'] + $csrf);
         }
     }
 
@@ -218,8 +241,9 @@ final class Order extends BaseController
         // REQUEST ID / TRACK ID fields.
         return $this->layout('NEW REQUEST REPAIR', view('order_edit', [
             'row' => $row,
+            'submissionId' => bin2hex(random_bytes(16)),
             'caption' => 'Enter Request order Details',
-        ] + $this->formMasterData()));
+        ] + $this->formMasterData()), profile: 'order');
     }
 
     public function print(string $rawId): string
@@ -240,6 +264,26 @@ final class Order extends BaseController
             ->setHeader('Content-Type', 'image/png')
             ->setHeader('Cache-Control', 'private, max-age=86400, immutable')
             ->setBody((string) file_get_contents($path));
+    }
+
+    /** @return array<string, mixed> */
+    private function orderInput(): array
+    {
+        $input = $this->request->getPost();
+        foreach ([
+            'bookshort' => 'book_id',
+            'customerFullname' => 'customer_name',
+            'customerTel' => 'customer_tel',
+            'email' => 'customer_email',
+            'detailTypeId' => 'type_id',
+            'detailBrandId' => 'brand_id',
+        ] as $legacy => $canonical) {
+            if (! array_key_exists($canonical, $input) && array_key_exists($legacy, $input)) {
+                $input[$canonical] = $input[$legacy];
+            }
+        }
+
+        return $input;
     }
 
     /**
@@ -319,9 +363,9 @@ final class Order extends BaseController
         $id = preg_match('/\A[1-9][0-9]*\z/D', $rawId) === 1 ? (int) $rawId : 0;
         $session = service('session');
         $files = new OrderImageStore(WRITEPATH . 'uploads/orders');
-        // The controller owns the newly stored names end to end, exactly like create(): every path
-        // that does not end in a successful update removes them so no orphan is left, while the
-        // existing detailImage on the row stays untouched unless the update replaces it.
+        // The controller owns only the newly stored names: every failed edit removes those files.
+        // A successful replacement changes detailImage but deliberately keeps prior files on disk,
+        // while no-upload and failed updates keep both the prior association and file untouched.
         $stored = [];
         try {
             $uploads = array_values(array_filter(
@@ -338,7 +382,7 @@ final class Order extends BaseController
                 (int) $session->get('role'),
                 $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
                 $id,
-                $this->request->getPost(),
+                $this->orderInput(),
                 $stored,
             );
             if ($result !== 'updated') {

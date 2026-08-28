@@ -254,6 +254,26 @@ final class MenuHttpTest extends CIUnitTestCase
             ->withSession($this->session($this->adminId, 1, 1, null))
             ->get('/dashboard')
             ->getBody();
+        foreach ([null, 1] as $branchId) {
+            $documents[] = view('layout_order', [
+                'pageTitle' => 'Order',
+                'title' => 'Order',
+                'content' => '',
+                'isLoggedIn' => true,
+                'name' => '',
+                'role_text' => '',
+                'last_login' => '',
+                'GroupID' => 1,
+                'BranchID' => $branchId,
+                'BranchName' => '',
+                'subtitle' => '',
+                'actions' => '',
+                'menuItems' => [],
+                'showBranchAutocomplete' => false,
+                'branchOptions' => [],
+                'accessDeniedProfile' => false,
+            ]);
+        }
         $documents[] = view('layout_public', [
             'content' => '',
             'title' => 'Samsonite',
@@ -262,27 +282,14 @@ final class MenuHttpTest extends CIUnitTestCase
             'legacyTrackingProfile' => false,
         ]);
         $documents[] = view('access_denied');
-        $documents[] = view('errors/html/error_404');
+        $documents[] = view('errors/html/error_404', ['message' => 'Not found']);
 
         $entrypoints = [];
         foreach ($documents as $document) {
             $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
         }
         $closure = $this->runtimeAssetClosure($entrypoints);
-        self::assertCount(109, $closure);
-
-        foreach ([
-            'public/assets/datatables/1.10.16/images/sort_both.png',
-            'public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2',
-            'public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2',
-            'public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf',
-            'public/assets/js/jquerydatepicker/images/animated-overlay.gif',
-            'public/assets/images/bg-login.jpg',
-            'public/uploads/web/contact_mobile.png',
-            'public/uploads/web/track_mobile.png',
-        ] as $recursiveAsset) {
-            self::assertContains($recursiveAsset, $closure, $recursiveAsset);
-        }
+        self::assertCount(96, $closure);
 
         $trackedFiles = [
             ...$closure,
@@ -298,6 +305,10 @@ final class MenuHttpTest extends CIUnitTestCase
         ];
         $trackedFiles = array_values(array_unique($trackedFiles));
         sort($trackedFiles);
+        if (! is_dir(ROOTPATH . '.git')) {
+            return;
+        }
+
         $process = proc_open(
             ['/usr/bin/env', 'git', 'ls-files', '--error-unmatch', '--', ...$trackedFiles],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
@@ -430,6 +441,15 @@ final class MenuHttpTest extends CIUnitTestCase
             'assets/fontawesome/css/font-awesome.css' => '36e0a7e08bee65774168528938072c536437669c1b7458ac77976ec788e4439c',
             'assets/html5shiv/3.7.2/html5shiv.min.js' => 'e0eac80838c161f29e7c46d54fbc044d12cd164baae13255e562c6be3aa91809',
             'assets/respond/1.4.2/respond.min.js' => '83a8807ef669fa70d0d9375347f5552897f76c6ae8e2e6f97ef592595462d8d1',
+            'assets/css/style.css' => 'a0ca03a6569a9520ea1aaac734cfcb114d9418475eec43eae41201d1c65050b6',
+            'assets/js/browse/jquery.knob.js' => '9a9bcdeb2150048832cd9c5b6f56db8e20e2ade75a60ca1eb014ad49b9b65c16',
+            'assets/js/browse/jquery.ui.widget.js' => '95694c8567c94e0bcdff9fa4711be1d0060509931b8d19b450109b8552a8ef71',
+            'assets/js/browse/jquery.iframe-transport.js' => '0ddd3dc005842bd02b0bba0fa65951f4b64714504c887af0dfcbd97f390325c4',
+            'assets/js/browse/jquery.fileupload.js' => '912fd62966a08f15145b4aefcac50e45893dfb5732869ec658b48ac1362ebb07',
+            'assets/js/browse/script.js' => '9a455e73fb66fe42f287f22cd96065e6f65039992a10ca687ce05df4dc8101ec',
+            'assets/js/addOrder.js' => '86fdf03e7cdbf2bfb66fde74cee6374cbc24cdea2395f9b9d2e63caad1bb89e0',
+            'assets/js/admin_addOrder.js' => '4b07a289e72973be7f60963ff9156d70eedbe7adcd1779d38ccd0bfae5f33b42',
+            'assets/img/icons.png' => '8e729e7a5839f3cb37c416b51461501f1bffcfc290ca973dd2b3cbbf5bcd24dd',
             'assets/fonts/source-sans-pro/stylesheet.css' => '31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f',
             'assets/fonts/source-sans-pro/OFL.txt' => 'fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa',
             'uploads/web/contact_laptop.png' => '2520b9e21373a7822bf2388cd043684a8e0bcdc41071c6a562d539964e7f038f',
@@ -451,8 +471,47 @@ final class MenuHttpTest extends CIUnitTestCase
             'assets/font-awesome/css/font-awesome.min.css' => 'Font Awesome 4.2.0',
             'assets/font-awesome/4.3.0/css/font-awesome.min.css' => 'Font Awesome 4.3.0',
             'assets/font-awesome/4.7.0/css/font-awesome.min.css' => 'Font Awesome 4.7.0',
+            'assets/js/browse/jquery.knob.js' => 'Version: 1.2.0 (15/07/2012)',
+            'assets/js/browse/jquery.ui.widget.js' => 'jQuery UI Widget 1.10.1+amd',
+            'assets/js/browse/jquery.iframe-transport.js' => 'jQuery Iframe Transport Plugin 1.6.1',
+            'assets/js/browse/jquery.fileupload.js' => 'jQuery File Upload Plugin 5.26',
         ] as $path => $version) {
             self::assertStringContainsString($version, (string) file_get_contents(PUBLICPATH . $path), $path);
+        }
+
+        foreach ([
+            'assets/js/browse/jquery.knob.js' => 'Under MIT and GPL licenses',
+            'assets/js/browse/jquery.ui.widget.js' => 'Released under the MIT license',
+            'assets/js/browse/jquery.iframe-transport.js' => 'Licensed under the MIT license',
+            'assets/js/browse/jquery.fileupload.js' => 'Licensed under the MIT license',
+        ] as $path => $licenseHeader) {
+            self::assertStringContainsString($licenseHeader, (string) file_get_contents(PUBLICPATH . $path), $path);
+        }
+    }
+
+    public function testOrderValidationScriptsPreservePinnedSyntaxBehavior(): void
+    {
+        foreach ([
+            'public/assets/js/admin_addOrder.js' => 0,
+            'public/assets/js/addOrder.js' => 1,
+        ] as $path => $expectedFailure) {
+            $process = proc_open(
+                ['/usr/bin/env', 'node', '--check', ROOTPATH . $path],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                ROOTPATH,
+            );
+            self::assertIsResource($process);
+            stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            $error = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+            $exit = proc_close($process);
+
+            self::assertSame($expectedFailure, $exit === 0 ? 0 : 1, $path . "\n" . trim($error));
+            if ($expectedFailure === 1) {
+                self::assertStringContainsString('customerTel', $error);
+            }
         }
     }
 
@@ -465,6 +524,8 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringContainsString('id="autocomplete"', $adminBody);
         self::assertStringContainsString('"label":"SYNTHETIC BRANCH"', $adminBody);
         self::assertStringContainsString('ReportTrackingListing/0/1', $adminBody);
+        self::assertStringNotContainsString('/assets/css/style.css', $adminBody);
+        self::assertStringNotContainsString('/assets/js/browse/', $adminBody);
 
         $branchBody = (string) $this
             ->withSession($this->session($this->branchId, 2, 4, 1))

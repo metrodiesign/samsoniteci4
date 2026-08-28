@@ -122,6 +122,7 @@ final class RouteHttpTest extends CIUnitTestCase
             '/password-reset/request',
             '/password-reset/complete',
             '/rating',
+            '/order/do_upload_multi/' . str_repeat('a', 32),
         ] as $path) {
             $this->assert404($path, false);
             $this->assert404($path, true);

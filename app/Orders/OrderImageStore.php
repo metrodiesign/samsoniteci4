@@ -22,12 +22,39 @@ final class OrderImageStore
     {
     }
 
+    public function validate(UploadedFile $file): void
+    {
+        imagedestroy($this->validatedImage($file));
+    }
+
     /**
      * Validate one uploaded image, re-encode it to PNG, and store it under a random 32hex name.
      * The client extension is never trusted: finfo mime and getimagesize must agree on png/jpg/gif
      * before the bytes reach gd, and nothing is written to disk until every check passes.
      */
     public function store(UploadedFile $file): string
+    {
+        $image = $this->validatedImage($file);
+        if (! is_dir($this->directory) && ! mkdir($this->directory, 0750, true) && ! is_dir($this->directory)) {
+            imagedestroy($image);
+            throw new InvalidArgumentException('Order image storage unavailable');
+        }
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+        $name   = bin2hex(random_bytes(16)) . '.png';
+        $target = $this->directory . '/' . $name;
+        $stored = imagepng($image, $target);
+        imagedestroy($image);
+        if ($stored !== true || ! is_file($target)) {
+            @unlink($target);
+            throw new InvalidArgumentException('Order image storage unavailable');
+        }
+        chmod($target, 0640);
+
+        return $name;
+    }
+
+    private function validatedImage(UploadedFile $file): \GdImage
     {
         $path = $file->getTempName();
         $size = $file->getSize();
@@ -50,23 +77,8 @@ final class OrderImageStore
         if ($image === false) {
             throw new InvalidArgumentException('Invalid order image');
         }
-        if (! is_dir($this->directory) && ! mkdir($this->directory, 0750, true) && ! is_dir($this->directory)) {
-            imagedestroy($image);
-            throw new InvalidArgumentException('Order image storage unavailable');
-        }
-        imagealphablending($image, false);
-        imagesavealpha($image, true);
-        $name   = bin2hex(random_bytes(16)) . '.png';
-        $target = $this->directory . '/' . $name;
-        $stored = imagepng($image, $target);
-        imagedestroy($image);
-        if ($stored !== true || ! is_file($target)) {
-            @unlink($target);
-            throw new InvalidArgumentException('Order image storage unavailable');
-        }
-        chmod($target, 0640);
 
-        return $name;
+        return $image;
     }
 
     /** @param list<string> $names */

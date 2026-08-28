@@ -9,6 +9,7 @@
  * @var list<array<string, mixed>> $estimatePrices
  * @var list<array<string, mixed>> $fixedItems
  * @var string $caption
+ * @var string $submissionId
  */
 
 $fmtDate = static function ($raw): string {
@@ -42,11 +43,17 @@ $select = static function (string $name, array $items, string $idKey, string $la
 
 $warantyType = (string) ($row['warantyType'] ?? '0');
 ?>
-<section aria-labelledby="page-title">
+<div class="content-wrapper">
+    <div class="background-form" style="background-image: url(<?= base_url('assets/images/bg-form.png') ?>);"></div>
+    <section class="content-header">
+        <h1><i class="fa fa-cart-arrow-down"></i> NEW REQUEST REPAIR</h1>
+    </section>
+    <section class="content">
     <div class="card">
         <h3 class="box-title"><?= esc($caption) ?></h3>
-    <form method="post" action="/orders/<?= (int) $row['request_id'] ?>" enctype="multipart/form-data">
+    <form id="addOrder" method="post" action="/orders/<?= (int) $row['request_id'] ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
+        <input type="hidden" name="submission_id" value="<?= esc($submissionId) ?>">
 
         <h3>Urgent/ซ่อมด่วน</h3>
         <label class="custom-form"><input type="checkbox" name="detail_agent" value="1"<?= (string) ($row['detailAgent'] ?? '') === '1' ? ' checked' : '' ?>> Urgent/ซ่อมด่วน</label>
@@ -54,7 +61,7 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
         <?php // Labels verbatim from CI3 tracking/edit_order.php. All three are read-only here:
               // requestDate, branch and branch type are immutable columns on an existing order. ?>
         <label for="edit-request_date">request Date/วันที่ส่งซ่อม <span class="remark">*</span></label>
-        <input id="edit-request_date" name="request_date" value="<?= esc($fmtDate($row['requestDate'] ?? '')) ?>" readonly>
+        <input id="edit-request_date" name="requestDate" value="<?= esc($fmtDate($row['requestDate'] ?? '')) ?>" readonly>
 
         <label for="edit-branch_type">Branch Type/ประเภทของสาขา <span class="remark">*</span></label>
         <?php $select('branch_type', $branchTypes, 'branch_type_id', 'branch_type_details', (string) ($row['branch_type_id'] ?? ''), true) ?>
@@ -74,14 +81,17 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
             'customer_email' => 'customerEmail', 'note' => 'detailNote',
         ] as $field => $column): ?>
             <label for="edit-<?= esc($field) ?>"><?= esc($editLabels[$field] ?? $field) ?></label>
-            <input id="edit-<?= esc($field) ?>" name="<?= esc($field) ?>" value="<?= esc((string) ($row[$column] ?? '')) ?>">
+            <input id="edit-<?= esc($field) ?>" name="<?= esc([
+                'customer_name' => 'customerFullname', 'customer_tel' => 'customerTel',
+                'customer_email' => 'email',
+            ][$field] ?? $field) ?>" value="<?= esc((string) ($row[$column] ?? '')) ?>">
         <?php endforeach ?>
 
-        <label for="edit-type_id">CATEGORY/ประเภท</label>
-        <?php $select('type_id', $types, 'type_id', 'type_details', (string) ($row['detailTypeId'] ?? '')) ?>
+        <label for="edit-detailTypeId">CATEGORY/ประเภท</label>
+        <?php $select('detailTypeId', $types, 'type_id', 'type_details', (string) ($row['detailTypeId'] ?? '')) ?>
 
-        <label for="edit-brand_id">BRAND/ยี่ห้อ</label>
-        <?php $select('brand_id', $brands, 'brand_id', 'brand_details', (string) ($row['detailBrandId'] ?? '')) ?>
+        <label for="edit-detailBrandId">BRAND/ยี่ห้อ</label>
+        <?php $select('detailBrandId', $brands, 'brand_id', 'brand_details', (string) ($row['detailBrandId'] ?? '')) ?>
 
         <label for="edit-branch_id">Branch/สาขา (แก้ไม่ได้)</label>
         <?php $select('branch_id', $branches, 'branch_id', 'branch_name', (string) ($row['branchID'] ?? ''), true) ?>
@@ -142,10 +152,19 @@ $warantyType = (string) ($row['warantyType'] ?? '0');
         <label for="edit-create_by_user">Created by/พนักงานผู้รับสินค้า</label>
         <input id="edit-create_by_user" name="create_by_user" value="<?= esc((string) ($row['create_by_user'] ?? '')) ?>">
 
-        <label for="edit-image">Repair image (up to 5, replaces current)</label>
-        <input id="edit-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple>
+        <div class="form-group">
+            <?php foreach (explode('|', (string) ($row['detailImage'] ?? '')) as $image): ?>
+                <?php if (preg_match('/\A[a-f0-9]{32}\.png\z/D', $image) === 1): ?>
+                    &nbsp;&nbsp;<img src="/order-image/<?= esc($image, 'attr') ?>" style="width:150px;height:150px" alt="">
+                <?php endif ?>
+            <?php endforeach ?>
+        </div>
+
+        <input id="edit-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple hidden>
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    <?= view('partials/order_upload', ['submissionId' => $submissionId, 'targetId' => 'edit-image']) ?>
     </div>
-</section>
+    </section>
+</div>

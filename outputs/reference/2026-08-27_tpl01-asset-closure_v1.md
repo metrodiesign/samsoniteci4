@@ -1,21 +1,66 @@
 # TPL-01 runtime asset closure v1
 
-เอกสารนี้บันทึก runtime asset graph จาก current CI4 views/CSS, exact checkpoint candidate, checksum, provenance และ license evidence เทียบ CI3 pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6` โดยไม่ upgrade หรือ replace frontend dependency
+เอกสารนี้แยกหลักฐาน Task 6 ก่อน commit, checkpoint `6799684` และ current Task 7 delta เทียบ CI3 pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6` โดยไม่ upgrade หรือ replace frontend dependency
 
-## คำตัดสิน
+## สรุปสถานะตามเวลา
 
-| แกน | ผล | สถานะ |
+| ช่วง | Runtime closure | Candidate หรือ checkpoint | สถานะ |
+|---|---:|---:|---|
+| Historical Task 6 ก่อน commit | 109 files | 103 files | temporary-index simulation ผ่าน |
+| Task 6 checkpoint `6799684` | 109 files | 103 files committed | closure และ license evidence ถูก commit แล้ว |
+| Current Task 7 delta | 119 files | 22 files | เพิ่ม order runtime 10 files และ code/test/evidence 12 files |
+
+- Frontend dependency upgrade: 0
+- Frontend dependency replacement: 0
+- Real Git index ไม่ถูกเปลี่ยนระหว่าง Task 7 fix round 2
+
+## Historical Task 6 ก่อน commit
+
+Task 6 ปิด shared runtime graph ก่อนมี order profile caller:
+
+| แกน | จำนวน | หลักฐาน |
 |---|---:|---|
-| Runtime closure | 109 files | resolve บน disk ครบ |
-| Git tracked ใน closure | 16 files | 15 files ตรง index, `main.css` มี WIP ที่ต้องรวม candidate |
-| Git untracked ใน closure | 93 files | `BLOCKED` จนกว่า gitops จะ add และ commit |
-| License evidence นอก runtime graph | 7 files | Source Sans Pro 1 file และ license set ใหม่ 6 files |
-| Frontend dependency upgrade | 0 | ผ่าน |
-| Frontend dependency replacement | 0 | ผ่าน |
-| Exact checkpoint candidate | 103 files | temporary-index simulation ผ่าน; real index ไม่ถูกเปลี่ยน |
-| Upload snapshot provenance | 4 files | พิสูจน์แล้วจาก CI3 pin และ inventory v2 |
+| Runtime closure | 109 files | tracked เดิม 16 และ untracked 93 |
+| License evidence นอก graph | 7 files | Source Sans Pro 1 และ license set 6 |
+| Exact candidate | 103 files | untracked runtime 93, license 7, `main.css`, test และ evidence |
+| Required index inputs | 118 paths | runtime 109, license 7, test 1 และ evidence 1 |
 
-สถานะรวม: `PREPARED_AWAITING_REVIEW_AND_GITOPS`
+สถานะ historical คือ `PREPARED_AWAITING_REVIEW_AND_GITOPS`; ตัวเลขนี้อธิบายช่วงก่อน commit เท่านั้น
+
+## Task 6 committed checkpoint
+
+Commit `6799684` บันทึก exact Task 6 candidate 103 files แล้ว ทำให้ shared runtime closure 109 files และ required index inputs 118 paths อยู่ใน Git checkpoint ครบ
+
+- `public/assets/css/main.css` ตรง worktree ณ checkpoint
+- Task 6 focused suite, full PHPUnit, PHPStan และ `scripts/ci-check.sh` ผ่านจาก real index
+- order assets 10 filesยังไม่อยู่ใน commit นี้
+
+## Current Task 7 delta
+
+Order profile เพิ่ม runtime closure จาก 109 เป็น 119 files โดยเพิ่ม exact CI3 order assets 10 files
+
+| กลุ่ม | จำนวน | Paths |
+|---|---:|---|
+| Production | 8 | `Routes.php`, `Order.php`, `OrderImageStore.php`, order views และ partials |
+| Exact order assets | 10 | CSS 1, images 2, browse JavaScript 5 และ validation JavaScript 2 |
+| Tests | 3 | `OrderHttpTest.php`, `MenuHttpTest.php`, `RouteHttpTest.php` |
+| Evidence | 1 | ไฟล์นี้ |
+| รวม | 22 | exact Task 7 staging candidate |
+
+Exact order asset additions:
+
+- `public/assets/css/style.css`
+- `public/assets/images/bg-form.png`
+- `public/assets/img/icons.png`
+- `public/assets/js/browse/jquery.knob.js`
+- `public/assets/js/browse/jquery.ui.widget.js`
+- `public/assets/js/browse/jquery.iframe-transport.js`
+- `public/assets/js/browse/jquery.fileupload.js`
+- `public/assets/js/browse/script.js`
+- `public/assets/js/addOrder.js`
+- `public/assets/js/admin_addOrder.js`
+
+Current runtime state เทียบ `6799684` คือ tracked closure 109 files และ untracked exact order assets 10 files; current Task 7 code/test/evidence อยู่ใน working tree และยังไม่ stage
 
 ## วิธีสร้าง graph
 
@@ -24,6 +69,7 @@ Test `MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked` render H
 | Profile | Runtime source |
 |---|---|
 | Admin | `GET /dashboard` |
+| Order | render `layout_order` สำหรับ central และ branch caller |
 | Standalone auth | `GET /login`, `/forgot-password`, `/reset-password` |
 | Public Contact | `GET /contact`, `/contact-th` |
 | Public Tracking | `GET /tracking`, `/tracking-th` |
@@ -43,14 +89,14 @@ Test `MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked` render H
 
 Direct parser regressions ครอบ quoted `@import`, หลาย `url()`, `DATA:`, origin mismatch, dynamic prefix, query/fragment, traversal และ CSS cycle
 
-## Runtime closure 109 files
+## Current runtime closure 119 files
 
-### Untracked runtime 93 files
+### Runtime paths by group
 
 | จำนวน | กลุ่ม | สมาชิก |
 |---:|---|---|
 | 8 | `public/assets/bootstrap/` | CSS 2, Glyphicons 5 formats, JavaScript 1 |
-| 1 | `public/assets/css/` | `multifreezer.css` |
+| 2 | `public/assets/css/` | `multifreezer.css`, `style.css` |
 | 7 | `public/assets/datatables/1.10.16/` | CSS 1, JavaScript 1, sort images 5 |
 | 2 | `public/assets/datatables-fixedcolumns/3.2.4/` | CSS 1, JavaScript 1 |
 | 6 | `public/assets/dist/` | CSS 3, images 2, JavaScript 1 |
@@ -60,8 +106,10 @@ Direct parser regressions ครอบ quoted `@import`, หลาย `url()`, `
 | 6 | `public/assets/fontawesome/` | CSS 1, fonts 5 |
 | 8 | `public/assets/fonts/source-sans-pro/` | stylesheet 1, TTF 7 |
 | 1 | `public/assets/html5shiv/3.7.2/` | `html5shiv.min.js` |
-| 5 | `public/assets/images/` | `404.png`, `access.png`, tracking images 2, `print-logo.jpg` |
-| 6 | root `public/assets/js/` | Contact/Tracking scripts, jQuery 2 files, validate 2 files |
+| 1 | `public/assets/img/` | `icons.png` ของ order upload preview |
+| 6 | `public/assets/images/` | `404.png`, `access.png`, `bg-form.png`, tracking images 2, `print-logo.jpg` |
+| 8 | root `public/assets/js/` | Contact/Tracking scripts, order validation scripts 2, jQuery 2 files, validate 2 files |
+| 5 | `public/assets/js/browse/` | exact order upload preview/progress chain |
 | 20 | `public/assets/js/jquerydatepicker/` | JavaScript/CSS 6, recursive images 14 |
 | 1 | `public/assets/respond/1.4.2/` | `respond.min.js` |
 | 4 | `public/uploads/web/` | Contact desktop/mobile และ Tracking desktop/mobile |
@@ -83,7 +131,9 @@ Recursive jQuery UI image set 14 files:
 - `ui-icons_888888_256x240.png`
 - `ui-icons_cd0a0a_256x240.png`
 
-### Tracked runtime 16 files
+### Historical Task 6 tracked runtime 16 filesก่อน commit
+
+รายการนี้คือ 16 files ที่ tracked อยู่ก่อน exact Task 6 candidate; หลัง checkpoint `6799684` shared runtime closure 109 filesถูก tracked ครบ
 
 - `public/assets/css/main.css`
 - `public/assets/css/public.css`
@@ -103,17 +153,17 @@ Recursive jQuery UI image set 14 files:
 
 `public/assets/css/admin.css` tracked อยู่ก่อน แต่ไม่มี current rendered caller จึงไม่อยู่ใน runtime closure และไม่อยู่ใน candidate
 
-## Exact checkpoint candidate 103 files
+## Historical Task 6 exact candidate 103 files
 
 | จำนวน | กลุ่ม | เหตุผล |
 |---:|---|---|
-| 93 | untracked runtime closure | browser runtime caller มีจริง |
+| 93 | shared untracked runtime closure | browser runtime caller มีจริงก่อน order profile |
 | 1 | `public/assets/fonts/source-sans-pro/OFL.txt` | Source Sans Pro license |
 | 6 | `public/assets/licenses/` | full license texts และ exact bundle licenses |
 | 1 | `public/assets/css/main.css` | `.jpg` เป็น `.png`; index blob ต้องตรง worktree |
 | 1 | `tests/ci4/MenuHttpTest.php` | parser, checksum และ index-blob gates |
 | 1 | `outputs/reference/2026-08-27_tpl01-asset-closure_v1.md` | durable evidence |
-| รวม | 103 | exclude `admin.css` และทุก must-not-add group |
+| รวม | 103 | exact candidate ที่ถูก commit เป็น `6799684` |
 
 License candidate 6 files:
 
@@ -124,7 +174,7 @@ License candidate 6 files:
 - `public/assets/licenses/MIT.txt`
 - `public/assets/licenses/OFL-1.1.txt`
 
-Required index inputs รวม 118 paths: runtime closure 109, license evidence 7, test 1 และ evidence 1
+Historical Task 6 required index inputs รวม 118 paths: runtime closure 109, license evidence 7, test 1 และ evidence 1
 
 ## Must not add
 
@@ -135,7 +185,6 @@ Required index inputs รวม 118 paths: runtime closure 109, license evidence
 | SCSS, LESS, examples, docs, tests, specimen, demo | ไม่ใช่ runtime closure |
 | `multifreezer.js` | CI3 caller อยู่ใน HTML comment |
 | `cms-logo.png` | CI3 caller อยู่ใน HTML comment |
-| Order browse chain และ `assets/css/style.css` | ขอบเขต Task 7 |
 | Dependency version อื่น | ห้าม upgrade หรือ replacement |
 
 ## Version และ provenance
@@ -168,6 +217,34 @@ shasum -a 256 public/uploads/web/track_laptop.png public/uploads/web/track_mobil
 ```
 
 `MenuHttpTest::testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts` pin SHA-256 ของ target ทั้ง 4 แล้ว จึงเปลี่ยน hash ใดก็ทำให้ regression RED โดยตรง
+
+### Order assets จาก CI3 pin
+
+Order profile ใช้ target 10 files จาก source path เดียวกันใน CI3 pin โดย checksum ตรงทุกไฟล์:
+
+| CI4 target | CI3 pinned source | SHA-256 | License classification |
+|---|---|---|---|
+| `public/assets/css/style.css` | `assets/css/style.css` | `a0ca03a6569a9520ea1aaac734cfcb114d9418475eec43eae41201d1c65050b6` | first-party project asset, ไม่มี third-party license header |
+| `public/assets/images/bg-form.png` | `assets/images/bg-form.png` | `65fd6f960ea58421a1ba10a8414332b05e9de97150c098578db73305048fa1c0` | first-party project image, exact 937-byte blobจาก CI3 pin |
+| `public/assets/img/icons.png` | `assets/img/icons.png` | `8e729e7a5839f3cb37c416b51461501f1bffcfc290ca973dd2b3cbbf5bcd24dd` | first-party project asset, ไม่มี third-party license header |
+| `public/assets/js/browse/jquery.knob.js` | `assets/js/browse/jquery.knob.js` | `9a9bcdeb2150048832cd9c5b6f56db8e20e2ade75a60ca1eb014ad49b9b65c16` | third-party, embedded MIT/GPL declaration, ใช้ MIT option |
+| `public/assets/js/browse/jquery.ui.widget.js` | `assets/js/browse/jquery.ui.widget.js` | `95694c8567c94e0bcdff9fa4711be1d0060509931b8d19b450109b8552a8ef71` | third-party, embedded MIT declaration |
+| `public/assets/js/browse/jquery.iframe-transport.js` | `assets/js/browse/jquery.iframe-transport.js` | `0ddd3dc005842bd02b0bba0fa65951f4b64714504c887af0dfcbd97f390325c4` | third-party, embedded MIT declaration |
+| `public/assets/js/browse/jquery.fileupload.js` | `assets/js/browse/jquery.fileupload.js` | `912fd62966a08f15145b4aefcac50e45893dfb5732869ec658b48ac1362ebb07` | third-party, embedded MIT declaration |
+| `public/assets/js/browse/script.js` | `assets/js/browse/script.js` | `9a455e73fb66fe42f287f22cd96065e6f65039992a10ca687ce05df4dc8101ec` | first-party project script, ไม่มี third-party license header |
+| `public/assets/js/addOrder.js` | `assets/js/addOrder.js` | `86fdf03e7cdbf2bfb66fde74cee6374cbc24cdea2395f9b9d2e63caad1bb89e0` | first-party project script, คง known parse defect ตาม pin |
+| `public/assets/js/admin_addOrder.js` | `assets/js/admin_addOrder.js` | `4b07a289e72973be7f60963ff9156d70eedbe7adcd1779d38ccd0bfae5f33b42` | first-party project script, ไม่มี third-party license header |
+
+ตรวจซ้ำจาก CI3 checkout และ CI4 root ได้ด้วยคำสั่ง:
+
+```bash
+for path in assets/css/style.css assets/images/bg-form.png assets/img/icons.png assets/js/browse/jquery.knob.js assets/js/browse/jquery.ui.widget.js assets/js/browse/jquery.iframe-transport.js assets/js/browse/jquery.fileupload.js assets/js/browse/script.js assets/js/addOrder.js assets/js/admin_addOrder.js; do
+  /usr/bin/git -C ../samsoniteci3 show "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6:$path" | shasum -a 256
+done
+shasum -a 256 public/assets/css/style.css public/assets/images/bg-form.png public/assets/img/icons.png public/assets/js/browse/*.js public/assets/js/addOrder.js public/assets/js/admin_addOrder.js
+```
+
+`MenuHttpTest::testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts` pin target checksumเดิม 9 files, `OrderHttpTest::testCreateAndEditUsePinnedCi3BackgroundFormAsset` pin `bg-form.png` เพิ่มอีก 1 file และ `testOrderValidationScriptsPreservePinnedSyntaxBehavior` ตรึงว่า `admin_addOrder.js` ผ่าน `node --check` ส่วน `addOrder.js` ยัง fail ที่ `customerTel` ตาม source authority
 
 ### Exact DataTables CDN retrieval
 
@@ -230,38 +307,58 @@ Brief ระบุ Bootstrap 3.3.4 แต่ active CI3 bytes และ local he
 
 ## TDD และ verification
 
-### RED ที่ reproduce
+### Historical Task 6 RED/GREEN
 
-| Finding | RED result |
-|---|---|
-| style attribute | expected `bg-login.jpg`, parser คืน array ว่าง |
-| quoted import/หลาย URL/DATA | ตก `b.png`, รับ `DATA:image/png` ผิด |
-| exact origin | scheme และ port mismatch ไม่ throw |
-| dynamic prefix | `/background-image/assets/app.css` ถูกนับเป็น static |
-| traversal leave/re-enter | path ออกแล้วกลับ `public/` ผ่าน |
-| CSS cycle mutation | `cycle guard mutation`, 1 failure |
-| DataTables image mutation | `sort_both.png` expected hashผิด, 1 failure |
-| Upload image mutation | SHA-256 ของ upload path ใด path หนึ่งเปลี่ยน ทำให้ expected hashผิด, 1 failure |
-| temp index ขาด `main.css` | `Git index blob differs from worktree runtime input.` |
-
-### GREEN ปัจจุบัน
-
-| Gate | ผล |
+| Gate | Historical result |
 |---|---|
 | Parser regressions | `OK (11 tests, 79 assertions)` |
 | Dependency/license pins | `OK (1 test, 34 assertions)` |
 | Closure บน exact temporary index | `OK (1 test, 1669 assertions)` |
 | Focused asset suites | `OK (105 tests, 3898 assertions)` |
-| PHPStan | `[OK] No errors` |
 | Full PHPUnit | `OK (415 tests, 8316 assertions)` |
-| Full `scripts/ci-check.sh` | ผ่านทุก gate รวม secret file policy และ candidate-tree PII guard |
-| `git diff --check` | ผ่าน ไม่มี output |
-| Real index unchanged | `yes` ทุก temporary-index run |
+| Full `scripts/ci-check.sh` | ผ่านก่อน commit และผ่านจาก real checkpoint |
 
-Temporary index สร้างจาก `HEAD`, add exact candidate 103 files แล้วรัน test โดยส่ง `GIT_INDEX_FILE` เฉพาะ CI4 process ส่วน wrapper ชั่วคราว unset ตัวแปรนี้เฉพาะคำสั่ง Git/PHP ที่ตรวจ CI3 checkout เพื่อไม่ให้ index ของ CI4 รั่วข้าม repository
+### Task 7 fix round 2 RED
 
-## Blockers และไม้ต่อ
+| Finding | RED result |
+|---|---|
+| duplicate filename identity | ยกเลิก in-flight preview ชื่อซ้ำแล้ว completed file ถูกลบจาก final queue |
+| existing-image render | หน้า edit ไม่มี `src="/order-image/{name}"` สำหรับ valid association |
+| update failure rollback | regression เดิมผ่าน ยืนยันว่า prior association/file คงอยู่และลบเฉพาะไฟล์ใหม่ |
 
-1. gitops ต้อง add และ commit exact candidate 103 files หลัง review ผ่าน
-2. ต้อง rerun focused suite, PHPStan, full PHPUnit และ `scripts/ci-check.sh` จาก real checkpoint index
-3. Browser DOM, JavaScript interaction และ visual parity ยังไม่ใช่ผลของ Task 6
+### Task 7 fix round 2 GREEN
+
+| Gate | ผล |
+|---|---|
+| Duplicate/existing-image focused | `OK (6 tests, 75 assertions)` |
+| `OrderHttpTest.php` | `OK (74 tests, 1235 assertions)` |
+| Focused Order/Menu/Route | `OK (112 tests, 4268 assertions)` |
+| Tracked runtime closure | `OK (1 test, 2116 assertions)` |
+| Full PHPUnit | `OK (426 tests, 8982 assertions)` |
+| PHPStan | `[OK] No errors` |
+| Full `scripts/ci-check.sh` | ผ่านทุก gateด้วย exact temporary candidate 21 files |
+| Exact CI3 order assets | `MATCH` ครบ 9 files |
+| JavaScript syntax contract | browse 5 filesและ `admin_addOrder.js` ผ่าน; `addOrder.js` คง pinned failure ที่ `customerTel` |
+| Task 7 patch whitespace | ผ่าน; `script.js` ใช้ path-scoped legacy whitespace setting |
+| Real Git index | `write-tree` ก่อน/หลังเป็น `c6ce38a8953cb1dedf08e35446b3195347139425`; cached diff ว่าง |
+
+Temporary index เริ่มจาก `6799684`, add whole-file paths 21 files และ apply เฉพาะ route hunk 1 hunk โดย wrapper ชั่วคราว unset `GIT_INDEX_FILE` เฉพาะ Git call ที่ชี้ CI3 checkout
+
+### Browser finding: `bg-form.png` closure
+
+Browser matrixพบ create/edit ของ centralและ branchร้องขอ `/assets/images/bg-form.png` แต่ candidateเดิมไม่มี target จึงเพิ่ม exact raw blobจาก CI3 pinและ regressionใน `OrderHttpTest`.
+
+| Gate | ผล |
+|---|---|
+| RED ก่อนเพิ่ม asset | `FAILURES! Tests: 1, Assertions: 5, Failures: 1` เพราะ target fileไม่มี |
+| Focused GREEN | `OK (1 test, 6 assertions)` |
+| Full `OrderHttpTest.php` | `OK (76 tests, 1246 assertions)` |
+| Raw CI3 pin identity | `MATCH`, 937 bytes, SHA-256 `65fd6f960ea58421a1ba10a8414332b05e9de97150c098578db73305048fa1c0` |
+
+ค่า SHA-256 `258c80d40a1455fc6c03e0ca1530cf1a00cffa96394358a0225e67ca1b39894e` ใน implement briefมาจาก outputของ RTK binary rendering ขนาด 969 bytes ไม่ใช่ Git blob. Raw `/usr/bin/git show`, `git cat-file`, working-tree source และ presentation inventory v1/v2 ตรงกันที่ค่า `65fd6f...` และขนาด 937 bytes จึงใช้ raw CI3 pinเป็น authority.
+
+## Browser proof status
+
+Anonymous runtime probe ที่ `/orders/new` ได้ HTTP `401` จึงยังไม่มี authenticated browser proof โดยไม่ใช้ credential หรือแตะ shared DB
+
+สถานะที่ยัง `BLOCKED` ครอบ file select, drag/drop, native `DataTransfer`, progress knob, CSRF refresh, repeated/multiple files, duplicate names, success/error, in-flight abort, post-completion delete และ final create/edit submit ใน browser จริง

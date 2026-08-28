@@ -30,10 +30,15 @@ $select = static function (string $name, array $items, string $idKey, string $la
     echo '</select>';
 };
 ?>
-<section aria-labelledby="page-title">
+<div class="content-wrapper">
+    <div class="background-form" style="background-image: url(<?= base_url('assets/images/bg-form.png') ?>);"></div>
+    <section class="content-header">
+        <h1><i class="fa fa-cart-arrow-down"></i> NEW REQUEST REPAIR</h1>
+    </section>
+    <section class="content">
     <div class="card">
         <h3 class="box-title"><?= esc($caption) ?></h3>
-    <form id="order-new-form" method="post" action="/orders/new" enctype="multipart/form-data">
+    <form id="addOrder" method="post" action="/orders/new" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="submission_id" value="<?= esc($submissionId) ?>">
 
@@ -43,7 +48,7 @@ $select = static function (string $name, array $items, string $idKey, string $la
         <?php // Labels verbatim from CI3 tracking/add_order.php, mixed case included: the uppercase
               // rendering there comes from CSS text-transform, not from the text itself. ?>
         <label for="order-request_date">request Date/วันที่ส่งซ่อม <span class="remark">*</span></label>
-        <input id="order-request_date" name="request_date" value="<?= esc($requestDate) ?>" placeholder="DD/MM/YYYY" readonly>
+        <input id="order-request_date" name="requestDate" value="<?= esc($requestDate) ?>" placeholder="DD/MM/YYYY" readonly>
 
         <label for="order-branch_type">Branch Type/ประเภทของสาขา <span class="remark">*</span></label>
         <select id="order-branch_type" name="branch_type">
@@ -57,7 +62,7 @@ $select = static function (string $name, array $items, string $idKey, string $la
         <input id="order-number_id" name="number_id" inputmode="numeric" pattern="[0-9]+" maxlength="96" required>
 
         <label for="order-book_id">book Short/เล่มที่</label>
-        <select id="order-book_id" name="book_id" required>
+        <select id="order-book_id" name="bookshort" required>
             <option value=""></option>
             <?php foreach ($books as $book): ?>
                 <option value="<?= (int) $book['book_id'] ?>" data-book-detail="<?= esc((string) $book['book_detail'], 'attr') ?>" data-branch-id="<?= (int) $book['branch_id'] ?>"><?= esc((string) $book['book_detail']) ?></option>
@@ -79,14 +84,17 @@ $select = static function (string $name, array $items, string $idKey, string $la
         ?>
         <?php foreach (['customer_name', 'customer_tel', 'customer_email', 'note'] as $field): ?>
             <label for="order-<?= esc($field) ?>"><?= esc($orderLabels[$field] ?? $field) ?></label>
-            <input id="order-<?= esc($field) ?>" name="<?= esc($field) ?>">
+            <input id="order-<?= esc($field) ?>" name="<?= esc([
+                'customer_name' => 'customerFullname', 'customer_tel' => 'customerTel',
+                'customer_email' => 'email',
+            ][$field] ?? $field) ?>">
         <?php endforeach ?>
 
-        <label for="order-type_id">CATEGORY/ประเภท</label>
-        <?php $select('type_id', $types, 'type_id', 'type_details', '') ?>
+        <label for="order-detailTypeId">CATEGORY/ประเภท</label>
+        <?php $select('detailTypeId', $types, 'type_id', 'type_details', '') ?>
 
-        <label for="order-brand_id">BRAND/ยี่ห้อ</label>
-        <?php $select('brand_id', $brands, 'brand_id', 'brand_details', '') ?>
+        <label for="order-detailBrandId">BRAND/ยี่ห้อ</label>
+        <?php $select('detailBrandId', $brands, 'brand_id', 'brand_details', '') ?>
 
         <label for="order-branch_id">Branch/สาขา <span class="remark">*</span></label>
         <select id="order-branch_id" name="branch_id">
@@ -142,16 +150,17 @@ $select = static function (string $name, array $items, string $idKey, string $la
         <label for="order-create_by_user">Created by/พนักงานผู้รับสินค้า</label>
         <input id="order-create_by_user" name="create_by_user">
 
-        <label for="order-image">Repair image (up to 5)</label>
-        <input id="order-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple>
+        <input id="order-image" name="detail_image[]" type="file" accept="image/png,image/jpeg,image/gif" multiple hidden>
         <button type="submit">Submit</button>
         <button type="reset">Reset</button>
     </form>
+    <?= view('partials/order_upload', ['submissionId' => $submissionId, 'targetId' => 'order-image']) ?>
     </div>
-</section>
+    </section>
+</div>
 <script>
 (() => {
-    const form = document.getElementById('order-new-form');
+    const form = document.getElementById('addOrder');
     const branch = document.getElementById('order-branch_id');
     const branchType = document.getElementById('order-branch_type');
     const branchShort = document.getElementById('order-branch_short');
