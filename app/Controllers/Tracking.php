@@ -29,8 +29,12 @@ final class Tracking extends BaseController
 
     private function fromQuery(string $language): string
     {
-        $value   = $this->request->getGet('tracking_id');
-        $trackId = is_string($value) ? trim($value) : '';
+        $canonical = $this->request->getGet('tracking_id');
+        $value     = $canonical === null ? $this->request->getGet('searchText') : $canonical;
+        $trackId   = is_string($value)
+            && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/D', $value) === 1
+                ? $value
+                : '';
         $timeline = $trackId === '' ? [] : (new TrackingLookup(db_connect()))->timeline($trackId);
 
         return $this->render($language, $trackId, $timeline);
