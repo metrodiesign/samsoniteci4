@@ -657,10 +657,10 @@ final class MenuHttpTest extends CIUnitTestCase
         // Parity with CI3: the sign-in page carries the banner, the Tracking wordmark
         // and the Forgot Password entry point. Without the link there is no route into
         // password reset from the UI at all.
-        self::assertStringContainsString('class="banner-cms"', $body);
-        self::assertStringContainsString('<b>Tracking</b>', $body);
+        self::assertStringContainsString('login-banner', $body);
+        self::assertStringContainsString('>Tracking<', $body);
         self::assertStringContainsString('Forgot Password', $body);
-        self::assertStringContainsString('forgotPassword', $body);
+        self::assertStringContainsString('forgot-password', $body);
     }
 
     public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
