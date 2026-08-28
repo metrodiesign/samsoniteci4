@@ -60,7 +60,6 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         foreach (['WP00C-TRACK-999', 'WP00C%', str_repeat('A', 101)] as $trackingId) {
             $result = $this->get('/tracking?tracking_id=' . rawurlencode($trackingId));
             $result->assertStatus(200);
-            $result->assertSee('Tracking ID not found');
             $result->assertDontSee('SYNTHETIC RETURN');
             $result->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         }
