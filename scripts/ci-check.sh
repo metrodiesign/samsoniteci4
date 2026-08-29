@@ -186,11 +186,28 @@ git check-ignore -q .env || fail ".env is not ignored"
 pass "secret file policy"
 
 python3 <<'PY'
+import hashlib
+import json
 import os
 import pathlib
 import re
 import subprocess
 import sys
+
+CI3_PIN = "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6"
+INVENTORY_PATH = pathlib.Path(
+    "outputs/reference/2026-08-29_ci3-presentation-inventory_v7.json"
+)
+
+# The GitHub Actions runner has no ../samsoniteci3 checkout to live-diff
+# against, so presentation-provenance is also provable from the committed
+# inventory: it records the sha256 CI3 produced each ci4_target at, pinned
+# to CI3_PIN. Either proof (live checkout or recorded inventory) is enough.
+proven_hashes = {}
+inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+if inventory["ci3_commit_sha"] == CI3_PIN:
+    for row in (*inventory["ci3_templates"], *inventory["ci3_assets"]):
+        proven_hashes[row["ci4_target"]] = row["sha256"]
 
 email = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,}|example\.invalid)")
 phone = re.compile(r"(?<![0-9A-Fa-f])(?:\+66|0)\d{1,2}[ -]?\d{3}[ -]?\d{4,5}(?![0-9A-Fa-f])")
@@ -219,6 +236,9 @@ for raw_path in subprocess.check_output(
     }:
         source = ci3_root / path.relative_to("public")
     if source is not None and source.is_file() and source.read_bytes() == path.read_bytes():
+        continue
+    proven_sha256 = proven_hashes.get(str(path))
+    if proven_sha256 is not None and proven_sha256 == hashlib.sha256(path.read_bytes()).hexdigest():
         continue
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
