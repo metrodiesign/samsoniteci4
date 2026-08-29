@@ -86,14 +86,38 @@ final class Users extends BaseController
         ]), ['subtitle' => 'Set new password for your account']);
     }
 
+    public function legacyPasswordForm(): string
+    {
+        return $this->passwordForm();
+    }
+
     public function changePassword(): RedirectResponse|ResponseInterface
     {
-        $result = $this->store()->changePassword(
-            $this->actorId(),
+        return $this->changePasswordFrom(
             $this->request->getPost('current_password'),
             $this->request->getPost('password'),
             $this->request->getPost('password_confirmation'),
+            '/change-password?changed=1',
         );
+    }
+
+    public function changePasswordLegacy(): RedirectResponse|ResponseInterface
+    {
+        return $this->changePasswordFrom(
+            $this->request->getPost('oldPassword'),
+            $this->request->getPost('newPassword'),
+            $this->request->getPost('cNewPassword'),
+            '/loadChangePass?changed=1',
+        );
+    }
+
+    private function changePasswordFrom(
+        mixed $currentPassword,
+        mixed $password,
+        mixed $confirmation,
+        string $successPath,
+    ): RedirectResponse|ResponseInterface {
+        $result = $this->store()->changePassword($this->actorId(), $currentPassword, $password, $confirmation);
         if ($result === 'changed') {
             $version = (new \App\Authentication\ShadowUserStore(db_connect()))->currentSessionVersion($this->actorId());
             if ($version === null) {
@@ -101,7 +125,7 @@ final class Users extends BaseController
             }
             service('session')->set('sessionVersion', $version);
 
-            return redirect()->to('/change-password?changed=1');
+            return redirect()->to($successPath);
         }
 
         return match ($result) {

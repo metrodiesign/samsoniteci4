@@ -13,9 +13,10 @@ final class Login extends BaseController
 {
     public function index(): string
     {
-        return $this->layout('Sign in', view('login', [
-            'error' => service('session')->getFlashdata('login_error'),
-        ]));
+        return $this->document(
+            service('session')->getFlashdata('login_error'),
+            service('session')->getFlashdata('login_success'),
+        );
     }
 
     public function authenticate(): RedirectResponse|ResponseInterface
@@ -49,7 +50,7 @@ final class Login extends BaseController
                 return $this->response
                     ->setHeader('Retry-After', (string) $retryAfter)
                     ->setStatusCode(429)
-                    ->setBody($this->layout('Sign in', view('login', ['error' => 'Unable to sign in. Try again later.'])));
+                    ->setBody($this->document('Unable to sign in. Try again later.'));
             }
 
             $sessionData = (new LoginService(db_connect()))->authenticate(
@@ -65,7 +66,7 @@ final class Login extends BaseController
 
             return $this->response
                 ->setStatusCode(503)
-                ->setBody($this->layout('Sign in', view('login', ['error' => 'Sign-in service is unavailable.'])));
+                ->setBody($this->document('Sign-in service is unavailable.'));
         }
 
         if ($sessionData === null) {
@@ -91,5 +92,13 @@ final class Login extends BaseController
         service('session')->setFlashdata('login_error', 'Unable to sign in with those credentials.');
 
         return redirect()->to('/login');
+    }
+
+    private function document(mixed $error = null, mixed $success = null): string
+    {
+        return view('login', [
+            'error'   => is_string($error) ? $error : null,
+            'success' => is_string($success) ? $success : null,
+        ]);
     }
 }

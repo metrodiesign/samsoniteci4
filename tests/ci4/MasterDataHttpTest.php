@@ -245,7 +245,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $branchBody = html_entity_decode((string) $this->getAsAdmin('/master/branch')->getBody());
         $branchBody = (string) preg_replace('/\s+/', ' ', $branchBody);
         self::assertStringContainsString(
-            '<th>Id</th> <th>Branch type</th> <th>Branch User</th> <th>Branch name</th> <th>Branch suffix</th> <th>Ref</th> <th>Actions</th>',
+            '<th>Id</th> <th>Branch type</th> <th>Branch User</th> <th>Branch name</th> <th>Branch suffix</th> <th>Ref</th> <th class="text-center">Actions</th>',
             $branchBody,
         );
         self::assertMatchesRegularExpression('#<td>31001</td> <td>DISPLAY TYPE</td> <td>display-user</td>#', $branchBody);
@@ -258,7 +258,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $bookBody = html_entity_decode((string) $this->getAsAdmin('/master/book')->getBody());
         $bookBody = (string) preg_replace('/\s+/', ' ', $bookBody);
         self::assertStringContainsString(
-            '<th>ฺBookId</th> <th>Branch name</th> <th>Book Details</th> <th>Status</th> <th>Actions</th>',
+            '<th>ฺBookId</th> <th>Branch name</th> <th>Book Details</th> <th>Status</th> <th class="text-center">Actions</th>',
             $bookBody,
         );
         self::assertMatchesRegularExpression('#<td>41001</td> <td>DISPLAY BRANCH</td> <td>ONE</td> <td>Publishing</td>#', $bookBody);
@@ -282,7 +282,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         }
     }
 
-    public function testBranchAndBookFormOnlyFieldsRemainValidatedAndPersisted(): void
+    public function testBranchFieldsRemainValidatedAndBookInternalLimitStaysOutOfCi3Form(): void
     {
         $branch = $this->payload('branch', 'FORMBRANCH');
         $branch['branch_details'] = 'ORIGINAL DETAILS';
@@ -316,7 +316,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $bookId = (int) $this->db->insertID();
         self::assertSame(321, (int) $this->db->table('book')->where('book_id', $bookId)->get()->getRow('bunber_limit'));
         foreach (['/master/book/new', '/master/book/' . $bookId] as $path) {
-            self::assertStringContainsString('name="bunber_limit"', (string) $this->getAsAdmin($path)->getBody(), $path);
+            self::assertStringNotContainsString('name="bunber_limit"', (string) $this->getAsAdmin($path)->getBody(), $path);
         }
         $book['bunber_limit'] = '654';
         $this->postAsAdmin('/master/book/' . $bookId, $book)->assertRedirectTo('/master/book');
@@ -360,7 +360,25 @@ final class MasterDataHttpTest extends CIUnitTestCase
 
         $listing = $this->getAsAdmin('/master/brand');
         $listing->assertStatus(200);
-        $listing->assertSee('/master/brand/' . $brandId . '/delete');
+        $listing->assertSee('class="btn btn-sm btn-danger deleteBrand"');
+        $listing->assertSee('deleteBrand');
+    }
+
+    public function testCi3DeleteAliasesAcceptSourcePayloadAndReturnJsonStatus(): void
+    {
+        $seed = $this->payload('brand', 'LEGACYDEL');
+        unset($seed['csrf_test_name']);
+        $seed['cdate'] = '2026-08-22 09:00:00';
+        $this->db->table('brand')->insert($seed);
+        $brandId = (int) $this->db->insertID();
+
+        $response = $this->postAsAdmin('/deleteBrand', ['brandid' => (string) $brandId]);
+        $response->assertStatus(200);
+        $response->assertJSONExact(['status' => true]);
+        self::assertSame(0, $this->db->table('brand')->where('brand_id', $brandId)->countAllResults());
+
+        $this->postAsAdmin('/deleteBrand', ['brandid' => 'invalid'])
+            ->assertJSONExact(['status' => false]);
     }
 
     public function testForeignKeyFieldRendersSelectWithReferenceOptions(): void
@@ -432,7 +450,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $this->db->table('branch')->insertBatch($rows);
         $fifty = (string) $this->getAsAdmin('/master/branch?page=1')->getBody();
         self::assertStringContainsString('BRANCH-50', $fifty);
-        self::assertStringContainsString('page=2', $fifty);
+        self::assertStringContainsString('/branchListing/2', $fifty);
         self::assertStringNotContainsString('HIDDEN-DETAIL-', $fifty);
         self::assertStringNotContainsString('HIDDEN-ORDER-', $fifty);
     }
@@ -480,7 +498,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $page1->assertSee('PAGE BRANCH');
         $page1->assertSee('Publishing');
         $page1->assertDontSee('Number Limit');
-        $page1->assertSee('page=2');
+        $page1->assertSee('/bookListing/2');
 
         $page2 = $this->getAsAdmin('/master/book?page=2');
         $page2->assertStatus(200);
@@ -491,12 +509,12 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $page2->assertDontSee('Number Limit');
         $page2->assertDontSee('page=3');
 
-        // Next link carries the active search term (every book_detail starts with 'p').
+        // CI3 pagination keeps the active POST field, then changes form action to the next alias.
         $searched = $this->getAsAdmin('/master/book?search=p&page=1');
         $searched->assertStatus(200);
         $searched->assertSee('value="p"');
-        $searched->assertSee('search=p');
-        $searched->assertSee('page=2');
+        $searched->assertSee('name="searchText" value="p"');
+        $searched->assertSee('/bookListing/2');
         $searched->assertDontSee('Number Limit');
 
         $missing = $this->getAsAdmin('/master/book?search=absent');
@@ -571,6 +589,60 @@ final class MasterDataHttpTest extends CIUnitTestCase
         }
     }
 
+    public function testCi3MasterGetAliasesReachSameListingAndForm(): void
+    {
+        foreach ([
+            'branch' => ['branchListing', 'BranchNew', 'addNewBranch', 'editBranchOld', 'editBranch'],
+            'branchtype' => ['branchtypeListing', 'add_new_branchtype', 'addNewBranchtype', 'editBranchtypeOld', 'editBranchtype'],
+            'statustype' => ['statustypeListing', 'add_new_statustype', 'addNewStatustype', 'editStatustypeOld', 'editStatustype'],
+            'producttype' => ['producttypeListing', 'add_new_producttype', 'addNewProducttype', 'editProducttypeOld', 'editProducttype'],
+            'book' => ['bookListing', 'BookNew', 'addNewBook', 'editBookOld', 'editBook'],
+            'brand' => ['brandListing', 'add_new_brand', 'addNewBrand', 'editBrandOld', 'editBrand'],
+            'condition' => ['conditionListing', 'add_new_condition', 'addNewCondition', 'editConditionOld', 'editCondition'],
+            'estimateprice' => ['estimatepriceListing', 'add_new_estimateprice', 'addNewEstimateprice', 'editEstimatepriceOld', 'editEstimateprice'],
+            'fixed' => ['fixedListing', 'add_new_fixed', 'addNewFixed', 'editFixedOld', 'editFixed'],
+            'provider' => ['providerListing', 'add_new_provider', 'addNewProvider', 'editProviderOld', 'editProvider'],
+        ] as $type => [$listing, $new, $create, $edit, $update]) {
+            $id = $this->seedRow($type);
+            $this->getAsAdmin('/' . $listing)->assertStatus(200);
+            $this->getAsAdmin('/' . $listing . '/1')->assertStatus(200);
+            $add = $this->getAsAdmin('/' . $new);
+            $add->assertStatus(200);
+            self::assertStringContainsString('action="http://example.invalid/' . $create . '"', (string) $add->getBody(), $type);
+            $this->getAsAdmin('/' . $edit)->assertRedirectTo('/' . $listing);
+            $editPage = $this->getAsAdmin('/' . $edit . '/' . $id);
+            $editPage->assertStatus(200);
+            self::assertStringContainsString('action="http://example.invalid/' . $update . '"', (string) $editPage->getBody(), $type);
+        }
+    }
+
+    public function testCi3MasterPostAliasesCreateAndUpdateUsingSourcePayloadNames(): void
+    {
+        $routes = [
+            'branch' => ['addNewBranch', 'editBranch', 'branchListing'],
+            'branchtype' => ['addNewBranchtype', 'editBranchtype', 'branchtypeListing'],
+            'statustype' => ['addNewStatustype', 'editStatustype', 'statustypeListing'],
+            'producttype' => ['addNewProducttype', 'editProducttype', 'producttypeListing'],
+            'book' => ['addNewBook', 'editBook', 'bookListing'],
+            'brand' => ['addNewBrand', 'editBrand', 'brandListing'],
+            'condition' => ['addNewCondition', 'editCondition', 'conditionListing'],
+            'estimateprice' => ['addNewEstimateprice', 'editEstimateprice', 'estimatepriceListing'],
+            'fixed' => ['addNewFixed', 'editFixed', 'fixedListing'],
+            'provider' => ['addNewProvider', 'editProvider', 'providerListing'],
+        ];
+        foreach ($routes as $type => [$create, $update, $listing]) {
+            $definition = $this->definitions()[$type];
+            $created = $this->legacyPayload($type, 'LEGACY');
+            $this->postAsAdmin('/' . $create, $created)->assertRedirectTo('/' . $listing);
+            $row = $this->db->table($definition['table'])->where($definition['label'], $type === 'provider' ? 'LEGACY' : ($created[$definition['label']] ?? 'LEGACY'))->get()->getRowArray();
+            self::assertNotNull($row, $type);
+
+            $updated = $this->legacyPayload($type, 'UPDATED');
+            $updated[$definition['pk']] = (string) $row[$definition['pk']];
+            $this->postAsAdmin('/' . $update, $updated)->assertRedirectTo('/' . $listing);
+        }
+    }
+
     public function testAddPageShowsBlankFormWithResetButNoListingTableForAllTypes(): void
     {
         // AC-2 + AC-4: the add page renders an entity form with a reset button and no listing table.
@@ -578,7 +650,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
             $add = $this->getAsAdmin('/master/' . $type . '/new');
             $add->assertStatus(200);
             $body = (string) $add->getBody();
-            self::assertStringContainsString('<form method="post"', $body, $type);
+            self::assertStringContainsString('<form role="form" method="post"', $body, $type);
             self::assertStringContainsString('type="reset"', $body, $type);
             self::assertStringContainsString('>Submit</button>', $body, $type);
             self::assertStringNotContainsString('<table', $body, $type);
@@ -594,9 +666,9 @@ final class MasterDataHttpTest extends CIUnitTestCase
             $edit = $this->getAsAdmin('/master/' . $type . '/' . $id);
             $edit->assertStatus(200);
             $body = (string) $edit->getBody();
-            self::assertStringContainsString('<form method="post"', $body, $type);
+            self::assertStringContainsString('<form role="form" method="post"', $body, $type);
             self::assertStringContainsString('type="reset"', $body, $type);
-            self::assertStringContainsString('action="/master/' . $type . '/' . $id . '"', $body, $type);
+            self::assertStringContainsString('name="' . $def['pk'] . '" value="' . $id . '"', $body, $type);
             // The label column value is prefilled on the edit form.
             self::assertStringContainsString('value="ZQX"', $body, $type);
             self::assertStringNotContainsString('<table', $body, $type);
@@ -681,6 +753,19 @@ final class MasterDataHttpTest extends CIUnitTestCase
         ];
 
         return ['csrf_test_name' => service('security')->getHash(), ...$payloads[$type]];
+    }
+
+    /** @return array<string, string> */
+    private function legacyPayload(string $type, string $label): array
+    {
+        $payload = $this->payload($type, $label);
+        unset($payload['csrf_test_name'], $payload['bunber_limit']);
+        if ($type === 'provider') {
+            $payload['provider_details'] = $payload['provider_datail'];
+            unset($payload['provider_datail']);
+        }
+
+        return $payload;
     }
 
     /** @return array<string, array{table: string, pk: string, label: string, required: string}> */

@@ -160,6 +160,9 @@ final class MasterDataStore
         $values = [];
         foreach ($fields as $name => $rule) {
             $raw = $input[$name] ?? null;
+            if ($raw === null && ! ($rule['required'] ?? false)) {
+                continue;
+            }
             if ($rule['kind'] === 'int') {
                 $min = ($rule['allowZero'] ?? false) ? 0 : 1;
                 if (is_string($raw) && preg_match('/^(0|[1-9][0-9]*)$/D', $raw) === 1) {

@@ -11,6 +11,36 @@ use CodeIgniter\HTTP\ResponseInterface;
 
 final class MasterData extends BaseController
 {
+    /** @var array<string, string> */
+    private const LEGACY_LISTINGS = [
+        'branch' => 'branchListing', 'branchtype' => 'branchtypeListing', 'statustype' => 'statustypeListing',
+        'producttype' => 'producttypeListing', 'book' => 'bookListing', 'brand' => 'brandListing',
+        'condition' => 'conditionListing', 'estimateprice' => 'estimatepriceListing', 'fixed' => 'fixedListing',
+        'provider' => 'providerListing',
+    ];
+
+    /** @var array<string, array{create: string, update: string}> */
+    private const LEGACY_FORMS = [
+        'branch' => ['create' => 'addNewBranch', 'update' => 'editBranch'],
+        'branchtype' => ['create' => 'addNewBranchtype', 'update' => 'editBranchtype'],
+        'statustype' => ['create' => 'addNewStatustype', 'update' => 'editStatustype'],
+        'producttype' => ['create' => 'addNewProducttype', 'update' => 'editProducttype'],
+        'book' => ['create' => 'addNewBook', 'update' => 'editBook'],
+        'brand' => ['create' => 'addNewBrand', 'update' => 'editBrand'],
+        'condition' => ['create' => 'addNewCondition', 'update' => 'editCondition'],
+        'estimateprice' => ['create' => 'addNewEstimateprice', 'update' => 'editEstimateprice'],
+        'fixed' => ['create' => 'addNewFixed', 'update' => 'editFixed'],
+        'provider' => ['create' => 'addNewProvider', 'update' => 'editProvider'],
+    ];
+
+    /** @var array<string, string> */
+    private const LEGACY_DELETE_FIELDS = [
+        'branch' => 'branchid', 'branchtype' => 'branchid', 'statustype' => 'statusid',
+        'producttype' => 'productstypeid', 'book' => 'bookid', 'brand' => 'brandid',
+        'condition' => 'condition_id', 'estimateprice' => 'estimateprice_id', 'fixed' => 'fixed_id',
+        'provider' => 'provider_id',
+    ];
+
     public function listing(string $type): string
     {
         $definition = $this->authorizedDefinition($type);
@@ -19,6 +49,21 @@ final class MasterData extends BaseController
         $rawPage    = $this->request->getGet('page');
         $page       = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
         if ($page < 1) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $this->renderList($type, $definition, $search, $page);
+    }
+
+    public function legacyListing(string $type, ?string $rawPage = null): string
+    {
+        $definition = $this->authorizedDefinition($type);
+        $rawSearch = $this->request->getMethod() === 'POST'
+            ? $this->request->getPost('searchText')
+            : $this->request->getGet('search');
+        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
+        $page = $rawPage === null ? 1 : $this->positiveInteger($rawPage);
+        if ($page === null) {
             throw PageNotFoundException::forPageNotFound();
         }
 
@@ -44,11 +89,18 @@ final class MasterData extends BaseController
         return $this->renderForm($type, $definition, $row);
     }
 
+    public function legacyEditMissing(string $type): RedirectResponse
+    {
+        $this->authorizedDefinition($type);
+
+        return redirect()->to('/' . self::LEGACY_LISTINGS[$type]);
+    }
+
     public function create(string $type): RedirectResponse|ResponseInterface
     {
         $this->authorizedDefinition($type);
 
-        return $this->save($type, null);
+        return $this->save($type, null, $this->legacyInput($type), '/master/' . $type);
     }
 
     public function update(string $type, string $rawId): RedirectResponse|ResponseInterface
@@ -59,7 +111,26 @@ final class MasterData extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->save($type, $id);
+        return $this->save($type, $id, $this->legacyInput($type), '/master/' . $type);
+    }
+
+    public function legacyCreate(string $type): RedirectResponse|ResponseInterface
+    {
+        $this->authorizedDefinition($type);
+
+        return $this->save($type, null, $this->legacyInput($type), '/' . self::LEGACY_LISTINGS[$type]);
+    }
+
+    public function legacyUpdate(string $type): RedirectResponse|ResponseInterface
+    {
+        $definition = $this->authorizedDefinition($type);
+        $input = $this->legacyInput($type);
+        $id = $this->positiveInteger($input[$definition['pk']] ?? null);
+        if ($id === null) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_master']);
+        }
+
+        return $this->save($type, $id, $input, '/' . self::LEGACY_LISTINGS[$type]);
     }
 
     public function delete(string $type, string $rawId): ResponseInterface
@@ -74,6 +145,16 @@ final class MasterData extends BaseController
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'master_not_found']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'master_unavailable']),
         };
+    }
+
+    public function legacyDelete(string $type): ResponseInterface
+    {
+        $this->authorizedDefinition($type);
+        $rawId = $this->request->getPost(self::LEGACY_DELETE_FIELDS[$type]);
+        $id = $this->positiveInteger($rawId);
+        $result = $id === null ? 'not_found' : (new MasterDataStore(db_connect()))->delete($type, $id);
+
+        return $this->response->setJSON(['status' => $result === 'deleted']);
     }
 
     public function image(string $name): ResponseInterface
@@ -102,7 +183,8 @@ final class MasterData extends BaseController
         return $definition;
     }
 
-    private function save(string $type, ?int $id): RedirectResponse|ResponseInterface
+    /** @param array<string, mixed> $input */
+    private function save(string $type, ?int $id, array $input, string $successPath): RedirectResponse|ResponseInterface
     {
         $db = db_connect();
         $store = new MasterDataStore($db);
@@ -119,7 +201,7 @@ final class MasterData extends BaseController
             }
         }
         $trusted = $newImage === null ? [] : ['branch_type_image' => $newImage];
-        $result = $store->save($type, $id, $this->request->getPost(), $trusted);
+        $result = $store->save($type, $id, $input, $trusted);
         if (in_array($result, ['created', 'updated'], true)) {
             if ($newImage !== null && is_string($oldImage)) {
                 $images->remove($oldImage);
@@ -129,12 +211,23 @@ final class MasterData extends BaseController
         }
 
         return match ($result) {
-            'created', 'updated' => redirect()->to('/master/' . $type),
+            'created', 'updated' => redirect()->to($successPath),
             'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_master']),
             'duplicate' => $this->response->setStatusCode(409)->setJSON(['error' => 'duplicate_master']),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'master_not_found']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'master_unavailable']),
         };
+    }
+
+    /** @return array<string, mixed> */
+    private function legacyInput(string $type): array
+    {
+        $input = $this->request->getPost();
+        if ($type === 'provider' && isset($input['provider_details'])) {
+            $input['provider_datail'] = $input['provider_details'];
+        }
+
+        return $input;
     }
 
     /**
@@ -199,6 +292,7 @@ final class MasterData extends BaseController
             'type'       => $type,
             'fkOptions'  => $fkOptions,
             'caption'    => $heading['caption'],
+            'legacyAction' => self::LEGACY_FORMS[$type][$row === null ? 'create' : 'update'],
         ]), ['subtitle' => $heading['subtitle']]);
     }
 

@@ -1,18 +1,41 @@
 <?php /** @var bool $changed */ ?>
-<section aria-labelledby="page-title">
-    <div class="card">
-        <h3 class="box-title"><?= esc($caption) ?></h3>
-    <?php if ($changed): ?><p role="status">Password changed</p><?php endif ?>
-    <form method="post" action="/change-password">
-        <?= csrf_field() ?>
-        <label for="current-password">Current password</label>
-        <input id="current-password" name="current_password" type="password" autocomplete="current-password" required>
-        <label for="new-password">New password</label>
-        <input id="new-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
-        <label for="confirm-password">Confirm password</label>
-        <input id="confirm-password" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
-        <button type="submit">Submit</button>
-        <button type="reset">Reset</button>
-    </form>
-    </div>
-</section>
+<div class="background-form" style="background-image: url(<?= base_url('assets/images/bg-form.png') ?>);"></div>
+<div class="content-form">
+    <section class="content-header">
+        <h1>Change Password <small>Set new password for your account</small></h1>
+    </section>
+    <section class="content">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="box box-primary">
+                    <div class="box-header"><h3 class="box-title">Enter Details</h3></div>
+                    <form role="form" action="<?= base_url('changePassword') ?>" method="post">
+                        <?= csrf_field() ?>
+                        <div class="box-body">
+                            <div class="form-group">
+                                <label for="inputOldPassword">Old Password</label>
+                                <input type="password" class="form-control" id="inputOldPassword" placeholder="Old password" name="oldPassword" maxlength="128" required>
+                            </div>
+                            <hr>
+                            <div class="form-group">
+                                <label for="inputPassword1">New Password</label>
+                                <input type="password" class="form-control" id="inputPassword1" placeholder="New password" name="newPassword" minlength="12" maxlength="128" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputPassword2">Confirm New Password</label>
+                                <input type="password" class="form-control" id="inputPassword2" placeholder="Confirm new password" name="cNewPassword" minlength="12" maxlength="128" required>
+                            </div>
+                        </div>
+                        <div class="box-footer">
+                            <input type="submit" class="btn btn-primary" value="Submit">
+                            <input type="reset" class="btn btn-default" value="Reset">
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <?php if ($changed): ?>
+                <div class="col-md-4"><div class="alert alert-success alert-dismissable" role="status">Password changed</div></div>
+            <?php endif ?>
+        </div>
+    </section>
+</div>

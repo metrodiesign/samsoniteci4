@@ -272,11 +272,23 @@ final class Order extends BaseController
         $input = $this->request->getPost();
         foreach ([
             'bookshort' => 'book_id',
+            'numberID' => 'number_id',
             'customerFullname' => 'customer_name',
             'customerTel' => 'customer_tel',
+            'customerTelTwo' => 'customer_tel2',
             'email' => 'customer_email',
             'detailTypeId' => 'type_id',
             'detailBrandId' => 'brand_id',
+            'detailAgent' => 'detail_agent',
+            'detailSKUName' => 'detail_sku_name',
+            'detailDatePurchase' => 'detail_date_purchase',
+            'detailNumberWaranty' => 'detail_number_waranty',
+            'warantyType' => 'waranty_type',
+            'detailConditionOther' => 'condition_other',
+            'detailEstimatePriceOther' => 'estimateprice_other',
+            'detailFixedOther' => 'fixed_other',
+            'detailEquipment' => 'detail_equipment',
+            'detailNote' => 'note',
         ] as $legacy => $canonical) {
             if (! array_key_exists($canonical, $input) && array_key_exists($legacy, $input)) {
                 $input[$canonical] = $input[$legacy];
@@ -405,6 +417,16 @@ final class Order extends BaseController
 
             return $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']);
         }
+    }
+
+    public function legacyEdit(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
+    {
+        $requestId = $this->request->getPost('request_id');
+        if (! is_string($requestId)) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_order']);
+        }
+
+        return $this->edit($requestId);
     }
 
     public function delete(string $rawId): ResponseInterface

@@ -1,6 +1,6 @@
 <section>
 <?php if ($error): ?><div class="alert" role="alert"><?= esc($error) ?></div><?php endif ?>
-<form class="card filters" method="post"><input type="hidden" name="csrf_test_name" value="<?= csrf_hash() ?>">
+<form class="card filters" method="post" action="<?= base_url($formAction) ?>" id="searchList"><input type="hidden" name="csrf_test_name" value="<?= csrf_hash() ?>">
 <div><label for="branch_id">Branch:</label><?php if (! $showBranchSelect): ?><input type="hidden" id="branch_id" name="branch_id" value="<?= $branchId ?>"><?php else: ?><select id="branch_id" name="branch_id"><option value="0">ALL</option><?php foreach ($branches as $branch): ?><option value="<?= (int) $branch['branch_id'] ?>"<?= $branchId === (int) $branch['branch_id'] ? ' selected' : '' ?>><?= esc((string) $branch['branch_name'] . ',' . (string) $branch['branch_user_name']) ?></option><?php endforeach ?></select><?php endif ?></div>
 <div><label for="start_date">From date</label><input id="start_date" name="start_date" value="<?= esc($startDate) ?>" placeholder="dd/mm/yyyy"></div>
 <div><label for="end_date">To date</label><input id="end_date" name="end_date" value="<?= esc($endDate) ?>" placeholder="dd/mm/yyyy"></div>

@@ -11,16 +11,17 @@
   },
   "summary": {
     "ci3_templates": 108,
-    "ci4_templates": 41,
+    "ci4_templates": 45,
     "ci3_assets": 997,
-    "ci4_assets": 107,
+    "ci4_assets": 123,
     "template_dispositions": {
-      "BLOCKED": 108
+      "BLOCKED": 103,
+      "NOT_USED_WITH_EVIDENCE": 5
     },
     "asset_dispositions": {
-      "BLOCKED": 38,
-      "MIGRATED_AS_IS": 76,
-      "NOT_USED_WITH_EVIDENCE": 883
+      "BLOCKED": 29,
+      "MIGRATED_AS_IS": 86,
+      "NOT_USED_WITH_EVIDENCE": 882
     }
   },
   "ci3_templates": [
@@ -30,7 +31,9 @@
       "sha256": "4b92b9384b2d158feb72b535d6dc5ed79a57dc85219eadf8325bc146eff5ab22",
       "template_type": "php",
       "category": "page_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/errors/html/error_404.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -40,7 +43,9 @@
       "sha256": "779c77172d3cc32a3bdcc7aa1882311bf250f1fad6d295c5ed25d0f710f9b2f8",
       "template_type": "php",
       "category": "page_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/access_denied.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -110,7 +115,9 @@
       "sha256": "7e51a838f59db3352a84ff0209616b63ade160ea6b5cdf6f9a25d8ce63fbe3e9",
       "template_type": "php",
       "category": "email_template",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/email/reset_password.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -133,7 +140,7 @@
       "template_type": "php",
       "category": "page_view",
       "ci4_target_candidates": [
-        "app/Views/contact.php"
+        "app/Views/rating.php"
       ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
@@ -168,7 +175,9 @@
       "sha256": "832935bc5593afff1dc4e08e150fae097c403dc69f831f496161f9c838846fa6",
       "template_type": "php",
       "category": "framework_error_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/errors/cli/error_404.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -188,7 +197,9 @@
       "sha256": "3e3b65405feaf0d75a9e1254a363058d730a8c4ff0f41b9e2c5d36f14052e456",
       "template_type": "php",
       "category": "framework_error_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/errors/cli/error_exception.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -219,8 +230,8 @@
       "template_type": "html",
       "category": "framework_error_view",
       "ci4_target_candidates": [],
-      "disposition": "BLOCKED",
-      "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
+      "disposition": "NOT_USED_WITH_EVIDENCE",
+      "evidence": "CI3 directory-index deny stub; CI4 app/Views is outside the public document root and has no route caller"
     },
     {
       "source": "application/views/errors/html/error_404.php",
@@ -228,7 +239,9 @@
       "sha256": "3f6096e4b1113929091c7ddbae272ebaf415a21637e425e0afe52a0f0203a89b",
       "template_type": "php",
       "category": "framework_error_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/errors/html/error_404.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -248,7 +261,9 @@
       "sha256": "08e0775d0c44744bf2c445a0fb8087412e23ad6ed0f187dc710dc3866a25aff3",
       "template_type": "php",
       "category": "framework_error_view",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/errors/html/error_exception.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -279,8 +294,8 @@
       "template_type": "html",
       "category": "framework_error_view",
       "ci4_target_candidates": [],
-      "disposition": "BLOCKED",
-      "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
+      "disposition": "NOT_USED_WITH_EVIDENCE",
+      "evidence": "CI3 directory-index deny stub; CI4 app/Views is outside the public document root and has no route caller"
     },
     {
       "source": "application/views/errors/index.html",
@@ -289,8 +304,8 @@
       "template_type": "html",
       "category": "framework_error_view",
       "ci4_target_candidates": [],
-      "disposition": "BLOCKED",
-      "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
+      "disposition": "NOT_USED_WITH_EVIDENCE",
+      "evidence": "CI3 directory-index deny stub; CI4 app/Views is outside the public document root and has no route caller"
     },
     {
       "source": "application/views/excel_in_progress_job.php",
@@ -330,7 +345,10 @@
       "sha256": "a5f134a066fb6983b8d9c18f0782d2fa2d063d308e152781fca47c79f5cbe4d4",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout.php",
+        "app/Views/partials/admin_legacy_scripts.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -340,7 +358,10 @@
       "sha256": "6f4edfdc81f0f164ddd0e79899799bbf58051e8c99daf45c7e4d138e80e77b20",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout_order.php",
+        "app/Views/partials/order_legacy_scripts.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -350,7 +371,9 @@
       "sha256": "3e3afb640f9b8eda6cd710b61b15e1018c8eec88850f6326fcdc5ceacc668f57",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -360,7 +383,9 @@
       "sha256": "36d9da71c34745639351c549fb1b6cae2ffd09d7e7d30f7d9241bfeff6b62475",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout_order.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -371,8 +396,8 @@
       "template_type": "html",
       "category": "page_view",
       "ci4_target_candidates": [],
-      "disposition": "BLOCKED",
-      "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
+      "disposition": "NOT_USED_WITH_EVIDENCE",
+      "evidence": "CI3 directory-index deny stub; CI4 app/Views is outside the public document root and has no route caller"
     },
     {
       "source": "application/views/login.php",
@@ -861,8 +886,8 @@
       "template_type": "html",
       "category": "page_view",
       "ci4_target_candidates": [],
-      "disposition": "BLOCKED",
-      "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
+      "disposition": "NOT_USED_WITH_EVIDENCE",
+      "evidence": "standalone print mockup has no non-view caller; live CI3 print template is tracking/print_order.php"
     },
     {
       "source": "application/views/report.php",
@@ -1206,7 +1231,9 @@
       "sha256": "00d95ecb9727cb9ebc6a5b5dcde2f18c9ec5da08a93a20a8b28a3dd4e53132ea",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout_public.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -1216,7 +1243,9 @@
       "sha256": "15fc6fd3874953aef55f3ca64dd4eb4b75f891fe73e2303f6ae7b81d49f9dee4",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout_public.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -1226,7 +1255,9 @@
       "sha256": "e60ccebb438aae69366203a851973115a7eb52b1e9f4a5f1b42ca1fc6143314f",
       "template_type": "php",
       "category": "layout_or_partial",
-      "ci4_target_candidates": [],
+      "ci4_target_candidates": [
+        "app/Views/layout_public.php"
+      ],
       "disposition": "BLOCKED",
       "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity"
     },
@@ -1271,6 +1302,10 @@
       "template_type": "php"
     },
     {
+      "source": "app/Views/email/reset_password.php",
+      "template_type": "php"
+    },
+    {
       "source": "app/Views/errors/cli/error_404.php",
       "template_type": "php"
     },
@@ -1312,6 +1347,10 @@
     },
     {
       "source": "app/Views/layout.php",
+      "template_type": "php"
+    },
+    {
+      "source": "app/Views/layout_order.php",
       "template_type": "php"
     },
     {
@@ -1364,6 +1403,14 @@
     },
     {
       "source": "app/Views/partials/admin_legacy_scripts.php",
+      "template_type": "php"
+    },
+    {
+      "source": "app/Views/partials/order_legacy_scripts.php",
+      "template_type": "php"
+    },
+    {
+      "source": "app/Views/partials/order_upload.php",
       "template_type": "php"
     },
     {
@@ -1558,7 +1605,7 @@
       "sha256": "a0ca03a6569a9520ea1aaac734cfcb114d9418475eec43eae41201d1c65050b6",
       "bytes": 3159,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/dist/css/AdminLTE.css",
@@ -2814,7 +2861,7 @@
       "sha256": "65fd6f960ea58421a1ba10a8414332b05e9de97150c098578db73305048fa1c0",
       "bytes": 937,
       "static_view_references": 64,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/images/bg-login.jpg",
@@ -2990,7 +3037,7 @@
       "sha256": "8e729e7a5839f3cb37c416b51461501f1bffcfc290ca973dd2b3cbbf5bcd24dd",
       "bytes": 1393,
       "static_view_references": 0,
-      "disposition": "NOT_USED_WITH_EVIDENCE"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/index.html",
@@ -3094,7 +3141,7 @@
       "sha256": "86fdf03e7cdbf2bfb66fde74cee6374cbc24cdea2395f9b9d2e63caad1bb89e0",
       "bytes": 935,
       "static_view_references": 2,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/addProducttype.js",
@@ -3150,7 +3197,7 @@
       "sha256": "4b07a289e72973be7f60963ff9156d70eedbe7adcd1779d38ccd0bfae5f33b42",
       "bytes": 1340,
       "static_view_references": 2,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/browse/jquery.fileupload.js",
@@ -3158,7 +3205,7 @@
       "sha256": "912fd62966a08f15145b4aefcac50e45893dfb5732869ec658b48ac1362ebb07",
       "bytes": 52067,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/browse/jquery.iframe-transport.js",
@@ -3166,7 +3213,7 @@
       "sha256": "0ddd3dc005842bd02b0bba0fa65951f4b64714504c887af0dfcbd97f390325c4",
       "bytes": 8902,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/browse/jquery.knob.js",
@@ -3174,7 +3221,7 @@
       "sha256": "9a9bcdeb2150048832cd9c5b6f56db8e20e2ade75a60ca1eb014ad49b9b65c16",
       "bytes": 20723,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/browse/jquery.ui.widget.js",
@@ -3182,7 +3229,7 @@
       "sha256": "95694c8567c94e0bcdff9fa4711be1d0060509931b8d19b450109b8552a8ef71",
       "bytes": 15324,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/browse/script.js",
@@ -3190,7 +3237,7 @@
       "sha256": "9a455e73fb66fe42f287f22cd96065e6f65039992a10ca687ce05df4dc8101ec",
       "bytes": 4025,
       "static_view_references": 1,
-      "disposition": "BLOCKED"
+      "disposition": "MIGRATED_AS_IS"
     },
     {
       "source": "assets/js/common.js",
@@ -9398,6 +9445,7 @@
     "public/assets/css/main.css",
     "public/assets/css/multifreezer.css",
     "public/assets/css/public.css",
+    "public/assets/css/style.css",
     "public/assets/datatables/1.10.16/css/jquery.dataTables.min.css",
     "public/assets/datatables/1.10.16/images/sort_asc.png",
     "public/assets/datatables/1.10.16/images/sort_asc_disabled.png",
@@ -9454,6 +9502,7 @@
     "public/assets/html5shiv/3.7.2/html5shiv.min.js",
     "public/assets/images/404.png",
     "public/assets/images/access.png",
+    "public/assets/images/bg-form.png",
     "public/assets/images/bg-login.jpg",
     "public/assets/images/bg-tracking-mb.png",
     "public/assets/images/bg-tracking.png",
@@ -9466,8 +9515,16 @@
     "public/assets/images/popup_th.png",
     "public/assets/images/print-logo.jpg",
     "public/assets/images/thai.png",
+    "public/assets/img/icons.png",
     "public/assets/js/addContact.js",
+    "public/assets/js/addOrder.js",
     "public/assets/js/addtrack.js",
+    "public/assets/js/admin_addOrder.js",
+    "public/assets/js/browse/jquery.fileupload.js",
+    "public/assets/js/browse/jquery.iframe-transport.js",
+    "public/assets/js/browse/jquery.knob.js",
+    "public/assets/js/browse/jquery.ui.widget.js",
+    "public/assets/js/browse/script.js",
     "public/assets/js/jQuery-2.1.4.min.js",
     "public/assets/js/jquery-3.2.1.min.js",
     "public/assets/js/jquery.validate.js",
@@ -9492,6 +9549,12 @@
     "public/assets/js/jquerydatepicker/jquery-ui.css",
     "public/assets/js/jquerydatepicker/jquery-ui.min.js",
     "public/assets/js/validation.js",
+    "public/assets/licenses/MIT.txt",
+    "public/assets/licenses/OFL-1.1.txt",
+    "public/assets/licenses/bootstrap-3.3.7-LICENSE",
+    "public/assets/licenses/datatables-1.10.16-license.txt",
+    "public/assets/licenses/fixedcolumns-3.2.4-License.txt",
+    "public/assets/licenses/respond-1.4.2-LICENSE-MIT",
     "public/assets/respond/1.4.2/respond.min.js"
   ]
 }

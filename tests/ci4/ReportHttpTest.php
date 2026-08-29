@@ -103,6 +103,7 @@ final class ReportHttpTest extends CIUnitTestCase
             ]],
             ['groupId' => 4, 'includeGroup' => true, 'expected' => [
                 ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing'],
+                ['label' => '2. LOGISTICS', 'href' => '/sendorderListing'],
                 ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing'],
                 ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing'],
                 ...$reports,
@@ -124,7 +125,6 @@ final class ReportHttpTest extends CIUnitTestCase
                 $response = $this->withSession($session)->get('/dashboard');
                 $response->assertStatus(200);
                 self::assertSame($case['expected'], $this->dashboardTiles($response->getBody()));
-                self::assertStringNotContainsString('2. LOGISTICS', $response->getBody());
                 self::assertStringNotContainsString('data-status=', $response->getBody());
                 self::assertStringNotContainsString('data-count=', $response->getBody());
                 self::assertStringNotContainsString('data-background=', $response->getBody());
@@ -148,6 +148,7 @@ final class ReportHttpTest extends CIUnitTestCase
         $body = view('dashboard', ['tiles' => [[
             'label' => '<img src=x onerror=alert(1)>',
             'href' => '" onmouseover="alert(2)',
+            'icon' => 'ion-bag',
         ]]]);
 
         self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $body);
@@ -156,25 +157,18 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('href="" onmouseover="alert(2)"', $body);
     }
 
-    public function testDashboardSemanticGridCssAndRoutesMeetResponsiveKeyboardContract(): void
+    public function testDashboardUsesCi3SmallBoxMarkupAndDefinedRoutes(): void
     {
         $response = $this->withSession($this->dashboardSession($this->dashboardActors[2], 4, true))->get('/dashboard');
         $response->assertStatus(200);
         $body = $response->getBody();
-        self::assertSame(1, preg_match('#<nav aria-label="Dashboard shortcuts">(.*?)</nav>#s', $body, $nav));
-        self::assertStringContainsString('<ul class="dashboard-actions">', $nav[1]);
-        self::assertSame(4, substr_count($nav[1], '<li>'));
-        self::assertSame(4, substr_count($nav[1], '<a class="dashboard-action" href="'));
-        self::assertStringNotContainsString('<script', $nav[1]);
-        self::assertStringNotContainsString('<style', $nav[1]);
-        self::assertStringNotContainsString('<img', $nav[1]);
-        self::assertStringNotContainsString('tabindex=', $nav[1]);
-
-        $css = (string) file_get_contents(FCPATH . 'assets/css/admin.css');
-        self::assertMatchesRegularExpression('/\.dashboard-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s', $css);
-        self::assertMatchesRegularExpression('/\.dashboard-action\s*\{[^}]*min-height:\s*96px;[^}]*overflow-wrap:\s*anywhere;/s', $css);
-        self::assertMatchesRegularExpression('/\.dashboard-action:focus-visible\s*\{[^}]*outline:\s*3px\s+solid\s+#f5a623;/s', $css);
-        self::assertMatchesRegularExpression('/@media\s*\(max-width:\s*640px\)\s*\{\s*\.dashboard-actions\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/s', $css);
+        self::assertStringContainsString('<div class="content-dashbord">', $body);
+        self::assertSame(5, substr_count($body, '<a href="/'));
+        self::assertSame(5, substr_count($body, 'class="small-box-footer"'));
+        self::assertSame(5, substr_count($body, '<div class="small-box '));
+        self::assertStringContainsString('class="ion ion-bag"', $body);
+        self::assertStringContainsString('class="ion ion-stats-bars"', $body);
+        self::assertSame(2, substr_count($body, 'class="ion ion-pie-graph"'));
 
         foreach (array_column($this->dashboardTiles($body), 'href') as $href) {
             self::assertTrue($this->routeIsDefined($href), 'Dashboard route is missing: ' . $href);
@@ -619,10 +613,9 @@ final class ReportHttpTest extends CIUnitTestCase
     /** @return list<array{label: string, href: string}> */
     private function dashboardTiles(string $body): array
     {
-        self::assertSame(1, preg_match('#<nav aria-label="Dashboard shortcuts">(.*?)</nav>#s', $body, $nav));
         self::assertGreaterThan(
             0,
-            preg_match_all('#<a class="dashboard-action" href="([^"]*)">([^<]*)</a>#s', $nav[1], $matches),
+            preg_match_all('#<a href="([^"]*)" class="small-box-footer">\s*<div class="small-box [^"]+">\s*<div class="inner"><h2>(.*?)</h2>#s', $body, $matches),
         );
 
         $tiles = [];

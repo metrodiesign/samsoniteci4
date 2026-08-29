@@ -18,6 +18,12 @@ NON_RUNTIME_PARTS = ("/examples/", "/docs/", "/test/", "/tests/")
 NON_RUNTIME_SUFFIXES = (".md", ".txt", ".psd", ".scss", ".map")
 TEMPLATE_SUFFIXES = {".php", ".html"}
 CI3_PIN = "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6"
+DIRECTORY_GUARD_TEMPLATES = {
+    "index.html",
+    "errors/index.html",
+    "errors/html/index.html",
+    "errors/cli/index.html",
+}
 
 
 def sha256(path: Path) -> str:
@@ -84,6 +90,25 @@ def disposition_for_asset(relative: str, references: int, target_hashes: set[str
 
 
 def view_target_candidates(relative: str) -> list[str]:
+    exact = {
+        "404.php": ["app/Views/errors/html/error_404.php"],
+        "access.php": ["app/Views/access_denied.php"],
+        "email/resetPassword.php": ["app/Views/email/reset_password.php"],
+        "includes/header.php": ["app/Views/layout.php"],
+        "includes/footer.php": ["app/Views/layout.php", "app/Views/partials/admin_legacy_scripts.php"],
+        "includes/header_order.php": ["app/Views/layout_order.php"],
+        "includes/footer_order.php": ["app/Views/layout_order.php", "app/Views/partials/order_legacy_scripts.php"],
+        "web/header.php": ["app/Views/layout_public.php"],
+        "web/header_th.php": ["app/Views/layout_public.php"],
+        "web/footer.php": ["app/Views/layout_public.php"],
+        "errors/cli/error_404.php": ["app/Views/errors/cli/error_404.php"],
+        "errors/cli/error_exception.php": ["app/Views/errors/cli/error_exception.php"],
+        "errors/html/error_404.php": ["app/Views/errors/html/error_404.php"],
+        "errors/html/error_exception.php": ["app/Views/errors/html/error_exception.php"],
+    }
+    if relative in exact:
+        return exact[relative]
+
     name = Path(relative).stem
     direct = {
         "dashboard": ["app/Views/dashboard.php"],
@@ -123,8 +148,32 @@ def view_target_candidates(relative: str) -> list[str]:
     if relative.startswith("master/"):
         return ["app/Views/master_list.php"] if name in {"books", "branch", "branchtype", "brand", "condition", "estimateprice", "fixed", "producttype", "provider", "statustype"} else ["app/Views/master_form.php"]
     if relative.startswith("en/") or relative.startswith("th/"):
-        return ["app/Views/tracking_form.php" if name == "track" else "app/Views/tracking_result.php" if name == "trackstatus" else "app/Views/contact.php"]
+        return [
+            "app/Views/tracking_form.php" if name == "track"
+            else "app/Views/tracking_result.php" if name == "trackstatus"
+            else "app/Views/rating.php" if name == "rating"
+            else "app/Views/contact.php"
+        ]
     return direct.get(name, [])
+
+
+def template_disposition(relative: str) -> tuple[str, str]:
+    if relative in DIRECTORY_GUARD_TEMPLATES:
+        return (
+            "NOT_USED_WITH_EVIDENCE",
+            "CI3 directory-index deny stub; CI4 app/Views is outside the public document root and has no route caller",
+        )
+
+    if relative == "pdf-form.html":
+        return (
+            "NOT_USED_WITH_EVIDENCE",
+            "standalone print mockup has no non-view caller; live CI3 print template is tracking/print_order.php",
+        )
+
+    return (
+        "BLOCKED",
+        "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity",
+    )
 
 
 def main() -> None:
@@ -158,6 +207,7 @@ def main() -> None:
     for path in sorted(ci3_template_paths):
         relative = path.relative_to(ci3_views).as_posix()
         candidates = view_target_candidates(relative)
+        disposition, evidence = template_disposition(relative)
         templates.append({
             "source": manifest_path(f"application/views/{relative}"),
             "source_path_encoding": "percent-encoded only when the filesystem path contains @",
@@ -165,8 +215,8 @@ def main() -> None:
             "template_type": path.suffix.lower().removeprefix("."),
             "category": category(relative),
             "ci4_target_candidates": candidates,
-            "disposition": "BLOCKED",
-            "evidence": "static source inventory only; a target candidate is not proof of template adaptation, DOM parity, or visual parity",
+            "disposition": disposition,
+            "evidence": evidence,
         })
 
     assets = []

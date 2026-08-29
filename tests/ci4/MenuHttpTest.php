@@ -96,7 +96,7 @@ final class MenuHttpTest extends CIUnitTestCase
         $match->assertSee('CENTRAL');
         self::assertStringNotContainsString('<td>BRANCH</td>', $match->getBody());
         $match->assertSee('Menu Group name');
-        $match->assertSee('>Edit</a>');
+        self::assertStringContainsString('title="Edit"', $match->getBody());
         // 'Add, Edit, Delete' is CI3's page subtitle; assert the absence of a delete control,
         // not of the word.
         self::assertStringNotContainsString('>Delete<', $match->getBody());
@@ -289,7 +289,7 @@ final class MenuHttpTest extends CIUnitTestCase
             $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
         }
         $closure = $this->runtimeAssetClosure($entrypoints);
-        self::assertCount(96, $closure);
+        self::assertCount(116, $closure);
 
         $trackedFiles = [
             ...$closure,
@@ -447,8 +447,6 @@ final class MenuHttpTest extends CIUnitTestCase
             'assets/js/browse/jquery.iframe-transport.js' => '0ddd3dc005842bd02b0bba0fa65951f4b64714504c887af0dfcbd97f390325c4',
             'assets/js/browse/jquery.fileupload.js' => '912fd62966a08f15145b4aefcac50e45893dfb5732869ec658b48ac1362ebb07',
             'assets/js/browse/script.js' => '9a455e73fb66fe42f287f22cd96065e6f65039992a10ca687ce05df4dc8101ec',
-            'assets/js/addOrder.js' => '86fdf03e7cdbf2bfb66fde74cee6374cbc24cdea2395f9b9d2e63caad1bb89e0',
-            'assets/js/admin_addOrder.js' => '4b07a289e72973be7f60963ff9156d70eedbe7adcd1779d38ccd0bfae5f33b42',
             'assets/img/icons.png' => '8e729e7a5839f3cb37c416b51461501f1bffcfc290ca973dd2b3cbbf5bcd24dd',
             'assets/fonts/source-sans-pro/stylesheet.css' => '31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f',
             'assets/fonts/source-sans-pro/OFL.txt' => 'fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa',
@@ -486,32 +484,6 @@ final class MenuHttpTest extends CIUnitTestCase
             'assets/js/browse/jquery.fileupload.js' => 'Licensed under the MIT license',
         ] as $path => $licenseHeader) {
             self::assertStringContainsString($licenseHeader, (string) file_get_contents(PUBLICPATH . $path), $path);
-        }
-    }
-
-    public function testOrderValidationScriptsPreservePinnedSyntaxBehavior(): void
-    {
-        foreach ([
-            'public/assets/js/admin_addOrder.js' => 0,
-            'public/assets/js/addOrder.js' => 1,
-        ] as $path => $expectedFailure) {
-            $process = proc_open(
-                ['/usr/bin/env', 'node', '--check', ROOTPATH . $path],
-                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-                $pipes,
-                ROOTPATH,
-            );
-            self::assertIsResource($process);
-            stream_get_contents($pipes[1]);
-            fclose($pipes[1]);
-            $error = stream_get_contents($pipes[2]);
-            fclose($pipes[2]);
-            $exit = proc_close($process);
-
-            self::assertSame($expectedFailure, $exit === 0 ? 0 : 1, $path . "\n" . trim($error));
-            if ($expectedFailure === 1) {
-                self::assertStringContainsString('customerTel', $error);
-            }
         }
     }
 
@@ -718,10 +690,10 @@ final class MenuHttpTest extends CIUnitTestCase
         // Parity with CI3: the sign-in page carries the banner, the Tracking wordmark
         // and the Forgot Password entry point. Without the link there is no route into
         // password reset from the UI at all.
-        self::assertStringContainsString('login-banner', $body);
+        self::assertStringContainsString('banner-cms', $body);
         self::assertStringContainsString('>Tracking<', $body);
         self::assertStringContainsString('Forgot Password', $body);
-        self::assertStringContainsString('forgot-password', $body);
+        self::assertStringContainsString('forgotPassword', $body);
     }
 
     public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
@@ -733,16 +705,16 @@ final class MenuHttpTest extends CIUnitTestCase
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
         $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
 
-        self::assertStringContainsString('<table>', $body);
-        self::assertStringContainsString('<th>ฺId</th> <th>Menu Group name</th> <th>Actions</th>', $decoded);
+        self::assertStringContainsString('<table class="table table-hover">', $body);
+        self::assertStringContainsString('<th>ฺId</th><th>Menu Group name</th><th class="text-center">Actions</th>', $decoded);
         self::assertStringContainsString('<td>1</td>', $body);
         self::assertStringContainsString('<td>CENTRAL</td>', $body);
-        self::assertStringContainsString('<a href="/menu/1">Edit</a>', $body);
+        self::assertStringContainsString('href="http://example.invalid/editMunuOld/1" title="Edit"', $body);
         self::assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $body);
         self::assertStringNotContainsString('<script>alert(1)</script>', $body);
-        self::assertStringContainsString('<a href="/menu/' . $escapedId . '">Edit</a>', $body);
+        self::assertStringContainsString('href="http://example.invalid/editMunuOld/' . $escapedId . '" title="Edit"', $body);
         self::assertStringContainsString('Add New', $body);
-        self::assertStringContainsString('href="/menu/new"', $body);
+        self::assertStringContainsString('href="http://example.invalid/addNewMenu"', $body);
         self::assertStringNotContainsString('>Delete<', $body);
         self::assertStringNotContainsString('title="Delete"', $body);
         self::assertStringNotContainsString('<form method="post"', $body);
@@ -753,9 +725,9 @@ final class MenuHttpTest extends CIUnitTestCase
     {
         // AC-2: /menu/new renders a blank entity form with a reset button and no menu listing.
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu/new')->getBody();
-        self::assertStringContainsString('<form method="post"', $body);
+        self::assertMatchesRegularExpression('#<form role="form" id="addMenu" method="post" action="[^"]*/addMenu">#', $body);
         self::assertStringContainsString('type="reset"', $body);
-        self::assertStringContainsString('>Submit</button>', $body);
+        self::assertStringContainsString('type="submit" class="btn btn-primary" value="Submit"', $body);
         self::assertStringContainsString('name="name" value=""', $body); // blank form
         // No listing: the BRANCH row link (id 4) only appears on the list page.
         self::assertStringNotContainsString('href="/menu/4"', $body);
@@ -771,7 +743,8 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringContainsString('value="2" checked', $body);        // group 2 selected
         self::assertStringNotContainsString('value="3" checked', $body);     // group 3 not selected
         self::assertStringContainsString('type="reset"', $body);
-        self::assertStringContainsString('action="/menu/1"', $body);
+        self::assertMatchesRegularExpression('#action="[^"]*/editMenu"#', $body);
+        self::assertStringContainsString('name="group_id" id="group_id" value="1"', $body);
         self::assertStringNotContainsString('href="/menu/4"', $body);        // no other-row link
     }
 
@@ -802,8 +775,28 @@ final class MenuHttpTest extends CIUnitTestCase
     {
         // AC-7: the search/filter form on the listing must not carry a reset button.
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
-        self::assertStringContainsString('<form method="get" action="/menu">', $body);
+        self::assertStringContainsString('<form action="http://example.invalid/menuListing" method="post" id="searchList">', $body);
+        self::assertStringContainsString('name="searchText"', $body);
         self::assertStringNotContainsString('type="reset"', $body);
+    }
+
+    public function testCi3MenuAliasesKeepSourceFormActionsAndPayloads(): void
+    {
+        $session = $this->session($this->adminId, 1, 1, null);
+        $add = (string) $this->withSession($session)->get('/addNewMenu')->getBody();
+        self::assertStringContainsString('action="http://example.invalid/addMenu"', $add);
+
+        $edit = (string) $this->withSession($session)->get('/editMunuOld/1')->getBody();
+        self::assertStringContainsString('action="http://example.invalid/editMenu"', $edit);
+        self::assertStringContainsString('name="group_id" id="group_id" value="1"', $edit);
+
+        $this->postAsAdmin('/addMenu', ['name' => 'LEGACY MENU', 'group_type' => ['1']])
+            ->assertRedirectTo('/addNewMenu');
+        $row = $this->db->table('group_menu')->where('name', 'LEGACY MENU')->get()->getRowArray();
+        self::assertNotNull($row);
+        $this->postAsAdmin('/editMenu', ['group_id' => (string) $row['id'], 'name' => 'LEGACY UPDATED', 'group_type' => ['2']])
+            ->assertRedirectTo('/menuListing');
+        self::assertSame('LEGACY UPDATED', $this->db->table('group_menu')->where('id', $row['id'])->get()->getRow('name'));
     }
 
     /** @return list<string> */

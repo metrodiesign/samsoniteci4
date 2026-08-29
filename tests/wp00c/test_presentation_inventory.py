@@ -107,6 +107,23 @@ class PresentationInventoryTest(unittest.TestCase):
             {row["source"] for row in payload["ci3_templates"]},
         )
         self.assertEqual({"html", "php"}, {row["template_type"] for row in payload["ci3_templates"]})
+        targets = {row["source"]: row["ci4_target_candidates"] for row in payload["ci3_templates"]}
+        self.assertEqual(["app/Views/rating.php"], targets["application/views/en/rating.php"])
+        self.assertEqual(["app/Views/errors/html/error_404.php"], targets["application/views/404.php"])
+        self.assertEqual(["app/Views/access_denied.php"], targets["application/views/access.php"])
+        self.assertEqual(["app/Views/email/reset_password.php"], targets["application/views/email/resetPassword.php"])
+        self.assertEqual(["app/Views/layout_public.php"], targets["application/views/web/header_th.php"])
+        records = {row["source"]: row for row in payload["ci3_templates"]}
+        for source in [
+            "application/views/index.html",
+            "application/views/errors/index.html",
+            "application/views/errors/html/index.html",
+            "application/views/errors/cli/index.html",
+        ]:
+            self.assertEqual("NOT_USED_WITH_EVIDENCE", records[source]["disposition"])
+            self.assertIn("directory-index deny stub", records[source]["evidence"])
+        self.assertEqual("NOT_USED_WITH_EVIDENCE", records["application/views/pdf-form.html"]["disposition"])
+        self.assertIn("tracking/print_order.php", records["application/views/pdf-form.html"]["evidence"])
 
     def test_inventory_json_is_deterministic(self):
         with tempfile.TemporaryDirectory() as directory:

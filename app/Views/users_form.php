@@ -19,19 +19,27 @@ $userLabels = [
 <section aria-labelledby="page-title">
     <div class="card">
         <h3 class="box-title"><?= esc($caption) ?></h3>
-    <form method="post" action="<?= esc($action) ?>">
+    <form method="post" action="<?= esc($action) ?>" class="form-grid">
         <?= csrf_field() ?>
         <?php foreach (['username', 'name', 'email', 'mobile', 'group_id', 'role_id', 'branch_id'] as $field): ?>
             <?php $source = $field === 'role_id' ? 'roleId' : $field; ?>
-            <label for="user-<?= esc($field) ?>"><?= esc($userLabels[$field]) ?></label>
-            <input id="user-<?= esc($field) ?>" name="<?= esc($field) ?>" value="<?= esc($row[$source] ?? '') ?>" <?= in_array($field, ['group_id', 'role_id', 'branch_id'], true) ? 'type="number"' : '' ?>>
+            <div class="field">
+                <label for="user-<?= esc($field) ?>"><?= esc($userLabels[$field]) ?></label>
+                <input id="user-<?= esc($field) ?>" name="<?= esc($field) ?>" value="<?= esc($row[$source] ?? '') ?>" <?= in_array($field, ['group_id', 'role_id', 'branch_id'], true) ? 'type="number"' : '' ?>>
+            </div>
         <?php endforeach ?>
-        <label for="user-password">Password</label>
-        <input id="user-password" name="password" type="password" autocomplete="new-password" <?= $isNew ? 'required' : '' ?>>
-        <label for="user-password-confirmation">Confirm password</label>
-        <input id="user-password-confirmation" name="password_confirmation" type="password" autocomplete="new-password" <?= $isNew ? 'required' : '' ?>>
-        <button type="submit">Submit</button>
-        <button type="reset">Reset</button>
+        <div class="field">
+            <label for="user-password">Password</label>
+            <input id="user-password" name="password" type="password" autocomplete="new-password" <?= $isNew ? 'required' : '' ?>>
+        </div>
+        <div class="field">
+            <label for="user-password-confirmation">Confirm password</label>
+            <input id="user-password-confirmation" name="password_confirmation" type="password" autocomplete="new-password" <?= $isNew ? 'required' : '' ?>>
+        </div>
+        <div class="form-actions">
+            <button type="submit">Submit</button>
+            <button type="reset">Reset</button>
+        </div>
     </form>
     </div>
 </section>

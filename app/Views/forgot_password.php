@@ -1,50 +1,60 @@
-<div class="login-banner" role="presentation"></div>
-<div class="login-logo">Tracking</div>
-<section class="card login-card" aria-label="Forgot Password">
-    <p class="muted">Enter your account email and we will send reset instructions.</p>
-
-    <div class="alert" id="reset-message" role="status" hidden></div>
-
-    <form id="forgot-form" novalidate>
-        <div class="field">
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" maxlength="128" autocomplete="email" required autofocus>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Tracking | Admin System Log in</title>
+    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+    <link href="<?= base_url('assets/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet" type="text/css" />
+    <link href="<?= base_url('assets/font-awesome/css/font-awesome.css') ?>" rel="stylesheet" type="text/css" />
+    <link href="<?= base_url('assets/dist/css/AdminLTE.min.css') ?>" rel="stylesheet" type="text/css" />
+    <link href="<?= base_url('assets/dist/css/CustomAdmin.css') ?>" rel="stylesheet" type="text/css" />
+    <link href="<?= base_url('assets/css/main.css') ?>" rel="stylesheet" type="text/css" />
+  </head>
+  <body class="login-page">
+    <div class="banner-cms">
+      <div class="background-img" style="background-image: url(<?= base_url('assets/images/bg-login.jpg') ?>)"></div>
+    </div>
+    <div class="login-box">
+      <div class="login-logo">
+        <a href="#"><b>Tracking</b></a>
+      </div>
+      <div class="login-box-body">
+        <p class="login-box-msg">Forgot Password</p>
+        <div class="row">
+          <div class="col-md-12"></div>
         </div>
-        <button type="submit">Submit</button>
-    </form>
-    <p><a href="<?= site_url('login') ?>">Login</a></p>
-</section>
-<script>
-(function () {
-    var csrfUrl = <?= json_encode(site_url('password-reset/csrf'), JSON_UNESCAPED_SLASHES) ?>;
-    var requestUrl = <?= json_encode(site_url('password-reset/request'), JSON_UNESCAPED_SLASHES) ?>;
-    var GENERIC = 'If the account exists, reset instructions will be sent.';
-    var form = document.getElementById('forgot-form');
-    var box = document.getElementById('reset-message');
+        <?php if (is_string($message) && $message !== ''): ?>
+          <div class="alert <?= esc($messageClass, 'attr') ?> alert-dismissable">
+            <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+            <?= esc($message) ?>
+          </div>
+        <?php endif ?>
 
-    form.addEventListener('submit', function (event) {
-        event.preventDefault();
-        var button = form.querySelector('button');
-        button.disabled = true;
+        <form action="<?= base_url('resetPasswordUser') ?>" method="post">
+          <?= csrf_field() ?>
+          <div class="form-group has-feedback">
+            <input type="email" class="form-control" placeholder="Email" name="login_email" required />
+            <span class="glyphicon glyphicon-envelope form-control-feedback"></span>
+          </div>
+          <div class="row">
+            <div class="col-xs-8"></div><!-- /.col -->
+            <div class="col-xs-4">
+              <input type="submit" class="btn btn-primary btn-block btn-flat" value="Submit" />
+            </div><!-- /.col -->
+          </div>
+        </form>
+        <a href="<?= base_url() ?>">Login</a><br>
+      </div><!-- /.login-box-body -->
+    </div><!-- /.login-box -->
 
-        fetch(csrfUrl, { headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.json(); })
-            .then(function (csrf) {
-                var headers = { 'Content-Type': 'application/json' };
-                headers[csrf.header] = csrf.token;
-
-                return fetch(requestUrl, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({ email: document.getElementById('email').value })
-                });
-            })
-            .catch(function () { /* keep the response generic on any failure */ })
-            .then(function () {
-                box.textContent = GENERIC;
-                box.hidden = false;
-                button.disabled = false;
-            });
-    });
-})();
-</script>
+    <script src="<?= base_url('assets/js/jQuery-2.1.4.min.js') ?>"></script>
+    <script src="<?= base_url('assets/bootstrap/js/bootstrap.min.js') ?>" type="text/javascript"></script>
+    <section id="footer">
+      <div class="bg-footer">
+        <img class="" src="<?= base_url('assets/images/img-footer.png') ?>">
+        <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>
+        <div class="txt-num">02-761-9999</div>
+      </div>
+    </section>
+  </body>
+</html>

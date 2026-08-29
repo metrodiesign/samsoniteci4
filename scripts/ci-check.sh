@@ -203,9 +203,10 @@ for raw_path in subprocess.check_output(
             violations.append(f"{path}:{number}: email-like value")
         # 027619999 is Samsonite's public corporate hotline rendered in the
         # CI3-parity public footer; 022297190 is the repair-centre line on the
-        # CI3-parity contact page. Both are published contact info, not PII.
+        # CI3-parity contact page. 0123456789 is jQuery UI 1.10.3's fixed
+        # date-format digit alphabet, not a phone number. All are non-PII.
         if any(match.group(0).replace(" ", "").replace("-", "")
-               not in {"0000000000", "027619999", "022297190"}
+               not in {"0000000000", "0123456789", "027619999", "022297190"}
                for match in phone.finditer(line)):
             violations.append(f"{path}:{number}: phone-like value")
 

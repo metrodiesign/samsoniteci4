@@ -8,7 +8,7 @@
 |---|---:|---:|---|
 | Historical Task 6 ก่อน commit | 109 files | 103 files | temporary-index simulation ผ่าน |
 | Task 6 checkpoint `6799684` | 109 files | 103 files committed | closure และ license evidence ถูก commit แล้ว |
-| Current Task 7 delta | 119 files | 22 files | เพิ่ม order runtime 10 files และ code/test/evidence 12 files |
+| Current Task 7 delta | 116 files | 20 files | เพิ่ม order runtime 8 files และ code/test/evidence 12 files |
 
 - Frontend dependency upgrade: 0
 - Frontend dependency replacement: 0
@@ -37,12 +37,12 @@ Commit `6799684` บันทึก exact Task 6 candidate 103 files แล้�
 
 ## Current Task 7 delta
 
-Order profile เพิ่ม runtime closure จาก 109 เป็น 119 files โดยเพิ่ม exact CI3 order assets 10 files
+Order profile เพิ่ม runtime closure จาก 109 เป็น 116 files โดยมี exact CI3 order asset caller 8 files; `style.css` ซ้ำกับ shared closure เดิมจึงทำให้ net closure เพิ่ม 7 files
 
 | กลุ่ม | จำนวน | Paths |
 |---|---:|---|
 | Production | 8 | `Routes.php`, `Order.php`, `OrderImageStore.php`, order views และ partials |
-| Exact order assets | 10 | CSS 1, images 2, browse JavaScript 5 และ validation JavaScript 2 |
+| Exact order assets | 8 | CSS 1, images 2 และ browse JavaScript 5 |
 | Tests | 3 | `OrderHttpTest.php`, `MenuHttpTest.php`, `RouteHttpTest.php` |
 | Evidence | 1 | ไฟล์นี้ |
 | รวม | 22 | exact Task 7 staging candidate |
@@ -57,10 +57,8 @@ Exact order asset additions:
 - `public/assets/js/browse/jquery.iframe-transport.js`
 - `public/assets/js/browse/jquery.fileupload.js`
 - `public/assets/js/browse/script.js`
-- `public/assets/js/addOrder.js`
-- `public/assets/js/admin_addOrder.js`
 
-Current runtime state เทียบ `6799684` คือ tracked closure 109 files และ untracked exact order assets 10 files; current Task 7 code/test/evidence อยู่ใน working tree และยังไม่ stage
+Current runtime state เทียบ `6799684` คือ tracked closure 116 files; order asset caller 8 files และ net closure เพิ่ม 7 files. Code/test/evidence ของรอบนี้อยู่ใน working tree.
 
 ## วิธีสร้าง graph
 
@@ -89,7 +87,7 @@ Test `MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked` render H
 
 Direct parser regressions ครอบ quoted `@import`, หลาย `url()`, `DATA:`, origin mismatch, dynamic prefix, query/fragment, traversal และ CSS cycle
 
-## Current runtime closure 119 files
+## Current runtime closure 116 files
 
 ### Runtime paths by group
 
@@ -108,7 +106,7 @@ Direct parser regressions ครอบ quoted `@import`, หลาย `url()`, `
 | 1 | `public/assets/html5shiv/3.7.2/` | `html5shiv.min.js` |
 | 1 | `public/assets/img/` | `icons.png` ของ order upload preview |
 | 6 | `public/assets/images/` | `404.png`, `access.png`, `bg-form.png`, tracking images 2, `print-logo.jpg` |
-| 8 | root `public/assets/js/` | Contact/Tracking scripts, order validation scripts 2, jQuery 2 files, validate 2 files |
+| 6 | root `public/assets/js/` | Contact/Tracking scripts, jQuery 2 files, validate 2 files |
 | 5 | `public/assets/js/browse/` | exact order upload preview/progress chain |
 | 20 | `public/assets/js/jquerydatepicker/` | JavaScript/CSS 6, recursive images 14 |
 | 1 | `public/assets/respond/1.4.2/` | `respond.min.js` |
@@ -220,7 +218,7 @@ shasum -a 256 public/uploads/web/track_laptop.png public/uploads/web/track_mobil
 
 ### Order assets จาก CI3 pin
 
-Order profile ใช้ target 10 files จาก source path เดียวกันใน CI3 pin โดย checksum ตรงทุกไฟล์:
+Order profile ใช้ target 8 files จาก source path เดียวกันใน CI3 pin โดย checksum ตรงทุกไฟล์:
 
 | CI4 target | CI3 pinned source | SHA-256 | License classification |
 |---|---|---|---|
@@ -232,19 +230,17 @@ Order profile ใช้ target 10 files จาก source path เดียวก
 | `public/assets/js/browse/jquery.iframe-transport.js` | `assets/js/browse/jquery.iframe-transport.js` | `0ddd3dc005842bd02b0bba0fa65951f4b64714504c887af0dfcbd97f390325c4` | third-party, embedded MIT declaration |
 | `public/assets/js/browse/jquery.fileupload.js` | `assets/js/browse/jquery.fileupload.js` | `912fd62966a08f15145b4aefcac50e45893dfb5732869ec658b48ac1362ebb07` | third-party, embedded MIT declaration |
 | `public/assets/js/browse/script.js` | `assets/js/browse/script.js` | `9a455e73fb66fe42f287f22cd96065e6f65039992a10ca687ce05df4dc8101ec` | first-party project script, ไม่มี third-party license header |
-| `public/assets/js/addOrder.js` | `assets/js/addOrder.js` | `86fdf03e7cdbf2bfb66fde74cee6374cbc24cdea2395f9b9d2e63caad1bb89e0` | first-party project script, คง known parse defect ตาม pin |
-| `public/assets/js/admin_addOrder.js` | `assets/js/admin_addOrder.js` | `4b07a289e72973be7f60963ff9156d70eedbe7adcd1779d38ccd0bfae5f33b42` | first-party project script, ไม่มี third-party license header |
 
 ตรวจซ้ำจาก CI3 checkout และ CI4 root ได้ด้วยคำสั่ง:
 
 ```bash
-for path in assets/css/style.css assets/images/bg-form.png assets/img/icons.png assets/js/browse/jquery.knob.js assets/js/browse/jquery.ui.widget.js assets/js/browse/jquery.iframe-transport.js assets/js/browse/jquery.fileupload.js assets/js/browse/script.js assets/js/addOrder.js assets/js/admin_addOrder.js; do
+for path in assets/css/style.css assets/images/bg-form.png assets/img/icons.png assets/js/browse/jquery.knob.js assets/js/browse/jquery.ui.widget.js assets/js/browse/jquery.iframe-transport.js assets/js/browse/jquery.fileupload.js assets/js/browse/script.js; do
   /usr/bin/git -C ../samsoniteci3 show "ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6:$path" | shasum -a 256
 done
-shasum -a 256 public/assets/css/style.css public/assets/images/bg-form.png public/assets/img/icons.png public/assets/js/browse/*.js public/assets/js/addOrder.js public/assets/js/admin_addOrder.js
+shasum -a 256 public/assets/css/style.css public/assets/images/bg-form.png public/assets/img/icons.png public/assets/js/browse/*.js
 ```
 
-`MenuHttpTest::testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts` pin target checksumเดิม 9 files, `OrderHttpTest::testCreateAndEditUsePinnedCi3BackgroundFormAsset` pin `bg-form.png` เพิ่มอีก 1 file และ `testOrderValidationScriptsPreservePinnedSyntaxBehavior` ตรึงว่า `admin_addOrder.js` ผ่าน `node --check` ส่วน `addOrder.js` ยัง fail ที่ `customerTel` ตาม source authority
+`MenuHttpTest::testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts` pin checksum ของ runtime chain และ `OrderHttpTest::testCreateAndEditUsePinnedCi3BackgroundFormAsset` pin `bg-form.png` เพิ่มอีกหนึ่ง file. `addOrder.js` และ `admin_addOrder.js` ไม่มี caller จึงไม่อยู่ใน runtime closure.
 
 ### Exact DataTables CDN retrieval
 
@@ -337,8 +333,8 @@ Brief ระบุ Bootstrap 3.3.4 แต่ active CI3 bytes และ local he
 | Full PHPUnit | `OK (426 tests, 8982 assertions)` |
 | PHPStan | `[OK] No errors` |
 | Full `scripts/ci-check.sh` | ผ่านทุก gateด้วย exact temporary candidate 21 files |
-| Exact CI3 order assets | `MATCH` ครบ 9 files |
-| JavaScript syntax contract | browse 5 filesและ `admin_addOrder.js` ผ่าน; `addOrder.js` คง pinned failure ที่ `customerTel` |
+| Exact CI3 order assets | `MATCH` ครบ 8 files |
+| JavaScript syntax contract | browse chain 5 filesอยู่ใน runtime closure; `addOrder.js` และ `admin_addOrder.js` ไม่มี caller |
 | Task 7 patch whitespace | ผ่าน; `script.js` ใช้ path-scoped legacy whitespace setting |
 | Real Git index | `write-tree` ก่อน/หลังเป็น `c6ce38a8953cb1dedf08e35446b3195347139425`; cached diff ว่าง |
 

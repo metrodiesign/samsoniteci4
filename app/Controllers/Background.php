@@ -20,11 +20,21 @@ final class Background extends BaseController
         return $this->renderList();
     }
 
+    public function legacyListing(): string
+    {
+        return $this->listing();
+    }
+
     public function add(): string
     {
         $this->assertAdmin();
 
         return $this->renderForm(null);
+    }
+
+    public function legacyAdd(): string
+    {
+        return $this->add();
     }
 
     public function edit(string $rawId): string
@@ -38,11 +48,30 @@ final class Background extends BaseController
         return $this->renderForm($row);
     }
 
+    public function legacyEditMissing(): RedirectResponse
+    {
+        $this->assertAdmin();
+
+        return redirect()->to('/BackgroundListing');
+    }
+
+    public function legacyEdit(string $rawId): string
+    {
+        return $this->edit($rawId);
+    }
+
     public function create(): RedirectResponse|ResponseInterface
     {
         $this->assertAdmin();
 
-        return $this->save(null);
+        return $this->save(null, '/backgrounds');
+    }
+
+    public function legacyCreate(): RedirectResponse|ResponseInterface
+    {
+        $this->assertAdmin();
+
+        return $this->save(null, '/BackgroundListing');
     }
 
     public function update(string $rawId): RedirectResponse|ResponseInterface
@@ -53,7 +82,18 @@ final class Background extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->save($id);
+        return $this->save($id, '/backgrounds');
+    }
+
+    public function legacyUpdate(): RedirectResponse|ResponseInterface
+    {
+        $this->assertAdmin();
+        $id = $this->request->getPost('background_id');
+        if (! is_string($id) || preg_match('/\A[1-9][0-9]*\z/D', $id) !== 1) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_background']);
+        }
+
+        return $this->save((int) $id, '/BackgroundListing');
     }
 
     public function delete(string $rawId): ResponseInterface
@@ -98,10 +138,11 @@ final class Background extends BaseController
         return $this->layout('background Web EN Management', view('background_form', [
             'fields' => BackgroundStore::FIELDS,
             'row' => $row,
+            'legacyAction' => $row === null ? 'addBackground' : 'editBackground',
         ]), ['subtitle' => 'Add / Edit Branch']);
     }
 
-    private function save(?int $id): RedirectResponse|ResponseInterface
+    private function save(?int $id, string $successPath): RedirectResponse|ResponseInterface
     {
         $db = db_connect();
         $store = new BackgroundStore($db);
@@ -144,7 +185,7 @@ final class Background extends BaseController
         }
 
         return match ($result) {
-            'created', 'updated' => redirect()->to('/backgrounds'),
+            'created', 'updated' => redirect()->to($successPath),
             'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_background']),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'background_not_found']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'background_unavailable']),

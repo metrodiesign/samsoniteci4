@@ -141,4 +141,30 @@ final class ResetTokenStoreTest extends CIUnitTestCase
             new DateTimeImmutable('2026-08-22T09:10:00+00:00'),
         ));
     }
+
+    public function testActiveTokenLookupRequiresUnconsumedUnrevokedAndUnexpiredRow(): void
+    {
+        $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x13", $length));
+        $store = new ResetTokenStore($this->db, $factory);
+        $issued = $factory->issue(new DateTimeImmutable('2026-08-22T09:00:00+00:00'));
+        $store->issue(9002, $issued);
+        $activeAt = new DateTimeImmutable('2026-08-22T09:10:00+00:00');
+
+        self::assertSame(9002, $store->findActiveUserId($issued->token(), $activeAt));
+        self::assertNull($store->findActiveUserId('malformed', $activeAt));
+        self::assertNull($store->findActiveUserId(
+            $issued->token(),
+            new DateTimeImmutable('2026-08-22T09:30:00+00:00'),
+        ));
+
+        $this->db->table('ci4_password_reset_tokens')
+            ->where('user_id', 9002)
+            ->update(['revoked_at' => '2026-08-22 09:05:00']);
+        self::assertNull($store->findActiveUserId($issued->token(), $activeAt));
+
+        $this->db->table('ci4_password_reset_tokens')
+            ->where('user_id', 9002)
+            ->update(['revoked_at' => null, 'consumed_at' => '2026-08-22 09:06:00']);
+        self::assertNull($store->findActiveUserId($issued->token(), $activeAt));
+    }
 }

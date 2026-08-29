@@ -2,21 +2,28 @@
 
 /** @var string $language */
 /** @var string $trackId */
+/** @var bool $notFound */
 /** @var string|null $backgroundImage */
 /** @var string|null $backgroundImageMobile */
 
-$isThai   = $language === 'th';
-$action   = $isThai ? base_url('tracking-th') : base_url('tracking');
-$popup    = base_url('assets/images/' . ($isThai ? 'popup_th.png' : 'popup_en.png'));
-$notFound = $isThai ? 'ไม่พบหมายเลขติดตาม' : 'Tracking ID not found';
+$isThai          = $language === 'th';
+$action          = $isThai ? base_url('track_th/trackstatus') : base_url('track/trackstatus');
+$popup           = base_url('assets/images/' . ($isThai ? 'popup_th.png' : 'popup_en.png'));
+$notFoundMessage = $isThai ? 'ไม่พบหมายเลขติดตาม' : 'Tracking ID not found';
 ?>
+<style>
+    #track { background-image: url('<?= base_url('assets/images/bg-tracking.png') ?>'); }
 <?php if ($backgroundImage !== null): ?>
-    <style>#track { background-image: url('/background-image/<?= esc($backgroundImage) ?>'); background-size: cover; }</style>
+    #track { background-image: url('<?= base_url('background-image/' . rawurlencode($backgroundImage)) ?>'); }
 <?php endif ?>
+    @media (max-width: 850px) {
+        #track { background-image: url('<?= base_url('assets/images/bg-tracking-mb.png') ?>'); }
 <?php if ($backgroundImageMobile !== null): ?>
-    <style>@media (max-width: 850px) { #track { background-image: url('/background-image/<?= esc($backgroundImageMobile) ?>'); } }</style>
+        #track { background-image: url('<?= base_url('background-image/' . rawurlencode($backgroundImageMobile)) ?>'); }
 <?php endif ?>
-<form role="form" id="addtrack" action="<?= $action ?>" method="get">
+    }
+</style>
+<form role="form" id="addtrack" action="<?= $action ?>" method="post">
     <section id="track">
         <div class="container">
             <div class="row">
@@ -24,56 +31,67 @@ $notFound = $isThai ? 'ไม่พบหมายเลขติดตาม' :
                     <div class="topic-txt-hm">TRACK &amp; TRACE</div>
                     <div class="topic-txt-sm">Track Your Tracking Number</div>
 
-                    <input type="text" name="tracking_id" id="searchText" class="search-txt form-control required"
-                           value="<?= esc($trackId) ?>" maxlength="100" required
+                    <input type="text" name="searchText" id="searchText" class="search-txt form-control required"
+                           value="<?= esc($trackId) ?>"
                            placeholder="<?= $isThai ? 'ระบุรหัสติดตามของคุณ' : 'Your Tracking ID' ?>"
                            style="height: 70px; text-transform: uppercase;">
 
-                    <div>
-                        <button type="button" id="btnModal" class="main-btn-sm"><?= $isThai ? 'วิธีตรวจสอบสถานะ' : 'HOW TO CHECK' ?></button>
+                    <div class="">
+                        <button type="button" id="btnModal" class="main-btn-sm" data-toggle="modal" data-target="#exampleModal"><?= $isThai ? 'วิธีตรวจสอบสถานะ' : 'HOW TO CHECK' ?></button>
                         <input type="submit" class="main-btn-sm" value="<?= $isThai ? 'ติดตาม' : 'CHECK NOW' ?>">
                     </div>
 
-                    <?php if ($trackId !== ''): ?>
-                        <p role="status"><?= esc($notFound) ?></p>
-                    <?php endif ?>
-
                     <div class="mobile-only">
                         <div class="btn-mobile">
-                            <a href="<?= $isThai ? base_url('contact-th') : base_url('contact') ?>">
+                            <a href="<?= base_url('contact') ?>">
                                 <div class="control-txt">
+                                    <i class="fa fa-envelope-o edit-ico"></i>
                                     <div class="txt-sub-menu">CONTACT US</div>
                                 </div>
                             </a>
                         </div>
                         <div class="btn-mobile">
-                            <a href="https://www.samsonite.co.th/">
+                            <a href="https://www.houseofsamsonite.co.th/">
                                 <div class="control-txt">
+                                    <i class="fa fa-shopping-bag edit-ico"></i>
                                     <div class="txt-sub-menu">SHOPPING</div>
                                 </div>
                             </a>
                         </div>
                     </div>
 
-                    <dialog id="howToCheck" class="how-to-check">
-                        <div class="topic-txt-hm">HOW TO CHECK</div>
-                        <img class="rs-bg-size" src="<?= $popup ?>" alt="HOW TO CHECK">
-                        <button type="button" id="btnModalClose" class="btn custom-btn">Close</button>
-                    </dialog>
-
-                    <script>
-                        (function () {
-                            var dialog = document.getElementById('howToCheck');
-                            document.getElementById('btnModal').addEventListener('click', function () {
-                                dialog.showModal();
-                            });
-                            document.getElementById('btnModalClose').addEventListener('click', function () {
-                                dialog.close();
-                            });
-                        })();
+                    <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="exampleModal" aria-hidden="true">
+                        <div class="modal-dialog" role="document">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title topic-txt-hm">HOW TO CHECK</h5>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="" style="text-align: left; line-height: 1; font-size: 1.2em; color: #7b7b7b;">
+                                        <img class="rs-bg-size" src="<?= $popup ?>">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn custom-btn" data-dismiss="modal">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <script type="text/javascript">
+                        $('#btnModal').click(function() {
+                            $('#myModal').modal('show');
+                        });
                     </script>
                 </div>
             </div>
+            <?php if ($notFound): ?>
+                <div class="col-md-4">
+                    <div class="alert alert-danger alert-dismissable">
+                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                        <?= esc($notFoundMessage) ?>
+                    </div>
+                </div>
+            <?php endif ?>
         </div>
     </section>
 </form>

@@ -132,7 +132,7 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
 
         self::assertStringContainsString(
-            '<th>ฺId</th> <th>Track</th> <th>Tracks tatus</th> <th>Contact</th> <th>Status</th> <th>Actions</th>',
+            '<th>ฺId</th><th>Track</th><th>Tracks tatus</th><th>Contact</th><th>Status</th><th class="text-center">Actions</th>',
             $decoded,
         );
         self::assertStringContainsString('/background-image/' . $track, $body);
@@ -143,7 +143,7 @@ final class BackgroundHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('not-a-contract-name.png', $body);
         self::assertSame(1, substr_count($body, '<td>Publishing</td>'));
         self::assertSame(2, substr_count($body, '<td>Unpublish</td>'));
-        self::assertStringContainsString('<a href="/backgrounds/1">Edit</a>', $body);
+        self::assertStringContainsString('href="http://example.invalid/editBackgroundOld/1" title="Edit"', $body);
         self::assertStringNotContainsString('Add New', $body);
         self::assertStringNotContainsString('href="/backgrounds/new"', $body);
         self::assertStringNotContainsString('Delete', $body);
@@ -159,7 +159,7 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $this->db->table('tbl_background_web')->insert(['status' => 1, 'date' => '2026-08-25 00:00:00']);
         $id = (int) $this->db->insertID();
         $body = (string) $this->withSession($this->session())->get('/backgrounds/new')->getBody();
-        self::assertStringContainsString('<form method="post"', $body);
+        self::assertStringContainsString('<form role="form" method="post" action="http://example.invalid/addBackground"', $body);
         self::assertStringContainsString('type="reset"', $body);
         self::assertStringContainsString('>Submit</button>', $body);
         self::assertStringNotContainsString('href="/backgrounds/' . $id . '"', $body); // no row link
@@ -174,9 +174,9 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $this->db->table('tbl_background_web')->insert(['status' => 1, 'date' => '2026-08-25 00:00:00']);
         $other = (int) $this->db->insertID();
         $body = (string) $this->withSession($this->session())->get('/backgrounds/' . $edited)->getBody();
-        self::assertStringContainsString('<form method="post"', $body);
+        self::assertStringContainsString('<form role="form" method="post" action="http://example.invalid/editBackground"', $body);
         self::assertStringContainsString('type="reset"', $body);
-        self::assertStringContainsString('action="/backgrounds/' . $edited . '"', $body);
+        self::assertStringContainsString('name="background_id" value="' . $edited . '"', $body);
         self::assertStringNotContainsString('href="/backgrounds/' . $other . '"', $body); // no other-row link
     }
 

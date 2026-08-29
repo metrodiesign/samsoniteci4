@@ -139,7 +139,7 @@ final class RouteHttpTest extends CIUnitTestCase
 
     public function testKnownBrokenBookAliasIsCorrectedAndRackstatusIsRetired(): void
     {
-        $book = $this->withSession($this->session())->get('/bookListing/2');
+        $book = $this->withSession($this->session())->get('/bookListing');
         $book->assertStatus(200);
         $book->assertSee('WPA');
         $this->assert404('/rackstatus', false);

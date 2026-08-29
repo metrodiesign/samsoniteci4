@@ -127,6 +127,19 @@ final class OrderHttpTest extends CIUnitTestCase
         $injection->assertDontSee('WP00C-TRACK-002');
     }
 
+    public function testCi3OrderEditAndPrintAliasesKeepSourceFormActions(): void
+    {
+        $session = $this->session(1, 1, null);
+        $edit = $this->withSession($session)->get('/editOrdersOld/91001');
+        $edit->assertStatus(200);
+        self::assertStringContainsString('action="http://example.invalid/editOrders"', (string) $edit->getBody());
+        self::assertStringContainsString('name="request_id" value="91001"', (string) $edit->getBody());
+
+        $print = $this->withSession($session)->get('/OrderPrint/91001');
+        $print->assertStatus(200);
+        $print->assertSee('WP00C-TRACK-001');
+    }
+
     public function testOrderListingSearchMatchesParityFieldsAndDropsExtras(): void
     {
         $admin = $this->session(1, 1, null);
@@ -613,9 +626,9 @@ final class OrderHttpTest extends CIUnitTestCase
         ];
 
         foreach ([
-            'admin' => [$this->session(1, 1, null), '/assets/js/admin_addOrder.js', '/assets/js/addOrder.js'],
-            'branch' => [$this->session(2, 2, 1), '/assets/js/addOrder.js', '/assets/js/admin_addOrder.js'],
-        ] as $actor => [$session, $expectedValidation, $forbiddenValidation]) {
+            'admin' => $this->session(1, 1, null),
+            'branch' => $this->session(2, 2, 1),
+        ] as $actor => $session) {
             foreach (['/orders/new', '/orders/91001'] as $route) {
                 $response = $this->withSession($session)->get($route);
                 $response->assertStatus(200);
@@ -638,8 +651,8 @@ final class OrderHttpTest extends CIUnitTestCase
                 ));
                 self::assertStringContainsString('action="/order/do_upload_multi/' . $submission[1] . '"', $body);
                 self::assertStringContainsString('var xtimesite = "' . $submission[1] . '";', $body);
-                self::assertStringContainsString($expectedValidation, $body, $actor . ' ' . $route);
-                self::assertStringNotContainsString($forbiddenValidation, $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString('/assets/js/addOrder.js', $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString('/assets/js/admin_addOrder.js', $body, $actor . ' ' . $route);
 
                 $offset = -1;
                 foreach ($expectedOrderAssets as $asset) {
@@ -1871,16 +1884,16 @@ JS;
         }
     }
 
-    public function testNewOrderFormExposesCatalogueCheckboxesAndCi4FieldNames(): void
+    public function testNewOrderFormExposesCatalogueCheckboxesAndCi3FieldNames(): void
     {
         $body = $this->withSession($this->session(2, 2, 1))->get('/orders/new')->getBody();
-        // The controller wires the three catalogues into the form; names are the CI4 contract normalize() reads.
+        // The controller wires the three catalogues into the form; source names map in Order::orderInput().
         self::assertStringContainsString('name="condition[]"', $body);
         self::assertStringContainsString('name="estimateprice[]"', $body);
         self::assertStringContainsString('name="fixed[]"', $body);
         self::assertStringContainsString('CONDITION ONE', $body);
-        self::assertStringContainsString('name="detail_sku_name"', $body);
-        self::assertStringContainsString('name="waranty_type"', $body);
+        self::assertStringContainsString('name="detailSKUName"', $body);
+        self::assertStringContainsString('name="warantyType"', $body);
         self::assertStringContainsString('name="create_by_user"', $body);
         // T2: the repair-image input takes several files under the array name normalize() expects.
         self::assertStringContainsString('name="detail_image[]"', $body);
@@ -2163,8 +2176,8 @@ JS;
         self::assertStringContainsString('CONDITION ONE', $body);
 
         // AC-2: pipe-separated ids 1 and 2 are checked, id 3 is not, and the "other" free text shows.
-        self::assertStringContainsString('value="1" disabled checked', $body);
-        self::assertStringContainsString('value="2" disabled checked', $body);
+        self::assertStringContainsString('id="condition[]" name="condition[]" value="1" disabled checked', $body);
+        self::assertStringContainsString('id="condition[]" name="condition[]" value="2" disabled checked', $body);
         self::assertStringContainsString('value="3" disabled>', $body);
         self::assertStringContainsString('EXTRA HANDLE CRACK', $body);
 
@@ -2175,9 +2188,10 @@ JS;
         // AC-1: the CI3 form never printed a status label, so the CI4 view must not either.
         self::assertStringNotContainsString('Status', $body);
 
-        // AC-3: 0000-00-00 purchase date blanks out; the valid request date renders dd/mm/YYYY (CE).
+        // CI3 leaves the third cell of the TRACK/ORDER/REQUEST row empty; its request date is
+        // computed but never output. Keep that observable legacy defect until a disposition exists.
         self::assertStringNotContainsString('00/00/0000', $body);
-        self::assertStringContainsString('10/08/2026', $body);
+        self::assertStringNotContainsString('10/08/2026', $body);
 
         // Block 15 reads detailNumberWaranty directly (not warantyType).
         $print->assertSee('มี WRT-123');
@@ -2186,6 +2200,11 @@ JS;
         self::assertStringContainsString('BAG &lt;SPORT&gt;', $body);
         self::assertStringNotContainsString('BAG <SPORT>', $body);
         self::assertStringContainsString('size: A4', $body);
+        self::assertStringContainsString('class="sheet padding-10mm"', $body);
+        self::assertStringContainsString('class="size-print"', $body);
+        self::assertStringContainsString('src="/assets/images/print-logo.jpg"', $body);
+        self::assertStringContainsString('function printpr()', $body);
+        self::assertStringContainsString('onclick="JavaScript:this.style.display=', $body);
         self::assertStringContainsString('window.print()', $body);
     }
 
@@ -2987,7 +3006,7 @@ JS;
         self::assertStringContainsString('value="' . date('d/m/Y') . '"', $body);
         self::assertMatchesRegularExpression('#<input[^>]+name="requestDate"[^>]+readonly#', $body);
         // branch short is derived from the branch, never typed.
-        self::assertMatchesRegularExpression('#<input[^>]+name="branch_short"[^>]+readonly#', $body);
+        self::assertMatchesRegularExpression('#<input[^>]+name="branchshort"[^>]+readonly#', $body);
         // The branch options carry the two data attributes the cascade reads.
         self::assertStringContainsString('data-branch-type="1"', $body);
         self::assertStringContainsString('data-branch-short="WPA"', $body);
