@@ -1,2 +1,3 @@
 .superpowers/** -whitespace
 public/assets/** -whitespace
+app/Views/ci3/** -whitespace
