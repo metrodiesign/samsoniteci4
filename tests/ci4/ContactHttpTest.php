@@ -9,6 +9,8 @@ use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
 use Config\Encryption;
 use Config\Services;
+use DOMDocument;
+use DOMXPath;
 use PHPUnit\Framework\AssertionFailedError;
 
 final class ContactHttpTest extends CIUnitTestCase
@@ -126,6 +128,42 @@ final class ContactHttpTest extends CIUnitTestCase
         $this->assertAdaptedAdminLteAsset();
     }
 
+    public function testContactSourceComparatorKeepsOrderedFormAndValidationShellForBothLanguages(): void
+    {
+        foreach ([
+            '/contact' => ['contact/addContact', 'NAME & SURNAME *', 'SEND NOW', 'Message received'],
+            '/contact-th' => ['contact_th/addContact', 'ชื่อ-สกุล *', 'ส่ง', 'รับข้อความแล้ว'],
+        ] as $route => [$action, $namePlaceholder, $submitLabel, $received]) {
+            $normal = (string) $this->get($route)->getBody();
+            self::assertStringContainsString($namePlaceholder, html_entity_decode($normal, ENT_QUOTES, 'UTF-8'));
+            self::assertStringContainsString('value="' . $submitLabel . '"', html_entity_decode($normal, ENT_QUOTES, 'UTF-8'));
+            $this->assertInOrder($normal, [
+                'name="csrf_test_name"',
+                'name="submission_id"',
+                'name="fullname" id="fullname" class="main-input form-control required"',
+                'placeholder="',
+                'name="email" class="main-input form-control required email" id="email"',
+                'name="phone" id="phone" class="main-input form-control required"',
+                'name="detail" id="detail" class="main-input form-control required"',
+                'class="main-btn-sm" value="',
+            ]);
+            $normalXpath = $this->domXPath($normal);
+            $this->assertXPathCount(
+                1,
+                $normalXpath,
+                '//section[@id="contact"]/div[@class="container"]/div[@class="row"]/div[@class="col-lg-5 con-box-info"]/form[@id="addContact" and @action="' . base_url($action) . '"]',
+                $route . ' form hierarchy',
+            );
+            $this->assertXPathCount(1, $normalXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[@class="row"]/div[@class="col-md-12"]', $route . ' validation shell');
+
+            $success = (string) $this->get($route . '?submitted=1')->getBody();
+            self::assertStringContainsString($received, html_entity_decode($success, ENT_QUOTES, 'UTF-8'));
+            $successXpath = $this->domXPath($success);
+            $this->assertXPathCount(1, $successXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-success ")]', $route . ' direct success flash');
+            $this->assertXPathCount(0, $successXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[@class="row"]/div[@class="col-md-12"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-success ")]', $route . ' success flash not nested');
+        }
+    }
+
     public function testDomAssetExtractorRejectsExternalUrlsForEveryNodeAndQuotingForm(): void
     {
         $nodes = [
@@ -177,15 +215,21 @@ final class ContactHttpTest extends CIUnitTestCase
 
     public function testInvalidReplayAndUnavailableDeliveryDoNotCreatePartialOrDuplicateRows(): void
     {
-        $invalid = $this->payload('c3', 'SYNTHETIC INVALID');
+        $invalid = $this->payload('c3', '<script>CONTACT-MARKER</script>');
         $invalid['email'] = 'not-an-email';
         $invalidResponse = $this->post('/contact', $invalid);
         $invalidResponse->assertStatus(422);
-        $this->assertCi3ContactTitle((string) $invalidResponse->getBody());
+        $invalidHtml = (string) $invalidResponse->getBody();
+        $this->assertCi3ContactTitle($invalidHtml);
         $invalidResponse->assertSee('Please enter a valid email address');
-        $invalidResponse->assertSeeInField('fullname', 'SYNTHETIC INVALID');
+        $invalidResponse->assertSeeInField('fullname', '<script>CONTACT-MARKER</script>');
         $invalidResponse->assertSeeInField('email', 'not-an-email');
         $invalidResponse->assertSeeInField('submission_id', str_repeat('c3', 16));
+        self::assertStringNotContainsString('<script>CONTACT-MARKER</script>', $invalidHtml);
+        self::assertStringContainsString('&lt;script&gt;CONTACT-MARKER&lt;/script&gt;', $invalidHtml);
+        $invalidXpath = $this->domXPath($invalidHtml);
+        $this->assertXPathCount(1, $invalidXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[@class="row"]/div[@class="col-md-12"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-danger ")]', 'EN validation alert inside shell');
+        $this->assertXPathCount(0, $invalidXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-danger ")]', 'EN validation alert not direct child');
         self::assertSame(0, $this->db->table('contact')->countAllResults());
         self::assertSame(0, $this->db->table('ci4_delivery_intents')->countAllResults());
 
@@ -213,6 +257,9 @@ final class ContactHttpTest extends CIUnitTestCase
         $response->assertSeeInField('fullname', 'SYNTHETIC INVALID TH');
         $response->assertSeeInField('email', 'not-an-email');
         $response->assertSeeInField('submission_id', str_repeat('f6', 16));
+        $invalidXpath = $this->domXPath((string) $response->getBody());
+        $this->assertXPathCount(1, $invalidXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[@class="row"]/div[@class="col-md-12"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-danger ")]', 'TH validation alert inside shell');
+        $this->assertXPathCount(0, $invalidXpath, '//section[@id="contact"]/div[@class="container"]/div[@class="col-md-4"]/div[contains(concat(" ", normalize-space(@class), " "), " alert-danger ")]', 'TH validation alert not direct child');
         self::assertSame(0, $this->db->table('contact')->countAllResults());
         self::assertSame(0, $this->db->table('ci4_delivery_intents')->countAllResults());
     }
@@ -294,11 +341,26 @@ final class ContactHttpTest extends CIUnitTestCase
     {
         $last = -1;
         foreach ($needles as $needle) {
-            $position = strpos($html, $needle);
+            $position = strpos($html, $needle, $last + 1);
             self::assertNotFalse($position, $needle);
             self::assertGreaterThan($last, $position, $needle);
             $last = $position;
         }
+    }
+
+    private function domXPath(string $html): DOMXPath
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->loadHTML($html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING));
+
+        return new DOMXPath($document);
+    }
+
+    private function assertXPathCount(int $expected, DOMXPath $xpath, string $expression, string $case): void
+    {
+        $nodes = $xpath->query($expression);
+        self::assertNotFalse($nodes, $case);
+        self::assertSame($expected, $nodes->length, $case);
     }
 
     private function assertLocalAssetGraph(string $html): void

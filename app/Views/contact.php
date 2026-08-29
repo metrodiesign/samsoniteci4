@@ -114,23 +114,25 @@ $hasErrors = $errors !== [];
             </div>
         </div>
 
-        <?php if ($submitted || $hasErrors): ?>
-            <div class="col-md-4">
-                <?php if ($submitted): ?>
-                    <div class="alert alert-success alert-dismissable" role="status">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                        <?= esc($text['received']) ?>
-                    </div>
-                <?php endif ?>
-                <?php if ($hasErrors): ?>
-                    <div class="alert alert-danger alert-dismissable" role="alert">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                        <?php foreach (array_keys($errors) as $field): ?>
-                            <div><?= esc($text['errors'][$field] ?? 'Invalid contact submission.') ?></div>
-                        <?php endforeach ?>
-                    </div>
-                <?php endif ?>
+        <div class="col-md-4">
+            <?php if ($submitted): ?>
+                <div class="alert alert-success alert-dismissable" role="status">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                    <?= esc($text['received']) ?>
+                </div>
+            <?php endif ?>
+            <div class="row">
+                <div class="col-md-12">
+                    <?php if ($hasErrors): ?>
+                        <div class="alert alert-danger alert-dismissable" role="alert">
+                            <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                            <?php foreach (array_keys($errors) as $field): ?>
+                                <div><?= esc($text['errors'][$field] ?? 'Invalid contact submission.') ?></div>
+                            <?php endforeach ?>
+                        </div>
+                    <?php endif ?>
+                </div>
             </div>
-        <?php endif ?>
+        </div>
     </div>
 </section>
