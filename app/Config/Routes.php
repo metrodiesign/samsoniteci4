@@ -92,6 +92,7 @@ $routes->get('editBackgroundOld', 'Background::legacyEditMissing', ['filter' => 
 $routes->get('editBackgroundOld/(:num)', 'Background::legacyEdit/$1', ['filter' => 'web-auth']);
 $routes->post('editBackground', 'Background::legacyUpdate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->get('userListing', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->post('users', 'Users::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users/email-exists', 'Users::emailExists', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('users/new', 'Users::add', ['filter' => ['web-auth', 'authorized:write']]);
@@ -146,6 +147,7 @@ $routes->get('TrackingcompleteListing', 'Order::listing/5', ['filter' => ['web-a
 $routes->get('TrackingCompletedListing', 'Order::listing/7', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('login', 'Login::index');
 $routes->post('loginMe', 'Login::authenticate', ['filter' => 'csrf']);
+$routes->get('logout', 'Login::logoutBridge', ['filter' => 'web-auth']);
 $routes->post('logout', 'Login::logout', ['filter' => 'csrf']);
 $routes->get('dashboard', 'Dashboard::index', ['filter' => 'web-auth:redirect']);
 $reportMatrixFilters = ['filter' => ['web-auth:redirect', 'csrf']];
@@ -169,7 +171,7 @@ $routes->get('Order/excel_report_sum', 'Reports::legacyExport/summary', ['filter
 $routes->get('Order/excel_report_sum/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/summary/$1/$2/$3/$4/$5/$6/$7', ['filter' => 'web-auth:redirect']);
 
 $reportFilters = ['filter' => ['web-auth:redirect', 'csrf']];
-foreach (['ReportTrackingListing', 'Order/ReportTrackingListing'] as $reportRoute) {
+foreach (['ReportTrackingListing', 'Order/ReportTrackingListing', 'ReportTrackingListingTest'] as $reportRoute) {
     $routes->match(['GET', 'POST'], $reportRoute, 'Order::reportTrackingListing', $reportFilters);
     $routes->match(
         ['GET', 'POST'],

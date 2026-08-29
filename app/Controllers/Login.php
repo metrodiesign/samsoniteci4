@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Authentication\AtomicRateLimiter;
 use App\Authentication\LoginService;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 use DateTimeImmutable;
@@ -80,6 +81,11 @@ final class Login extends BaseController
         return redirect()->to('/dashboard');
     }
 
+    public function logoutBridge(): string
+    {
+        return view('logout_bridge');
+    }
+
     public function logout(): RedirectResponse
     {
         service('session')->destroy();
@@ -96,9 +102,13 @@ final class Login extends BaseController
 
     private function document(mixed $error = null, mixed $success = null): string
     {
-        return view('login', [
-            'error'   => is_string($error) ? $error : null,
-            'success' => is_string($success) ? $success : null,
-        ]);
+        if (is_string($error)) {
+            service('session')->setFlashdata('error', $error);
+        }
+        if (is_string($success)) {
+            service('session')->setFlashdata('success', $success);
+        }
+
+        return (new LegacyViewRenderer())->render('login');
     }
 }

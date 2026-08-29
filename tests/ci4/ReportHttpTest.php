@@ -132,29 +132,31 @@ final class ReportHttpTest extends CIUnitTestCase
         }
     }
 
-    public function testDashboardDoesNotQueryReportBranchOrBackgroundData(): void
+    public function testDashboardQueriesOnlyTheCi3BranchScopedStaleNewOrderIndicator(): void
     {
         $controller = (string) file_get_contents(APPPATH . 'Controllers/Dashboard.php');
+        $store = (string) file_get_contents(APPPATH . 'Orders/OrderStore.php');
 
+        self::assertStringContainsString('OrderStore', $controller);
+        self::assertStringContainsString('$groupId === 4', $controller);
+        self::assertStringContainsString('$branchId !== null', $controller);
+        self::assertStringContainsString('staleNewOrderCount', $store);
+        self::assertStringContainsString("->where('branchID', \$branchId)", $store);
+        self::assertStringContainsString("->where('action_status', 1)", $store);
         self::assertStringNotContainsString('TrackingReport', $controller);
-        self::assertStringNotContainsString('db_connect', $controller);
-        self::assertStringNotContainsString('BranchID', $controller);
         self::assertStringNotContainsString('background', $controller);
-        self::assertStringNotContainsString('safeBackground', $controller);
     }
 
-    public function testDashboardEscapesInjectedTileLabelAndHref(): void
+    public function testDashboardEscapesTheCi3ModalFlashMessage(): void
     {
-        $body = view('dashboard', ['tiles' => [[
-            'label' => '<img src=x onerror=alert(1)>',
-            'href' => '" onmouseover="alert(2)',
-            'icon' => 'ion-bag',
-        ]]]);
+        $body = view('dashboard', [
+            'GroupID' => 4,
+            'day_job_newover' => 1,
+            'successMessage' => '<img src=x onerror=alert(1)>',
+        ]);
 
         self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $body);
-        self::assertStringNotContainsString('<img', $body);
-        self::assertStringContainsString('href="&quot; onmouseover=&quot;alert(2)"', $body);
-        self::assertStringNotContainsString('href="" onmouseover="alert(2)"', $body);
+        self::assertStringNotContainsString('<img src=x', $body);
     }
 
     public function testDashboardUsesCi3SmallBoxMarkupAndDefinedRoutes(): void
@@ -163,7 +165,7 @@ final class ReportHttpTest extends CIUnitTestCase
         $response->assertStatus(200);
         $body = $response->getBody();
         self::assertStringContainsString('<div class="content-dashbord">', $body);
-        self::assertSame(5, substr_count($body, '<a href="/'));
+        self::assertSame(1, substr_count($body, '<div class="content-wrapper">'));
         self::assertSame(5, substr_count($body, 'class="small-box-footer"'));
         self::assertSame(5, substr_count($body, '<div class="small-box '));
         self::assertStringContainsString('class="ion ion-bag"', $body);
@@ -173,6 +175,25 @@ final class ReportHttpTest extends CIUnitTestCase
         foreach (array_column($this->dashboardTiles($body), 'href') as $href) {
             self::assertTrue($this->routeIsDefined($href), 'Dashboard route is missing: ' . $href);
         }
+    }
+
+    public function testRatingReportUsesItsDedicatedByteIdenticalCi3Target(): void
+    {
+        $target = APPPATH . 'Views/ci3/report.php';
+        self::assertFileExists($target);
+        // application/views/report.php at the pinned CI3 authority ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6.
+        self::assertSame(
+            '10607fcc11dc40572b3eed08cbcce4182457bd8ce54a9c2eee6c698c8d75049b',
+            hash_file('sha256', $target),
+        );
+
+        $response = $this->withSession($this->session(1, 1, null))->get('/user/report');
+        $response->assertStatus(200);
+        $body = $response->getBody();
+        self::assertStringContainsString('class="content-table-form container-content"', $body);
+        self::assertStringContainsString('class="x_panel tile fixed_height_320"', $body);
+        self::assertStringContainsString('action="http://example.invalid/user/report"', $body);
+        self::assertStringNotContainsString('data-question=', $body);
     }
 
     public function testAllLegacyHtmlReportRoutesUseExactScopedMatrixTotals(): void
@@ -191,8 +212,8 @@ final class ReportHttpTest extends CIUnitTestCase
             $response->assertDontSee('WP00C-REPORT-005');
         }
         $ratings = $this->withSession($this->session(2, 2, 1))->get('/user/report');
-        self::assertStringContainsString('data-question="1" data-total="2"', $ratings->getBody());
-        self::assertStringContainsString('/reports/ratings/export', $ratings->getBody());
+        self::assertSame([2], $this->ratingTotals($ratings->getBody()));
+        self::assertStringContainsString('/user/excel_ratings/1/', $ratings->getBody());
         $ratings->assertSee('50.00%');
 
         $inProgress = $this->withSession($this->session(2, 2, 1))->get('/user/report_in_progress_job');
@@ -202,7 +223,7 @@ final class ReportHttpTest extends CIUnitTestCase
             'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
         ]);
-        self::assertStringContainsString('data-question="1" data-total="1"', $filtered->getBody());
+        self::assertSame(1, $this->ratingTotals($filtered->getBody())[0]);
         $filtered->assertSee('100.00%');
     }
 
@@ -217,16 +238,29 @@ final class ReportHttpTest extends CIUnitTestCase
             $central = $this->withSession($this->session(1, 1, null))->get($route);
             $central->assertStatus(200);
             $body = $central->getBody();
-            self::assertStringContainsString('<label for="branch_id">Branch:</label>', $body);
-            self::assertStringContainsString('<select id="branch_id" name="branch_id">', $body);
-            self::assertStringContainsString('<option value="0">ALL</option>', $body);
-            self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
-            self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
+            if ($route === '/user/report') {
+                self::assertStringContainsString('<label class="d-block">Branch:</label>', $body);
+                self::assertStringContainsString('<select id="branch_id" name="branch_id" class="form-control">', $body);
+                self::assertStringContainsString('<option value="0">ALL</option>', $body);
+                self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
+                self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
+            } else {
+                self::assertStringContainsString('<label for="branch_id">Branch:</label>', $body);
+                self::assertStringContainsString('<select id="branch_id" name="branch_id">', $body);
+                self::assertStringContainsString('<option value="0">ALL</option>', $body);
+                self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
+                self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
+            }
 
             $branch = $this->withSession($this->session(2, 2, 1))->get($route);
             $branch->assertStatus(200);
-            self::assertStringContainsString('<input type="hidden" id="branch_id" name="branch_id" value="1">', $branch->getBody());
-            self::assertStringNotContainsString('<select id="branch_id" name="branch_id">', $branch->getBody());
+            if ($route === '/user/report') {
+                self::assertStringContainsString('<input type="hidden" name="branch_id" value="1" id="branch_id" class="form-control">', $branch->getBody());
+                self::assertStringNotContainsString('<select id="branch_id" name="branch_id" class="form-control">', $branch->getBody());
+            } else {
+                self::assertStringContainsString('<input type="hidden" id="branch_id" name="branch_id" value="1">', $branch->getBody());
+                self::assertStringNotContainsString('<select id="branch_id" name="branch_id">', $branch->getBody());
+            }
         }
     }
 
@@ -238,9 +272,8 @@ final class ReportHttpTest extends CIUnitTestCase
         ]);
         $ratings->assertStatus(200);
         self::assertStringContainsString('<option value="2" selected>BRANCH B,branch-b</option>', $ratings->getBody());
-        self::assertStringContainsString('data-question="1" data-total="1"', $ratings->getBody());
-        self::assertStringContainsString('/reports/ratings/export', $ratings->getBody());
-        self::assertStringContainsString('branch_id=2', $ratings->getBody());
+        self::assertSame(1, $this->ratingTotals($ratings->getBody())[0]);
+        self::assertStringContainsString('/user/excel_ratings/2/01-08-2026/31-08-2026', $ratings->getBody());
 
         $inProgress = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
             'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
@@ -317,10 +350,10 @@ final class ReportHttpTest extends CIUnitTestCase
             ['add_id' => 6, 'rating' => 5, 'order_id' => 'WP06R-OUT', 'branchID' => 1, 'cdate' => $today->modify('-40 days')->format('Y-m-d H:i:s')],
         ]);
 
-        $response = $this->withSession($this->session(2, 2, 1))->get('/user/report');
+        $response = $this->withSession($this->session(1, 1, null))->get('/user/report');
         $response->assertStatus(200);
         // Only the in-window rating counts -> question 6 total 1 (not the whole-table 2).
-        self::assertStringContainsString('data-question="6" data-total="1"', $response->getBody());
+        self::assertSame(1, $this->ratingTotals($response->getBody())[5]);
         // The defaulted range is echoed back into the filter form as dd/mm/yyyy.
         self::assertStringContainsString('value="' . $today->modify('-1 month')->format('d/m/Y') . '"', $response->getBody());
         self::assertStringContainsString('value="' . $today->format('d/m/Y') . '"', $response->getBody());
@@ -336,26 +369,26 @@ final class ReportHttpTest extends CIUnitTestCase
             ['add_id' => 7, 'rating' => 5, 'order_id' => 'WP06R-A-FUTURE', 'branchID' => 1, 'cdate' => $today->modify('+5 days')->format('Y-m-d H:i:s')],
             ['add_id' => 7, 'rating' => 5, 'order_id' => 'WP06R-A-OLD', 'branchID' => 1, 'cdate' => $today->modify('-10 days')->format('Y-m-d H:i:s')],
         ]);
-        $onlyStart = $this->withSession($this->session(2, 2, 1))->post('/user/report', [
+        $onlyStart = $this->withSession($this->session(1, 1, null))->post('/user/report', [
             'csrf_test_name' => service('security')->getHash(),
             'start_date' => $today->modify('-3 days')->format('d/m/Y'), 'end_date' => '',
         ]);
         $onlyStart->assertStatus(200);
         // start = given (-3d) drops the -10d rating; end defaulted to today drops the +5d future rating -> total 1.
-        self::assertStringContainsString('data-question="7" data-total="1"', $onlyStart->getBody());
+        self::assertSame(1, $this->ratingTotals($onlyStart->getBody())[6]);
 
         // Case B: only end_date sent -> start defaults to today-1month, so a 40-day-old rating is excluded.
         $this->db->table('rating')->insertBatch([
             ['add_id' => 8, 'rating' => 5, 'order_id' => 'WP06R-B-IN', 'branchID' => 1, 'cdate' => $today->modify('-5 days')->format('Y-m-d H:i:s')],
             ['add_id' => 8, 'rating' => 5, 'order_id' => 'WP06R-B-OLD', 'branchID' => 1, 'cdate' => $today->modify('-40 days')->format('Y-m-d H:i:s')],
         ]);
-        $onlyEnd = $this->withSession($this->session(2, 2, 1))->post('/user/report', [
+        $onlyEnd = $this->withSession($this->session(1, 1, null))->post('/user/report', [
             'csrf_test_name' => service('security')->getHash(),
             'start_date' => '', 'end_date' => $today->format('d/m/Y'),
         ]);
         $onlyEnd->assertStatus(200);
         // start defaulted to today-1month drops the 40-day-old rating -> total 1.
-        self::assertStringContainsString('data-question="8" data-total="1"', $onlyEnd->getBody());
+        self::assertSame(1, $this->ratingTotals($onlyEnd->getBody())[7]);
     }
 
     public function testRatingsExportUsesDefaultedRangeNotWholeTable(): void
@@ -613,14 +646,28 @@ final class ReportHttpTest extends CIUnitTestCase
     /** @return list<array{label: string, href: string}> */
     private function dashboardTiles(string $body): array
     {
-        self::assertGreaterThan(
-            0,
-            preg_match_all('#<a href="([^"]*)" class="small-box-footer">\s*<div class="small-box [^"]+">\s*<div class="inner"><h2>(.*?)</h2>#s', $body, $matches),
-        );
+        $document = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        self::assertTrue($document->loadHTML($body, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD));
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $xpath = new \DOMXPath($document);
+        $anchors = $xpath->query('//a[contains(concat(" ", normalize-space(@class), " "), " small-box-footer ")]');
+        self::assertNotFalse($anchors);
+        self::assertGreaterThan(0, $anchors->length);
 
         $tiles = [];
-        foreach ($matches[1] as $index => $href) {
-            $tiles[] = ['label' => html_entity_decode($matches[2][$index]), 'href' => html_entity_decode($href)];
+        foreach ($anchors as $anchor) {
+            self::assertInstanceOf(\DOMElement::class, $anchor);
+            $headings = $xpath->query('./div[contains(concat(" ", normalize-space(@class), " "), " small-box ")]/div[@class="inner"]/h2', $anchor);
+            self::assertNotFalse($headings);
+            self::assertSame(1, $headings->length, 'Dashboard tile hierarchy differs from CI3.');
+            $href = html_entity_decode($anchor->getAttribute('href'));
+            $path = parse_url($href, PHP_URL_PATH);
+            $tiles[] = [
+                'label' => trim((string) $headings->item(0)?->textContent),
+                'href' => is_string($path) ? $path : $href,
+            ];
         }
 
         return $tiles;
@@ -655,6 +702,14 @@ final class ReportHttpTest extends CIUnitTestCase
             'date_deliver' => $status >= 5 ? $date : null, 'date_complete' => $status === 7 ? $date : null,
             'provider_id' => 1, 'logistics_etc_detail' => 'PROVIDER', 'RepairPrice' => '100.00', 'waranty_cmg' => 'IN',
         ];
+    }
+
+    /** @return list<int> */
+    private function ratingTotals(string $html): array
+    {
+        preg_match_all('/<h5>Total ([0-9,]+)<\\/h5>/', $html, $matches);
+
+        return array_map(static fn (string $total): int => (int) str_replace(',', '', $total), $matches[1]);
     }
 
     /** @return array<string, int|bool|null> */

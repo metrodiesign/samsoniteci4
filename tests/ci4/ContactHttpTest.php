@@ -455,8 +455,7 @@ final class ContactHttpTest extends CIUnitTestCase
     {
         $path = ROOTPATH . 'public/assets/dist/js/app.min.js';
         $contents = (string) file_get_contents($path);
-        self::assertSame('9c26866018e993de41ee60adb86a74963699fd920a4210337527d3550c70e9e6', hash('sha256', $contents));
-        self::assertNotSame('54101b5ffbeed57ac37b68edb22598cce27c6b859e57108d8b499dc850d48df9', hash('sha256', $contents));
+        self::assertSame('54101b5ffbeed57ac37b68edb22598cce27c6b859e57108d8b499dc850d48df9', hash('sha256', $contents));
 
         $runtimeOffset = strpos($contents, '"use strict"');
         self::assertNotFalse($runtimeOffset);
@@ -464,7 +463,7 @@ final class ContactHttpTest extends CIUnitTestCase
         self::assertStringContainsString('@Author  Almsaeed Studio', $header);
         self::assertStringContainsString('@version 2.1.0', $header);
         self::assertStringContainsString('@license MIT <http://opensource.org/licenses/MIT>', $header);
-        self::assertStringNotContainsString('@Email', $header);
+        self::assertStringContainsString('@Email   <support@almsaeedstudio.com>', $header);
         self::assertSame(
             '4de4779418ce0c6a42f2f146f05b110f96fb3a9f8e8de264fdec8c3daff0407d',
             hash('sha256', substr($contents, $runtimeOffset)),

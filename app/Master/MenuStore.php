@@ -6,25 +6,6 @@ use CodeIgniter\Database\BaseConnection;
 
 final class MenuStore
 {
-    /** @var array<string, string> */
-    private const LINK_REPLACEMENTS = [
-        'branchListing' => 'master/branch',
-        'branchtypeListing' => 'master/branchtype',
-        'bookListing' => 'master/book',
-        'producttypeListing' => 'master/producttype',
-        'brandListing' => 'master/brand',
-        'conditionListing' => 'master/condition',
-        'estimatepriceListing' => 'master/estimateprice',
-        'fixedListing' => 'master/fixed',
-        'providerListing' => 'master/provider',
-        'statustypeListing' => 'master/statustype',
-        'userListing' => 'users',
-        'BackgroundListing' => 'backgrounds',
-        'menuListing' => 'menu',
-    ];
-
-    private const RETIRED_LINKS = ['ReportTrackingListingTest'];
-
     public function __construct(private BaseConnection $db)
     {
     }
@@ -143,10 +124,7 @@ final class MenuStore
                     continue;
                 }
                 $legacyLink = (string) $item['menu_link'];
-                if (in_array($legacyLink, self::RETIRED_LINKS, true)) {
-                    continue;
-                }
-                $link = self::LINK_REPLACEMENTS[$legacyLink] ?? $legacyLink;
+                $link = $legacyLink;
                 if (preg_match('/\A[a-zA-Z0-9_\/-]+\z/D', $link) !== 1 || isset($seen[$link])) {
                     continue;
                 }

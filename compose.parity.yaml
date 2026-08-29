@@ -1,0 +1,4 @@
+services:
+  ci4:
+    environment:
+      CI_ENVIRONMENT: parity

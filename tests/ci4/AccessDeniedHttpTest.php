@@ -63,7 +63,7 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
             '<section class="content-header">',
             '<small>You are not authorize user to use this</small>',
             '<section class="content">',
-            '<img src="/assets/images/access.png" alt="Access Denied Image">',
+            '<img src="' . base_url('assets/images/access.png') . '" alt="Access Denied Image" />',
             '<footer class="main-footer">',
         ] as $contract) {
             self::assertStringContainsString($contract, $body, $contract);

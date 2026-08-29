@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Presentation\LegacyViewRenderer;
 use App\Users\UserStore;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
@@ -80,10 +81,15 @@ final class Users extends BaseController
 
     public function passwordForm(): string
     {
-        return $this->layout('Change Password', view('change_password', [
-            'changed' => $this->request->getGet('changed') === '1',
-            'caption' => 'Enter Details',
-        ]), ['subtitle' => 'Set new password for your account']);
+        if ($this->request->getGet('changed') === '1') {
+            service('session')->setFlashdata('success', 'Password changed successfully');
+        }
+        $content = (new LegacyViewRenderer())->render('changePassword');
+
+        return $this->layout('Change Password', $content, [
+            'contentOwnsWrapper' => true,
+            'subtitle' => 'Set new password for your account',
+        ]);
     }
 
     public function legacyPasswordForm(): string

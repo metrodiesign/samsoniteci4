@@ -22,16 +22,17 @@ final class AccessDeniedResponder
         $data = (new AdminLayoutPresenter(new MenuStore(db_connect())))->present(
             is_array($sessionData) ? $sessionData : [],
             'Access Denied',
-            view('access_denied'),
+            (new LegacyViewRenderer())->render('access'),
         );
         $data['subtitle'] = '';
         $data['actions'] = '';
         $data['accessDeniedProfile'] = true;
+        $data['contentOwnsWrapper'] = true;
 
         return service('response')
             ->setStatusCode(403)
             ->setContentType('text/html')
-            ->setBody(view('layout', $data));
+            ->setBody(view('layout_ci3', $data));
     }
 
     private function prefersHtml(RequestInterface $request): bool

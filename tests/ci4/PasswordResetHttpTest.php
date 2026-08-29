@@ -238,7 +238,9 @@ final class PasswordResetHttpTest extends CIUnitTestCase
         $result->assertStatus(422);
         $body = (string) $result->getBody();
         self::assertStringContainsString('value="form-weak@example.invalid" readonly', $body);
-        self::assertStringContainsString('name="password" required value=""', $body);
+        self::assertSame(1, preg_match('/name="password" required value="([^"]+)"/', $body, $password));
+        self::assertSame(1, preg_match('/name="cpassword" required value="([^"]+)"/', $body, $confirmation));
+        self::assertSame($password[1], $confirmation[1]);
         self::assertStringNotContainsString('value="short"', $body);
         self::assertTrue($tokens->isValid($userId, $issued->token(), new DateTimeImmutable()));
         self::assertTrue($users->verifyPassword($userId, 'Synthetic old passphrase'));

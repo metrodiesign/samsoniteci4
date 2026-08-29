@@ -16,9 +16,11 @@
  * @var bool $showBranchAutocomplete
  * @var list<array{label: string, value: string}> $branchOptions
  * @var bool $accessDeniedProfile
+ * @var bool $contentOwnsWrapper
  */
 
 $accessDeniedProfile = $accessDeniedProfile ?? false;
+$contentOwnsWrapper = $contentOwnsWrapper ?? false;
 $branchOptionsJson = json_encode(
     $branchOptions,
     JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES,
@@ -49,8 +51,8 @@ if (! is_string($branchOptionsJson)) {
     <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js') ?>"></script>
     <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-ui-sliderAccess.js') ?>"></script>
     <style>
-        .error {
-            color: red;
+        .error{
+            color:red;
             font-weight: normal;
         }
     </style>
@@ -97,10 +99,12 @@ if (! is_string($branchOptionsJson)) {
                         <ul class="dropdown-menu">
                             <script>
                                 $(document).ready(function() {
-                                    var xsource = <?= $branchOptionsJson ?>;
+
+                                  var xsource = <?= $branchOptionsJson ?>;
+
                                     $("input#autocomplete").autocomplete({
                                         source: xsource,
-                                        select: function(event, ui) {
+                                        select: function( event, ui ) {
                                             window.location.href = ui.item.value;
                                         }
                                     });
@@ -125,16 +129,13 @@ if (! is_string($branchOptionsJson)) {
                             </li>
                             <li class="user-footer">
                                 <div class="pull-right">
-                                    <a href="<?= site_url('change-password') ?>" class="btn btn-default btn-flat"><i class="fa fa-key"></i> Change Password</a>
+                                    <a href="<?= base_url('loadChangePass') ?>" class="btn btn-default btn-flat"><i class="fa fa-key"></i> Change Password</a>
                                 </div>
                             </li>
                         </ul>
                     </li>
                     <li class="btn-flat">
-                        <form action="<?= site_url('logout') ?>" method="post" style="display: inline;">
-                            <?= csrf_field() ?>
-                            <button type="submit" class="btn btn-link" style="background: transparent; border: 0; color: #777; padding: 15px; line-height: 20px;"><i class="fa fa-sign-out"></i> Sign out</button>
-                        </form>
+                        <a href="<?= base_url('logout') ?>"><i class="fa fa-sign-out"></i> Sign out</a>
                     </li>
                 </ul>
             </div>
@@ -161,7 +162,7 @@ if (! is_string($branchOptionsJson)) {
             </ul>
         </section>
     </aside>
-    <?php if ($accessDeniedProfile): ?>
+    <?php if ($accessDeniedProfile || $contentOwnsWrapper): ?>
         <?= $content ?>
     <?php else: ?>
     <div class="content-wrapper">

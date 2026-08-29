@@ -63,7 +63,7 @@ final class PasswordResetPageHttpTest extends CIUnitTestCase
         self::assertSame($this->withoutCsrfValue((string) $canonical->getBody()), $this->withoutCsrfValue((string) $legacy->getBody()));
     }
 
-    public function testActiveResetTokenRendersReadonlyEmailAndBlankPasswords(): void
+    public function testActiveResetTokenRendersReadonlyEmailAndCi3GeneratedPasswordDefaults(): void
     {
         $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x12", $length));
         $users = new ShadowUserStore($this->db);
@@ -83,8 +83,10 @@ final class PasswordResetPageHttpTest extends CIUnitTestCase
         self::assertStringStartsWith('<!DOCTYPE html>', $body);
         self::assertStringContainsString('name="email" value="page-reset@example.invalid" readonly required', $body);
         self::assertStringContainsString('name="activation_code" value="' . $issued->token() . '" required', $body);
-        self::assertStringContainsString('name="password" required value=""', $body);
-        self::assertStringContainsString('name="cpassword" required value=""', $body);
+        self::assertSame(1, preg_match('/name="password" required value="([^"]+)"/', $body, $password));
+        self::assertSame(1, preg_match('/name="cpassword" required value="([^"]+)"/', $body, $confirmation));
+        self::assertSame($password[1], $confirmation[1]);
+        self::assertGreaterThanOrEqual(20, strlen($password[1]));
         self::assertSame(1, substr_count($body, $issued->token()));
         self::assertStringNotContainsString('password-reset/complete', $body);
         self::assertStringNotContainsString('maxcdn.bootstrapcdn.com', $body);

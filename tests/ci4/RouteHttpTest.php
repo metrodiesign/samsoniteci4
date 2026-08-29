@@ -116,7 +116,6 @@ final class RouteHttpTest extends CIUnitTestCase
     {
         foreach ([
             '/loginMe',
-            '/logout',
             '/resetPasswordUser',
             '/createPasswordUser',
             '/password-reset/request',
@@ -127,6 +126,16 @@ final class RouteHttpTest extends CIUnitTestCase
             $this->assert404($path, false);
             $this->assert404($path, true);
         }
+    }
+
+    public function testLogoutGetIsANonMutatingCsrfPostBridge(): void
+    {
+        $response = $this->withSession($this->session())->get('/logout');
+        $response->assertStatus(200);
+        $body = $response->getBody();
+        self::assertStringContainsString('method="post"', $body);
+        self::assertStringContainsString('name="csrf_test_name"', $body);
+        self::assertStringContainsString("document.getElementById('logout').submit()", $body);
     }
 
     public function testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers(): void

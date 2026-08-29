@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Authorization\AuthorizationPolicy;
+use App\Presentation\LegacyViewRenderer;
 use App\Reporting\ReportMatrix;
 use App\Reporting\TrackingReport;
 use CodeIgniter\Exceptions\PageNotFoundException;
@@ -60,20 +61,68 @@ final class Reports extends BaseController
         }
         $role = (int) service('session')->get('role');
         [$title, $caption, $sectionTitle] = self::HEADINGS[$kind];
-        $html = $this->layout($title, view('reports/matrix', [
-            'caption' => $caption,
-            'sectionTitle' => $sectionTitle,
-            'ratingComments' => $kind === 'ratings' ? (new ReportMatrix($db))->ratingComments($start, $end, $branchId) : [],
-            'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
-            'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
-            'heading' => $title, 'kind' => $kind, 'rows' => $rows,
-            'formAction' => self::MATRIX_ROUTES[$kind],
-            'showBranchSelect' => service('session')->get('BranchID') === null,
-            'startDate' => $start,
-            'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
-        ]));
+        if ($kind === 'ratings') {
+            $html = $this->ratingReport(
+                $rows,
+                (new ReportMatrix($db))->ratingComments($start, $end, $branchId),
+                $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
+                $branchId,
+                $start,
+                $end,
+            );
+        } else {
+            $html = $this->layout($title, view('reports/matrix', [
+                'caption' => $caption,
+                'sectionTitle' => $sectionTitle,
+                'ratingComments' => [],
+                'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
+                'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
+                'heading' => $title, 'kind' => $kind, 'rows' => $rows,
+                'formAction' => self::MATRIX_ROUTES[$kind],
+                'showBranchSelect' => service('session')->get('BranchID') === null,
+                'startDate' => $start,
+                'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
+            ]));
+        }
 
         return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
+    }
+
+    /**
+     * @param list<array{question:int,total:int,scores:array<int, array{count:int,percentage:string}>}> $rows
+     * @param list<array<string, mixed>> $comments
+     * @param list<array<string, mixed>> $branches
+     */
+    private function ratingReport(array $rows, array $comments, array $branches, ?int $branchId, string $start, string $end): string
+    {
+        $groups = [];
+        foreach ($rows as $row) {
+            $question = $row['question'];
+            $groups[$question] = ['total' => $row['total'], 'score' => [], 'average' => []];
+            foreach ($row['scores'] as $score => $result) {
+                $groups[$question]['score'][$score] = $result['count'];
+                $groups[$question]['average'][$score] = $result['count'] > 0 ? $result['percentage'] : 0;
+            }
+        }
+        $safeComments = array_map(static fn (array $comment): array => [
+            'comment' => esc(is_scalar($comment['comment'] ?? null) ? (string) $comment['comment'] : ''),
+        ], $comments);
+        $session = service('session');
+        $group = $session->get('GroupID');
+        $groupId = is_int($group) ? $group : (is_string($group) && ctype_digit($group) ? (int) $group : 0);
+        $selectedBranch = $branchId ?? 0;
+        $renderer = new LegacyViewRenderer(oldValues: ['branch_id' => (string) $selectedBranch]);
+        $content = $renderer->render('report', [
+            'GroupID' => $groupId,
+            'BranchID' => $selectedBranch,
+            'start_date' => esc($start),
+            'end_date' => esc($end),
+            'ratings' => ['group' => $groups],
+            'ratingComments' => $safeComments,
+            'brans_list' => LegacyViewRenderer::escapedRecords($branches),
+        ]);
+
+        return $this->layout('Tracking : Dashboard', $content, ['contentOwnsWrapper' => true]);
     }
 
     public function summary(string $page = '0', ?string $routeBranchId = null): string|ResponseInterface
