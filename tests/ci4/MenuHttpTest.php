@@ -401,22 +401,33 @@ final class MenuHttpTest extends CIUnitTestCase
 
     public function testRuntimeAssetClosureStopsAtCssCycles(): void
     {
-        $first = ROOTPATH . 'public/assets/css/.asset-closure-cycle-a.css';
-        $second = ROOTPATH . 'public/assets/css/.asset-closure-cycle-b.css';
-        file_put_contents($first, '@import ".asset-closure-cycle-b.css";');
-        file_put_contents($second, '@import ".asset-closure-cycle-a.css";');
+        $root = sys_get_temp_dir() . '/menu-http-' . bin2hex(random_bytes(8)) . '/';
+        $directory = $root . 'public/assets/css';
+        $first = $directory . '/.asset-closure-cycle-a.css';
+        $second = $directory . '/.asset-closure-cycle-b.css';
 
         try {
+            self::assertTrue(mkdir($directory, 0700, true));
+            file_put_contents($first, '@import ".asset-closure-cycle-b.css";');
+            file_put_contents($second, '@import ".asset-closure-cycle-a.css";');
             self::assertSame(
                 [
                     'public/assets/css/.asset-closure-cycle-a.css',
                     'public/assets/css/.asset-closure-cycle-b.css',
                 ],
-                $this->runtimeAssetClosure(['/assets/css/.asset-closure-cycle-a.css']),
+                $this->runtimeAssetClosure(['/assets/css/.asset-closure-cycle-a.css'], $root),
             );
         } finally {
-            unlink($first);
-            unlink($second);
+            foreach ([$first, $second] as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            foreach ([$directory, $root . 'public/assets', $root . 'public', $root] as $path) {
+                if (is_dir($path)) {
+                    rmdir($path);
+                }
+            }
         }
     }
 
@@ -833,7 +844,7 @@ final class MenuHttpTest extends CIUnitTestCase
     }
 
     /** @param list<string> $entrypoints @return list<string> */
-    private function runtimeAssetClosure(array $entrypoints): array
+    private function runtimeAssetClosure(array $entrypoints, string $root = ROOTPATH): array
     {
         $pending = [];
         foreach ($entrypoints as $reference) {
@@ -849,12 +860,12 @@ final class MenuHttpTest extends CIUnitTestCase
             if (isset($seen[$path])) {
                 continue;
             }
-            self::assertFileExists(ROOTPATH . $path, $path);
+            self::assertFileExists($root . $path, $path);
             $seen[$path] = true;
             if (! str_ends_with(strtolower($path), '.css')) {
                 continue;
             }
-            foreach ($this->cssAssetReferences((string) file_get_contents(ROOTPATH . $path)) as $reference) {
+            foreach ($this->cssAssetReferences((string) file_get_contents($root . $path)) as $reference) {
                 $dependency = $this->runtimeAssetPath($reference, $path);
                 if ($dependency !== null) {
                     $pending[] = $dependency;
