@@ -59,7 +59,7 @@ else
     sh -c "find app tests/ci4 -name '*.php' -print0 | xargs -0 -n 20 -P 4 php -l >/dev/null" \
     || fail "php lint failed in CI4 image"
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm -e HOME=/tmp "${ci4_mounts[@]}" "$ci4_image" \
-    vendor/bin/phpstan analyse --debug --no-progress --memory-limit=1G >/dev/null \
+    vendor/bin/phpstan analyse --debug --no-progress --memory-limit=1G \
     || fail "phpstan static analysis failed in CI4 image"
   routes=$(DOCKER_CONFIG="$ci4_docker_config" \
     docker run --rm "${ci4_mounts[@]}" "$ci4_image" php spark routes)
