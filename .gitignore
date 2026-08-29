@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.DS_Store
 
 # production dump ห้ามเข้า repo เด็ดขาด (PII)
 *.sql
