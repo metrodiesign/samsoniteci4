@@ -1,0 +1,752 @@
+# Task 4 resulting-files review package
+
+## Tracked diffs from HEAD
+diff --git a/app/Controllers/BaseController.php b/app/Controllers/BaseController.php
+index 6a4a166..1d9f99e 100644
+--- a/app/Controllers/BaseController.php
++++ b/app/Controllers/BaseController.php
+@@ -1,14 +1,16 @@
+ <?php
+ 
+ namespace App\Controllers;
+ 
++use App\Master\MenuStore;
++use App\Presentation\AdminLayoutPresenter;
+ use CodeIgniter\Controller;
+ use CodeIgniter\HTTP\RequestInterface;
+ use CodeIgniter\HTTP\ResponseInterface;
+ use Psr\Log\LoggerInterface;
+ 
+ /**
+  * BaseController provides a convenient place for loading components
+  * and performing functions that are needed by all your controllers.
+  *
+  * Extend this class in any new controllers:
+@@ -42,37 +44,34 @@ abstract class BaseController extends Controller
+         // Preload any models, libraries, etc, here.
+         // $this->session = service('session');
+     }
+ 
+     /**
+      * @param array<string, mixed> $page reserved slots for later work: 'subtitle', 'actions'.
+      *   Both 'subtitle' and 'actions' are trusted HTML (same contract as $content): layout.php
+      *   echoes them raw without esc(), so any caller-supplied value MUST already be escaped by
+      *   the caller. Never pass unescaped DB or request data into these slots.
+      */
+-    protected function layout(string $title, string $content, array $page = []): string
++    protected function layout(string $title, string $content, array $page = [], string $profile = 'admin'): string
+     {
+-        $session = service('session');
+-        $isLoggedIn = $session->get('isLoggedIn') === true;
+-        $branchId = $session->get('BranchID') === null ? null : (int) $session->get('BranchID');
++        $sessionData = service('session')->get();
++        $data = (new AdminLayoutPresenter(new MenuStore(db_connect())))->present(
++            is_array($sessionData) ? $sessionData : [],
++            $title,
++            $content,
++            $profile,
++        );
++        $data['subtitle'] = (string) ($page['subtitle'] ?? '');
++        $data['actions'] = (string) ($page['actions'] ?? '');
++        $data['accessDeniedProfile'] = false;
+ 
+-        return view('layout', [
+-            'title'      => $title,
+-            'content'    => $content,
+-            'isLoggedIn' => $isLoggedIn,
+-            'name'       => $isLoggedIn ? (string) $session->get('name') : '',
+-            'subtitle'   => (string) ($page['subtitle'] ?? ''),
+-            'actions'    => (string) ($page['actions'] ?? ''),
+-            'menuItems'  => $isLoggedIn
+-                ? (new \App\Master\MenuStore(db_connect()))->visible((int) $session->get('GroupID'), $branchId)
+-                : [],
+-        ]);
++        return view($profile === 'order' ? 'layout_order' : 'layout', $data);
+     }
+ 
+     /**
+      * Builds an escaped action anchor for the $page['actions'] slot. layout.php echoes
+      * that slot raw, so escaping is centralised here (one place for master/menu/background).
+      * Uses html-context esc(): it neutralises attribute breakout ("<>&) without turning the
+      * path separators into &#x2F; the way esc(..., 'attr') would, keeping the href byte-identical.
+      */
+     protected function actionLink(string $url, string $label): string
+     {
+diff --git a/tests/ci4/MenuHttpTest.php b/tests/ci4/MenuHttpTest.php
+index 7f865fc..7183eac 100644
+--- a/tests/ci4/MenuHttpTest.php
++++ b/tests/ci4/MenuHttpTest.php
+@@ -1,16 +1,17 @@
+ <?php
+ 
+ namespace Tests\Ci4;
+ 
+ use App\Authentication\ShadowUserStore;
+ use App\Master\MenuStore;
++use App\Presentation\AdminLayoutPresenter;
+ use CodeIgniter\Test\CIUnitTestCase;
+ use CodeIgniter\Test\DatabaseTestTrait;
+ use CodeIgniter\Test\FeatureTestTrait;
+ 
+ final class MenuHttpTest extends CIUnitTestCase
+ {
+     use DatabaseTestTrait;
+     use FeatureTestTrait;
+ 
+     protected $namespace = 'App';
+@@ -99,20 +100,45 @@ final class MenuHttpTest extends CIUnitTestCase
+         $missing->assertSee('Menu Group name');
+         $missing->assertDontSee('CENTRAL');
+         self::assertStringContainsString('value="ABSENT"', $missing->getBody());
+ 
+         $overlong = $this->withSession($session)->get('/menu?search=' . str_repeat('x', 129));
+         $overlong->assertStatus(200);
+         $overlong->assertSee('CENTRAL');
+         $overlong->assertSee('BRANCH');
+     }
+ 
++    public function testAdminLayoutPresenterMapsTheRealLoginSessionContract(): void
++    {
++        $data = (new AdminLayoutPresenter(new MenuStore($this->db)))->present([
++            'isLoggedIn' => true,
++            'name' => 'Synthetic presenter',
++            'roleText' => 'Admin',
++            'lastLogin' => '2026-08-27 08:15:00',
++            'GroupID' => 1,
++            'BranchID' => null,
++        ], 'Presenter title', '<p>Presenter content</p>');
++
++        self::assertSame('Presenter title', $data['pageTitle']);
++        self::assertSame('Presenter title', $data['title']);
++        self::assertSame('<p>Presenter content</p>', $data['content']);
++        self::assertSame('Synthetic presenter', $data['name']);
++        self::assertSame('Admin', $data['role_text']);
++        self::assertSame('2026-08-27 08:15:00', $data['last_login']);
++        self::assertSame(1, $data['GroupID']);
++        self::assertNull($data['BranchID']);
++        self::assertSame('', $data['BranchName']);
++        self::assertSame([], $data['branchOptions']);
++        self::assertSame('admin', $data['layoutProfile']);
++        self::assertSame([1, 2], array_column($data['menuItems'], 'group_id'));
++    }
++
+     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
+     {
+         $groups = (new MenuStore($this->db))->visible(1);
+         // Group order follows the CSV '1,2' of group_menu id 1; names/icons come from group_type.
+         self::assertSame([1, 2], array_column($groups, 'group_id'));
+         self::assertSame(['DASHBOARD', 'MASTER ADMIN'], array_column($groups, 'group_name'));
+ 
+         $flatNames = [];
+         $flatLinks = [];
+         foreach ($groups as $group) {
+@@ -237,24 +263,24 @@ final class MenuHttpTest extends CIUnitTestCase
+         $page->assertStatus(200);
+         $body = $page->getBody();
+         // Mutation-check target: layout.php `if ($isLoggedIn)` gate. If removed, the
+         // <nav> block renders for anonymous users and these assertions go red.
+         self::assertStringNotContainsString('<nav', $body);
+         self::assertStringNotContainsString('Main navigation', $body);
+         self::assertStringNotContainsString('Sign out', $body);
+         // Parity with CI3: the sign-in page carries the banner, the Tracking wordmark
+         // and the Forgot Password entry point. Without the link there is no route into
+         // password reset from the UI at all.
+-        self::assertStringContainsString('login-banner', $body);
+-        self::assertStringContainsString('>Tracking<', $body);
++        self::assertStringContainsString('class="banner-cms"', $body);
++        self::assertStringContainsString('<b>Tracking</b>', $body);
+         self::assertStringContainsString('Forgot Password', $body);
+-        self::assertStringContainsString('forgot-password', $body);
++        self::assertStringContainsString('forgotPassword', $body);
+     }
+ 
+     public function testMenuListingUsesCi3TableEscapesRowsAndHasOnlyEditAction(): void
+     {
+         $this->db->table('group_menu')->insert([
+             'group_type' => '1', 'name' => '<script>alert(1)</script>', 'cdate' => '2026-08-22 09:00:00',
+         ]);
+         $escapedId = (int) $this->db->insertID();
+         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+         $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
+
+## Untracked resulting files
+diff --git a/app/Presentation/AccessDeniedResponder.php b/app/Presentation/AccessDeniedResponder.php
+new file mode 100644
+index 0000000..cd15597
+--- /dev/null
++++ b/app/Presentation/AccessDeniedResponder.php
+@@ -0,0 +1,104 @@
++<?php
++
++namespace App\Presentation;
++
++use App\Master\MenuStore;
++use CodeIgniter\HTTP\RequestInterface;
++use CodeIgniter\HTTP\ResponseInterface;
++
++final class AccessDeniedResponder
++{
++    public function respond(RequestInterface $request): ResponseInterface
++    {
++        if (! $this->prefersHtml($request)) {
++            return service('response')
++                ->setStatusCode(403)
++                ->setContentType('application/json')
++                ->setBody('{"error":"forbidden"}');
++        }
++
++        $session = service('session');
++        $sessionData = $session->get();
++        $data = (new AdminLayoutPresenter(new MenuStore(db_connect())))->present(
++            is_array($sessionData) ? $sessionData : [],
++            'Access Denied',
++            view('access_denied'),
++        );
++        $data['subtitle'] = '';
++        $data['actions'] = '';
++        $data['accessDeniedProfile'] = true;
++
++        return service('response')
++            ->setStatusCode(403)
++            ->setContentType('text/html')
++            ->setBody(view('layout', $data));
++    }
++
++    private function prefersHtml(RequestInterface $request): bool
++    {
++        if (service('session')->get('isLoggedIn') !== true
++            || strcasecmp(trim($request->getHeaderLine('X-Requested-With')), 'XMLHttpRequest') === 0) {
++            return false;
++        }
++
++        $preferences = $this->mediaPreferences($request->getHeaderLine('Accept'));
++
++        return $preferences !== null
++            && $preferences['html'] !== null
++            && $preferences['html'] > 0.0
++            && ($preferences['json'] === null || $preferences['html'] > $preferences['json']);
++    }
++
++    /** @return array{html: ?float, json: ?float}|null */
++    private function mediaPreferences(string $header): ?array
++    {
++        if ($header === '') {
++            return null;
++        }
++
++        $preferences = ['html' => null, 'json' => null];
++        foreach (explode(',', $header) as $range) {
++            $parts = explode(';', trim($range));
++            $media = strtolower(trim((string) array_shift($parts)));
++            if ($media === '' || preg_match('/\A[a-z0-9!#$&^_.+*-]+\/[a-z0-9!#$&^_.+*-]+\z/D', $media) !== 1) {
++                return null;
++            }
++
++            $quality = 1.0;
++            $hasQuality = false;
++            foreach ($parts as $part) {
++                $part = trim($part);
++                if ($part === '' || preg_match('/\A([^=;\s"]+)=([^=;\s"]+)\z/D', $part, $match) !== 1) {
++                    return null;
++                }
++                if (strtolower($match[1]) !== 'q') {
++                    continue;
++                }
++                if ($hasQuality || preg_match('/\A(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)\z/D', $match[2]) !== 1) {
++                    return null;
++                }
++                $hasQuality = true;
++                $quality = (float) $match[2];
++            }
++
++            $representation = $media === 'text/html'
++                ? 'html'
++                : ($this->isJsonRange($media) ? 'json' : null);
++            if ($representation === null) {
++                continue;
++            }
++            if ($preferences[$representation] !== null) {
++                return null;
++            }
++            $preferences[$representation] = $quality;
++        }
++
++        return $preferences;
++    }
++
++    private function isJsonRange(string $media): bool
++    {
++        return $media === 'application/json'
++            || preg_match('/\Aapplication\/(?:[a-z0-9!#$&^_.+-]+|\*)\+json\z/D', $media) === 1;
++    }
++}
+diff --git a/app/Presentation/AdminLayoutPresenter.php b/app/Presentation/AdminLayoutPresenter.php
+new file mode 100644
+index 0000000..fc49d51
+--- /dev/null
++++ b/app/Presentation/AdminLayoutPresenter.php
+@@ -0,0 +1,40 @@
++<?php
++
++namespace App\Presentation;
++
++use App\Master\MenuStore;
++
++final class AdminLayoutPresenter
++{
++    public function __construct(private readonly MenuStore $menus)
++    {
++    }
++
++    /**
++     * @param array<string, mixed> $session
++     *
++     * @return array<string, mixed>
++     */
++    public function present(array $session, string $title, string $content, string $profile = 'admin'): array
++    {
++        $isLoggedIn = ($session['isLoggedIn'] ?? false) === true;
++        $groupId = (int) ($session['GroupID'] ?? 0);
++        $branchId = ($session['BranchID'] ?? null) === null ? null : (int) $session['BranchID'];
++
++        return [
++            'pageTitle' => $title,
++            'title' => $title,
++            'content' => $content,
++            'isLoggedIn' => $isLoggedIn,
++            'name' => (string) ($session['name'] ?? ''),
++            'role_text' => (string) ($session['roleText'] ?? ''),
++            'last_login' => (string) ($session['lastLogin'] ?? ''),
++            'GroupID' => $groupId,
++            'BranchID' => $branchId,
++            'BranchName' => '',
++            'menuItems' => $isLoggedIn ? $this->menus->visible($groupId, $branchId) : [],
++            'branchOptions' => [],
++            'layoutProfile' => $profile,
++        ];
++    }
++}
+diff --git a/tests/ci4/AccessDeniedHttpTest.php b/tests/ci4/AccessDeniedHttpTest.php
+new file mode 100644
+index 0000000..f82bd25
+--- /dev/null
++++ b/tests/ci4/AccessDeniedHttpTest.php
+@@ -0,0 +1,418 @@
++<?php
++
++namespace Tests\Ci4;
++
++use App\Authentication\ShadowUserStore;
++use App\Controllers\BaseController;
++use CodeIgniter\Database\Query;
++use CodeIgniter\Events\Events;
++use CodeIgniter\Exceptions\PageNotFoundException;
++use CodeIgniter\HTTP\ResponseInterface;
++use CodeIgniter\Test\CIUnitTestCase;
++use CodeIgniter\Test\DatabaseTestTrait;
++use CodeIgniter\Test\FeatureTestTrait;
++use PHPUnit\Framework\AssertionFailedError;
++
++final class AccessDeniedHttpTest extends CIUnitTestCase
++{
++    use DatabaseTestTrait;
++    use FeatureTestTrait;
++
++    protected $namespace = 'App';
++
++    private int $adminId;
++
++    private int $branchUserId;
++
++    protected function setUp(): void
++    {
++        parent::setUp();
++
++        $users = new ShadowUserStore($this->db);
++        $hash = password_hash('Synthetic access denied passphrase', PASSWORD_DEFAULT);
++        $this->adminId = $users->create('access-admin@example.invalid', $hash, 1, null);
++        $this->branchUserId = $users->create('access-branch@example.invalid', $hash, 2, 1);
++
++        $allowed = static fn (): ResponseInterface => service('response')->setJSON(['status' => 'allowed']);
++        $this->withRoutes([
++            ['GET', 'test/access/authorization', $allowed, ['filter' => 'authorized:unknown']],
++            ['POST', 'test/access/authorization', $allowed, ['filter' => 'authorized:unknown']],
++            ['PUT', 'test/access/authorization', $allowed, ['filter' => 'authorized:unknown']],
++            ['GET', 'test/access/branchless', $allowed, ['filter' => ['web-auth', 'branchless']]],
++            ['GET', 'test/access/authorized-allowed', $allowed, ['filter' => 'authorized:read']],
++            ['GET', 'test/access/branchless-allowed', $allowed, ['filter' => ['web-auth', 'branchless']]],
++        ]);
++    }
++
++    public function testAuthorizationDenialRendersCi3BodyInAuthenticatedAdminChrome(): void
++    {
++        $response = $this->htmlAuthorizationRequest();
++        $response->assertStatus(403);
++        $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
++        $response->assertNotRedirect();
++        $body = (string) $response->response()->getBody();
++
++        foreach ([
++            '<title>Access Denied | Samsonite Tracking</title>',
++            '<body class="admin">',
++            '<nav aria-label="Main navigation">',
++            '<main class="content">',
++            '<div class="content-wrapper">',
++            '<section class="content-header">',
++            '<small>You are not authorize user to use this</small>',
++            '<section class="content">',
++            '<img src="/assets/images/access.png" alt="Access Denied Image">',
++        ] as $contract) {
++            self::assertStringContainsString($contract, $body, $contract);
++        }
++        self::assertSame(1, preg_match(
++            '#<main class="content">(?:\s|<!--.*?-->)*<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Access Denied\s*<small>You are not authorize user to use this</small>#s',
++            $body,
++        ));
++        self::assertStringNotContainsString('class="page-header"', $body);
++        self::assertStringNotContainsString('id="page-title"', $body);
++    }
++
++    public function testBranchlessDenialUsesTheSameHtmlRepresentationWithoutController(): void
++    {
++        $response = $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession($this->branchSession())
++            ->get('/test/access/branchless');
++        $response->assertStatus(403);
++        $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
++        $response->assertNotRedirect();
++        self::assertStringContainsString('<div class="content-wrapper">', (string) $response->response()->getBody());
++        self::assertStringContainsString('Access Denied', (string) $response->response()->getBody());
++    }
++
++    #[\PHPUnit\Framework\Attributes\DataProvider('negotiationCases')]
++    public function testAcceptNegotiationIsExplicitAndFailClosed(array $headers, bool $expectsHtml): void
++    {
++        $response = $this
++            ->withHeaders($headers)
++            ->withSession($this->branchSession())
++            ->get('/test/access/authorization');
++        $response->assertStatus(403);
++
++        if ($expectsHtml) {
++            $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
++            self::assertStringContainsString('<div class="content-wrapper">', (string) $response->response()->getBody());
++
++            return;
++        }
++
++        $response->assertHeader('Content-Type', 'application/json; charset=UTF-8');
++        self::assertSame('{"error":"forbidden"}', (string) $response->response()->getBody());
++    }
++
++    /** @return iterable<string, array{array<string, string>, bool}> */
++    public static function negotiationCases(): iterable
++    {
++        return [
++            'explicit HTML' => [['Accept' => 'text/html'], true],
++            'browser header' => [['Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'], true],
++            'absent Accept' => [[], false],
++            'wildcard only' => [['Accept' => '*/*'], false],
++            'text wildcard only' => [['Accept' => 'text/*'], false],
++            'JSON' => [['Accept' => 'application/json'], false],
++            'JSON suffix range' => [['Accept' => 'application/*+json'], false],
++            'XHTML only' => [['Accept' => 'application/xhtml+xml'], false],
++            'HTML q zero' => [['Accept' => 'text/html;q=0'], false],
++            'invalid HTML q' => [['Accept' => 'text/html;q=wat'], false],
++            'out of range HTML q' => [['Accept' => 'text/html;q=1.1'], false],
++            'JSON wins' => [['Accept' => 'application/json;q=1,text/html;q=0.5'], false],
++            'HTML wins' => [['Accept' => 'text/html;q=1,application/json;q=0.5'], true],
++            'equal q fails closed' => [['Accept' => 'text/html;q=1,application/json;q=1'], false],
++            'duplicate HTML fails closed' => [['Accept' => 'text/html;q=1,text/html;q=0.5'], false],
++            'case and parameter' => [['Accept' => 'TEXT/HTML; charset=UTF-8; q=1'], true],
++            'malformed media type' => [['Accept' => 'text/htmlfoo'], false],
++            'quoted media type' => [['Accept' => '"text/html"'], false],
++            'empty range' => [['Accept' => 'text/html,'], false],
++            'whitespace in media type' => [['Accept' => 'text / html'], false],
++        ];
++    }
++
++    public function testJsonAjaxAndAnonymousDenialsDoNotQueryMenuData(): void
++    {
++        $menuQueries = [];
++        $listener = static function (Query $query) use (&$menuQueries): void {
++            $sql = $query->getQuery();
++            if (str_contains($sql, 'group_menu') || str_contains($sql, 'tbl_menu')) {
++                $menuQueries[] = $sql;
++            }
++        };
++        Events::on('DBQuery', $listener);
++
++        try {
++            $this->withSession($this->branchSession())
++                ->get('/test/access/authorization')
++                ->assertStatus(403);
++            $this->withHeaders(['Accept' => 'text/html', 'X-Requested-With' => 'XMLHttpRequest'])
++                ->withSession($this->branchSession())
++                ->get('/test/access/authorization')
++                ->assertStatus(403);
++            $this->withHeaders(['Accept' => 'text/html'])
++                ->withSession([])
++                ->get('/test/access/authorization')
++                ->assertStatus(401);
++        } finally {
++            Events::removeListener('DBQuery', $listener);
++        }
++
++        self::assertSame([], $menuQueries);
++    }
++
++    public function testAjaxAndUnauthenticatedRequestsCannotSelectHtml(): void
++    {
++        $ajax = $this
++            ->withHeaders(['Accept' => 'text/html', 'X-Requested-With' => 'XMLHttpRequest'])
++            ->withSession($this->branchSession())
++            ->get('/test/access/authorization');
++        $ajax->assertStatus(403);
++        self::assertSame('{"error":"forbidden"}', (string) $ajax->response()->getBody());
++
++        $anonymous = $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession([])
++            ->get('/test/access/authorization');
++        $anonymous->assertStatus(401);
++        $anonymous->assertJSONExact(['error' => 'unauthenticated']);
++        $anonymous->assertDontSee('Access Denied');
++    }
++
++    public function testMethodDoesNotChangeDenialRepresentationOrStatus(): void
++    {
++        foreach (['post', 'put'] as $method) {
++            $html = $this
++                ->withHeaders(['Accept' => 'text/html'])
++                ->withSession($this->branchSession())
++                ->{$method}('/test/access/authorization', ['request_marker' => 'BODY-MARKER']);
++            $html->assertStatus(403);
++            $html->assertHeader('Content-Type', 'text/html; charset=UTF-8');
++            self::assertStringContainsString('<div class="content-wrapper">', (string) $html->response()->getBody());
++
++            $json = $this
++                ->withHeaders([])
++                ->withSession($this->branchSession())
++                ->{$method}('/test/access/authorization', ['request_marker' => 'BODY-MARKER']);
++            $json->assertStatus(403);
++            self::assertSame('{"error":"forbidden"}', (string) $json->response()->getBody());
++        }
++    }
++
++    public function testAllowedPathsDoNotUseTheResponder(): void
++    {
++        $authorized = $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession($this->adminSession())
++            ->get('/test/access/authorized-allowed');
++        $authorized->assertStatus(200);
++        $authorized->assertJSONExact(['status' => 'allowed']);
++
++        $branchless = $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession($this->adminSession())
++            ->get('/test/access/branchless-allowed');
++        $branchless->assertStatus(200);
++        $branchless->assertJSONExact(['status' => 'allowed']);
++    }
++
++    public function testHtmlDenialDoesNotReflectRequestControlledValues(): void
++    {
++        $markers = ['QUERY-MARKER-827', 'BODY-MARKER-827', 'HEADER-MARKER-827', 'OBJECT-MARKER-827'];
++        $response = $this
++            ->withHeaders(['Accept' => 'text/html', 'X-Trace-Marker' => $markers[2]])
++            ->withSession($this->branchSession())
++            ->post('/test/access/authorization?route_marker=' . $markers[0] . '&object=' . $markers[3], ['payload' => $markers[1]]);
++        $response->assertStatus(403);
++        $body = (string) $response->response()->getBody();
++
++        foreach ($markers as $marker) {
++            self::assertStringNotContainsString($marker, $body, $marker);
++        }
++        foreach (['BranchID', 'exception', 'database detail'] as $detail) {
++            self::assertStringNotContainsString($detail, $body, $detail);
++        }
++    }
++
++    public function testAccessAssetIsExactAndTheRecursiveGraphIsLocal(): void
++    {
++        $body = (string) $this->htmlAuthorizationRequest()->response()->getBody();
++        self::assertSame(
++            'cd1c2f92a6f5c4dd695037905e764db9a1e6b3810870f4bf329dad53b6b96c8c',
++            hash_file('sha256', ROOTPATH . 'public/assets/images/access.png'),
++        );
++        $this->assertLocalAssetGraph($body);
++    }
++
++    public function testAssetGraphFailsClosedForMissingExternalAndMalformedReferences(): void
++    {
++        foreach ([
++            '<img src="/assets/images/missing-access.png">',
++            '<img src="https://cdn.example.invalid/access.png">',
++            '<img src="/assets/images/access.png>',
++        ] as $html) {
++            try {
++                $this->assertLocalAssetGraph($html);
++                self::fail('Expected asset graph rejection: ' . $html);
++            } catch (AssertionFailedError | \UnexpectedValueException) {
++                self::addToAssertionCount(1);
++            }
++        }
++    }
++
++    public function testNormalLayoutDoesNotInheritTheAccessDeniedProfileAcrossRenders(): void
++    {
++        $this->withSession($this->adminSession())->get('/test/access/authorized-allowed')->assertStatus(200);
++
++        $before = $this->renderNormalBaseLayout('Before denial');
++        self::assertStringContainsString('<div class="page-header">', $before);
++        self::assertStringContainsString('id="page-title">Before denial', $before);
++
++        $denied = $this->htmlAuthorizationRequest();
++        $denied->assertStatus(403);
++        self::assertStringNotContainsString('class="page-header"', (string) $denied->response()->getBody());
++
++        $after = $this->renderNormalBaseLayout('After denial');
++        self::assertStringContainsString('<div class="page-header">', $after);
++        self::assertStringContainsString('id="page-title">After denial', $after);
++        self::assertStringNotContainsString('Access Denied</h1>', $after);
++    }
++
++    private function renderNormalBaseLayout(string $title): string
++    {
++        $controller = new class extends BaseController {
++            public function render(string $title): string
++            {
++                return $this->layout($title, '<p>Normal layout content</p>');
++            }
++        };
++        $controller->initController(service('request'), service('response'), service('logger'));
++
++        return $controller->render($title);
++    }
++
++    public function testUnknownRouteIsStillNotFound(): void
++    {
++        $this->expectException(PageNotFoundException::class);
++        $this->expectExceptionCode(404);
++        $this->withSession($this->adminSession())->get('/test/access/unknown');
++    }
++
++    private function htmlAuthorizationRequest(): \CodeIgniter\Test\TestResponse
++    {
++        return $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession($this->branchSession())
++            ->get('/test/access/authorization');
++    }
++
++    /** @return array<string, int|bool|null|string> */
++    private function adminSession(): array
++    {
++        return [
++            'userId' => $this->adminId,
++            'role' => 1,
++            'GroupID' => 1,
++            'BranchID' => null,
++            'sessionVersion' => 1,
++            'isLoggedIn' => true,
++            'name' => 'Synthetic admin',
++        ];
++    }
++
++    /** @return array<string, int|bool|null|string> */
++    private function branchSession(): array
++    {
++        return [
++            'userId' => $this->branchUserId,
++            'role' => 2,
++            'GroupID' => 4,
++            'BranchID' => 1,
++            'sessionVersion' => 1,
++            'isLoggedIn' => true,
++            'name' => 'Synthetic branch',
++        ];
++    }
++
++    private function assertLocalAssetGraph(string $html): void
++    {
++        $stylesheets = [];
++        foreach ($this->domAssetUrls($html) as $url) {
++            $path = $this->localAssetPath($url);
++            self::assertFileExists($path, $url);
++            if (str_ends_with($path, '.css')) {
++                $stylesheets[] = $path;
++            }
++        }
++
++        $seen = [];
++        foreach ($stylesheets as $stylesheet) {
++            $this->assertCssGraph($stylesheet, $seen);
++        }
++    }
++
++    /** @return list<string> */
++    private function domAssetUrls(string $html): array
++    {
++        preg_match_all('/<(script|img|link)\b[^>]*>/i', $html, $tags, PREG_SET_ORDER);
++        $urls = [];
++        foreach ($tags as $tag) {
++            $attribute = strtolower($tag[1]) === 'link' ? 'href' : 'src';
++            if (preg_match('/(?<![\w:-])' . $attribute . '\s*=/i', $tag[0]) !== 1) {
++                continue;
++            }
++            $pattern = '/(?<![\w:-])' . $attribute . '\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))/i';
++            if (preg_match($pattern, $tag[0], $match) !== 1) {
++                throw new \UnexpectedValueException('Unparseable ' . $attribute . ' attribute.');
++            }
++            $url = $match[1] !== '' ? $match[1] : ($match[2] !== '' ? $match[2] : ($match[3] ?? ''));
++            if ($url === '') {
++                throw new \UnexpectedValueException('Empty ' . $attribute . ' attribute.');
++            }
++            $urls[] = $url;
++        }
++
++        return $urls;
++    }
++
++    /** @param array<string, bool> $seen */
++    private function assertCssGraph(string $path, array &$seen): void
++    {
++        $real = realpath($path);
++        self::assertNotFalse($real, $path);
++        if (isset($seen[$real])) {
++            return;
++        }
++        $seen[$real] = true;
++        preg_match_all('/(?:@import\s+(?:url\()?|url\()\s*[\'\"]?([^\'\")\s;]+)[^)]*\)?/i', (string) file_get_contents($real), $matches);
++        foreach ($matches[1] as $reference) {
++            $reference = trim($reference);
++            if ($reference === '' || str_starts_with($reference, 'data:') || str_starts_with($reference, '#')) {
++                continue;
++            }
++            self::assertDoesNotMatchRegularExpression('/^(?:https?:)?\/\//i', $reference, $real . ': ' . $reference);
++            $reference = explode('#', explode('?', $reference, 2)[0], 2)[0];
++            $asset = str_starts_with($reference, '/')
++                ? ROOTPATH . 'public' . $reference
++                : dirname($real) . '/' . $reference;
++            self::assertFileExists($asset, $real . ': ' . $reference);
++            if (str_ends_with($asset, '.css')) {
++                $this->assertCssGraph($asset, $seen);
++            }
++        }
++    }
++
++    private function localAssetPath(string $url): string
++    {
++        self::assertDoesNotMatchRegularExpression('/^\/\//', $url, $url);
++        $host = parse_url($url, PHP_URL_HOST);
++        self::assertTrue($host === null || $host === parse_url(base_url(), PHP_URL_HOST), $url);
++        $path = parse_url($url, PHP_URL_PATH);
++        self::assertIsString($path, $url);
++        self::assertStringStartsWith('/assets/', $path, $url);
++
++        return ROOTPATH . 'public' . $path;
++    }
++}

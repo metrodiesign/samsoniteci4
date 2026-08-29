@@ -1,0 +1,29 @@
+# Task 2 scoped diff
+
+diff --git a/tmp/claude-501/task2-before.XXXXXX.php b/tests/ci4/PublicTrackingHttpTest.php
+index 6634ac3..dc8b8e9 100644
+--- a/tmp/claude-501/task2-before.XXXXXX.php
++++ b/tests/ci4/PublicTrackingHttpTest.php
+@@ -87,20 +87,22 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
+     {
+         $queries = [
+             '/tracking?tracking_id=',
+             '/tracking?tracking_id=WP00C_',
+             '/tracking?tracking_id%5B%5D=WP00C-TRACK-005',
+             '/tracking?searchText%5B%5D=WP00C-TRACK-005',
+             '/tracking?tracking_id=%3Cscript%3Ealert(1)%3C%2Fscript%3E',
+             '/tracking?tracking_id=%22TRACKING-QUOTE-MARKER%22',
+             '/tracking?searchText=%0D%0AWP00C-TRACK-005',
+             '/tracking?searchText=%00TRACKING-NUL-MARKER',
++            '/tracking?tracking_id=%20WP00C-TRACK-005%20',
++            '/tracking?searchText=%20WP00C-TRACK-005%20',
+             '/tracking?tracking_id=' . str_repeat('A', 101),
+         ];
+ 
+         foreach ($queries as $url) {
+             $response = $this->get($url);
+             $response->assertStatus(200);
+             $response->assertDontSee('SYNTHETIC RETURN');
+             $response->assertDontSee('SYNTHETIC CUSTOMER FIVE');
+             $response->assertDontSee('wp00c-customer-5@example.invalid');
+             self::assertStringNotContainsString('alert(1)', (string) $response->getBody(), $url);

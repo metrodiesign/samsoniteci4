@@ -1,0 +1,39 @@
+PHPUnit 11.5.56 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.7
+Configuration: /private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/phpunit.xml.dist
+
+...............................................................  63 / 396 ( 15%)
+.............................................................E. 126 / 396 ( 31%)
+............................................................... 189 / 396 ( 47%)
+............................................................... 252 / 396 ( 63%)
+............................................................... 315 / 396 ( 79%)
+.....................
+reset_delivery sent=1 retry=0 idle=1 released=0 rate_pruned=0
+.......................................... 378 / 396 ( 95%)
+..................                                              396 / 396 (100%)
+
+Time: 01:56.564, Memory: 54.50 MB
+
+There was 1 error:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+ErrorException: Undefined variable $message
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/app/Views/errors/html/error_404.php:77
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/vendor/codeigniter4/framework/system/View/View.php:240
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/vendor/codeigniter4/framework/system/View/View.php:243
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/vendor/codeigniter4/framework/system/Common.php:1268
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/tests/ci4/MenuHttpTest.php:285
+
+--
+
+There was 1 risky test:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+Test code or tested code did not close its own output buffers
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/03-plus-tracking/tree/tests/ci4/MenuHttpTest.php:245
+
+ERRORS!
+Tests: 396, Assertions: 5785, Errors: 1, Risky: 1.

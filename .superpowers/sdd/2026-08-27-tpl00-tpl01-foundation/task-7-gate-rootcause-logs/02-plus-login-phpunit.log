@@ -1,0 +1,580 @@
+PHPUnit 11.5.56 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.7
+Configuration: /private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/phpunit.xml.dist
+
+...............................................................  63 / 396 ( 15%)
+.............................................................E. 126 / 396 ( 31%)
+............................................................... 189 / 396 ( 47%)
+............................................................... 252 / 396 ( 63%)
+......FF.FFF................................................... 315 / 396 ( 79%)
+.....................
+reset_delivery sent=1 retry=0 idle=1 released=0 rate_pruned=0
+.......................................... 378 / 396 ( 95%)
+..................                                              396 / 396 (100%)
+
+Time: 01:55.037, Memory: 54.50 MB
+
+There was 1 error:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+ErrorException: Undefined variable $message
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/app/Views/errors/html/error_404.php:77
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/vendor/codeigniter4/framework/system/View/View.php:240
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/vendor/codeigniter4/framework/system/View/View.php:243
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/vendor/codeigniter4/framework/system/Common.php:1268
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/MenuHttpTest.php:285
+
+--
+
+There were 5 failures:
+
+1) Tests\Ci4\PublicTrackingHttpTest::testCanonicalQueryTakesPrecedenceAndLegacyQueryUsesTheSameExactLookup
+Text 'SYNTHETIC RETURN' is not seen in response.
+Failed asserting that false is true.
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/vendor/codeigniter4/framework/system/Test/TestResponse.php:421
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:80
+
+2) Tests\Ci4\PublicTrackingHttpTest::testInvalidQueryShapesAndRouteValuesStayInPublicNoDataFlowWithoutReflection
+/tracking?tracking_id=%3Cscript%3Ealert(1)%3C%2Fscript%3E
+Failed asserting that '<!DOCTYPE html>\n
+<!-- DEBUG-VIEW START 609 APPPATH/Views/layout_public.php --><html lang="en">\n
+<head>\n
+    <meta charset="utf-8">\n
+    <meta name="viewport" content="width=device-width, initial-scale=1">\n
+    <title>Repair tracking | Samsonite</title>\n
+    <link href="http://example.invalid/assets/fonts/stylesheet.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/main.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/public.css" rel="stylesheet">\n
+</head>\n
+<body>\n
+<section id="header">\n
+    <header class="header">\n
+        <a href="http://example.invalid/" class="position-logo">\n
+            <img class="logo-size" src="http://example.invalid/assets/images/main-logo.png" alt="Samsonite">\n
+        </a>\n
+\n
+        <input class="menu-btn" type="checkbox" id="menu-btn">\n
+        <label class="menu-icon" for="menu-btn"><span class="navicon"></span></label>\n
+\n
+        <ul class="menu">\n
+            <li>\n
+                <a href="http://example.invalid/tracking">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 176a80 80 0 1 0 0 160 80 80 0 0 0 0-160zm208 96 40-32-40-70-48 16a160 160 0 0 0-40-24l-8-50h-80l-8 50a160 160 0 0 0-40 24l-48-16-40 70 40 32a161 161 0 0 0 0 48l-40 32 40 70 48-16a160 160 0 0 0 40 24l8 50h80l8-50a160 160 0 0 0 40-24l48 16 40-70-40-32a161 161 0 0 0 0-48z"></path></svg>\n
+                        <div class="txt-sub-menu">TRACK &amp; TRACE</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="http://example.invalid/contact">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M48 96a16 16 0 0 0-16 16v288a16 16 0 0 0 16 16h416a16 16 0 0 0 16-16V112a16 16 0 0 0-16-16H48zm8 40 200 150 200-150v24L256 320 56 160v-24z"></path></svg>\n
+                        <div class="txt-sub-menu">CONTACT US</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="https://www.samsonite.co.th/">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 448 512" fill="currentColor" aria-hidden="true"><path d="M144 128v16h160v-16a80 80 0 0 0-160 0zm-48 16v-16a128 128 0 0 1 256 0v16h64l24 320H8l24-320h64z"></path></svg>\n
+                        <div class="txt-sub-menu">SHOPPING</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li style="margin: 0 auto; text-align: center;">\n
+                <a href="http://example.invalid/tracking" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/eng.png" class="img-lang" alt="English">\n
+                        <div class="txt-lang">English</div>\n
+                    </div>\n
+                </a>\n
+                <a href="http://example.invalid/tracking-th" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/thai.png" class="img-lang" alt="&#3652;&#3607;&#3618;">\n
+                        <div class="txt-lang">&#3652;&#3607;&#3618;</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+        </ul>\n
+    </header>\n
+</section>\n
+\n
+<!-- DEBUG-VIEW START 608 APPPATH/Views/tracking_form.php -->\n
+<form role="form" id="addtrack" action="http://example.invalid/tracking" method="get">\n
+    <section id="track">\n
+        <div class="container">\n
+            <div class="row">\n
+                <div class="con-center-track">\n
+                    <div class="topic-txt-hm">TRACK &amp; TRACE</div>\n
+                    <div class="topic-txt-sm">Track Your Tracking Number</div>\n
+\n
+                    <input type="text" name="tracking_id" id="searchText" class="search-txt form-control required" value="&lt;script&gt;alert(1)&lt;/script&gt;" maxlength="100" required placeholder="Your Tracking ID" style="height: 70px; text-transform: uppercase;">\n
+\n
+                    <div>\n
+                        <button type="button" id="btnModal" class="main-btn-sm">HOW TO CHECK</button>\n
+                        <input type="submit" class="main-btn-sm" value="CHECK NOW">\n
+                    </div>\n
+\n
+                                            <p role="status">Tracking ID not found</p>\n
+                    \n
+                    <div class="mobile-only">\n
+                        <div class="btn-mobile">\n
+                            <a href="http://example.invalid/contact">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">CONTACT US</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                        <div class="btn-mobile">\n
+                            <a href="https://www.samsonite.co.th/">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">SHOPPING</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                    </div>\n
+\n
+                    <dialog id="howToCheck" class="how-to-check">\n
+                        <div class="topic-txt-hm">HOW TO CHECK</div>\n
+                        <img class="rs-bg-size" src="http://example.invalid/assets/images/popup_en.png" alt="HOW TO CHECK">\n
+                        <button type="button" id="btnModalClose" class="btn custom-btn">Close</button>\n
+                    </dialog>\n
+\n
+                    <script>\n
+                        (function () {\n
+                            var dialog = document.getElementById('howToCheck');\n
+                            document.getElementById('btnModal').addEventListener('click', function () {\n
+                                dialog.showModal();\n
+                            });\n
+                            document.getElementById('btnModalClose').addEventListener('click', function () {\n
+                                dialog.close();\n
+                            });\n
+                        })();\n
+                    </script>\n
+                </div>\n
+            </div>\n
+        </div>\n
+    </section>\n
+</form>\n
+\n
+<!-- DEBUG-VIEW ENDED 608 APPPATH/Views/tracking_form.php -->\n
+\n
+<section id="footer">\n
+    <div class="bg-footer">\n
+        <img src="http://example.invalid/assets/images/img-footer.png" alt="">\n
+        <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>\n
+        <div class="txt-num">02-761-9999</div>\n
+    </div>\n
+</section>\n
+</body>\n
+</html><!-- DEBUG-VIEW ENDED 609 APPPATH/Views/layout_public.php -->\n
+' [ASCII](length: 6844) does not contain "alert(1)" [ASCII](length: 8).
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:108
+
+3) Tests\Ci4\PublicTrackingHttpTest::testTrackingFormShowsLanguageSpecificPopupAndLegacyControls
+Failed asserting that '<!DOCTYPE html>\n
+<!-- DEBUG-VIEW START 615 APPPATH/Views/layout_public.php --><html lang="en">\n
+<head>\n
+    <meta charset="utf-8">\n
+    <meta name="viewport" content="width=device-width, initial-scale=1">\n
+    <title>Repair tracking | Samsonite</title>\n
+    <link href="http://example.invalid/assets/fonts/stylesheet.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/main.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/public.css" rel="stylesheet">\n
+</head>\n
+<body>\n
+<section id="header">\n
+    <header class="header">\n
+        <a href="http://example.invalid/" class="position-logo">\n
+            <img class="logo-size" src="http://example.invalid/assets/images/main-logo.png" alt="Samsonite">\n
+        </a>\n
+\n
+        <input class="menu-btn" type="checkbox" id="menu-btn">\n
+        <label class="menu-icon" for="menu-btn"><span class="navicon"></span></label>\n
+\n
+        <ul class="menu">\n
+            <li>\n
+                <a href="http://example.invalid/tracking">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 176a80 80 0 1 0 0 160 80 80 0 0 0 0-160zm208 96 40-32-40-70-48 16a160 160 0 0 0-40-24l-8-50h-80l-8 50a160 160 0 0 0-40 24l-48-16-40 70 40 32a161 161 0 0 0 0 48l-40 32 40 70 48-16a160 160 0 0 0 40 24l8 50h80l8-50a160 160 0 0 0 40-24l48 16 40-70-40-32a161 161 0 0 0 0-48z"></path></svg>\n
+                        <div class="txt-sub-menu">TRACK &amp; TRACE</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="http://example.invalid/contact">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M48 96a16 16 0 0 0-16 16v288a16 16 0 0 0 16 16h416a16 16 0 0 0 16-16V112a16 16 0 0 0-16-16H48zm8 40 200 150 200-150v24L256 320 56 160v-24z"></path></svg>\n
+                        <div class="txt-sub-menu">CONTACT US</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="https://www.samsonite.co.th/">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 448 512" fill="currentColor" aria-hidden="true"><path d="M144 128v16h160v-16a80 80 0 0 0-160 0zm-48 16v-16a128 128 0 0 1 256 0v16h64l24 320H8l24-320h64z"></path></svg>\n
+                        <div class="txt-sub-menu">SHOPPING</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li style="margin: 0 auto; text-align: center;">\n
+                <a href="http://example.invalid/tracking" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/eng.png" class="img-lang" alt="English">\n
+                        <div class="txt-lang">English</div>\n
+                    </div>\n
+                </a>\n
+                <a href="http://example.invalid/tracking-th" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/thai.png" class="img-lang" alt="&#3652;&#3607;&#3618;">\n
+                        <div class="txt-lang">&#3652;&#3607;&#3618;</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+        </ul>\n
+    </header>\n
+</section>\n
+\n
+<!-- DEBUG-VIEW START 614 APPPATH/Views/tracking_form.php -->\n
+<form role="form" id="addtrack" action="http://example.invalid/tracking" method="get">\n
+    <section id="track">\n
+        <div class="container">\n
+            <div class="row">\n
+                <div class="con-center-track">\n
+                    <div class="topic-txt-hm">TRACK &amp; TRACE</div>\n
+                    <div class="topic-txt-sm">Track Your Tracking Number</div>\n
+\n
+                    <input type="text" name="tracking_id" id="searchText" class="search-txt form-control required" value="" maxlength="100" required placeholder="Your Tracking ID" style="height: 70px; text-transform: uppercase;">\n
+\n
+                    <div>\n
+                        <button type="button" id="btnModal" class="main-btn-sm">HOW TO CHECK</button>\n
+                        <input type="submit" class="main-btn-sm" value="CHECK NOW">\n
+                    </div>\n
+\n
+                    \n
+                    <div class="mobile-only">\n
+                        <div class="btn-mobile">\n
+                            <a href="http://example.invalid/contact">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">CONTACT US</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                        <div class="btn-mobile">\n
+                            <a href="https://www.samsonite.co.th/">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">SHOPPING</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                    </div>\n
+\n
+                    <dialog id="howToCheck" class="how-to-check">\n
+                        <div class="topic-txt-hm">HOW TO CHECK</div>\n
+                        <img class="rs-bg-size" src="http://example.invalid/assets/images/popup_en.png" alt="HOW TO CHECK">\n
+                        <button type="button" id="btnModalClose" class="btn custom-btn">Close</button>\n
+                    </dialog>\n
+\n
+                    <script>\n
+                        (function () {\n
+                            var dialog = document.getElementById('howToCheck');\n
+                            document.getElementById('btnModal').addEventListener('click', function () {\n
+                                dialog.showModal();\n
+                            });\n
+                            document.getElementById('btnModalClose').addEventListener('click', function () {\n
+                                dialog.close();\n
+                            });\n
+                        })();\n
+                    </script>\n
+                </div>\n
+            </div>\n
+        </div>\n
+    </section>\n
+</form>\n
+\n
+<!-- DEBUG-VIEW ENDED 614 APPPATH/Views/tracking_form.php -->\n
+\n
+<section id="footer">\n
+    <div class="bg-footer">\n
+        <img src="http://example.invalid/assets/images/img-footer.png" alt="">\n
+        <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>\n
+        <div class="txt-num">02-761-9999</div>\n
+    </div>\n
+</section>\n
+</body>\n
+</html><!-- DEBUG-VIEW ENDED 615 APPPATH/Views/layout_public.php -->\n
+' [ASCII](length: 6720) contains "<title>Samsonite</title>" [ASCII](length: 24).
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:133
+
+4) Tests\Ci4\PublicTrackingHttpTest::testTrackingFormBackgroundCascadeKeepsStaticMobileFallbackForEveryPublishedCombination
+en
+Failed asserting that '<!DOCTYPE html>\n
+<!-- DEBUG-VIEW START 617 APPPATH/Views/layout_public.php --><html lang="en">\n
+<head>\n
+    <meta charset="utf-8">\n
+    <meta name="viewport" content="width=device-width, initial-scale=1">\n
+    <title>Repair tracking | Samsonite</title>\n
+    <link href="http://example.invalid/assets/fonts/stylesheet.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/main.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/public.css" rel="stylesheet">\n
+</head>\n
+<body>\n
+<section id="header">\n
+    <header class="header">\n
+        <a href="http://example.invalid/" class="position-logo">\n
+            <img class="logo-size" src="http://example.invalid/assets/images/main-logo.png" alt="Samsonite">\n
+        </a>\n
+\n
+        <input class="menu-btn" type="checkbox" id="menu-btn">\n
+        <label class="menu-icon" for="menu-btn"><span class="navicon"></span></label>\n
+\n
+        <ul class="menu">\n
+            <li>\n
+                <a href="http://example.invalid/tracking">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 176a80 80 0 1 0 0 160 80 80 0 0 0 0-160zm208 96 40-32-40-70-48 16a160 160 0 0 0-40-24l-8-50h-80l-8 50a160 160 0 0 0-40 24l-48-16-40 70 40 32a161 161 0 0 0 0 48l-40 32 40 70 48-16a160 160 0 0 0 40 24l8 50h80l8-50a160 160 0 0 0 40-24l48 16 40-70-40-32a161 161 0 0 0 0-48z"></path></svg>\n
+                        <div class="txt-sub-menu">TRACK &amp; TRACE</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="http://example.invalid/contact">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M48 96a16 16 0 0 0-16 16v288a16 16 0 0 0 16 16h416a16 16 0 0 0 16-16V112a16 16 0 0 0-16-16H48zm8 40 200 150 200-150v24L256 320 56 160v-24z"></path></svg>\n
+                        <div class="txt-sub-menu">CONTACT US</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="https://www.samsonite.co.th/">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 448 512" fill="currentColor" aria-hidden="true"><path d="M144 128v16h160v-16a80 80 0 0 0-160 0zm-48 16v-16a128 128 0 0 1 256 0v16h64l24 320H8l24-320h64z"></path></svg>\n
+                        <div class="txt-sub-menu">SHOPPING</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li style="margin: 0 auto; text-align: center;">\n
+                <a href="http://example.invalid/tracking" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/eng.png" class="img-lang" alt="English">\n
+                        <div class="txt-lang">English</div>\n
+                    </div>\n
+                </a>\n
+                <a href="http://example.invalid/tracking-th" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/thai.png" class="img-lang" alt="&#3652;&#3607;&#3618;">\n
+                        <div class="txt-lang">&#3652;&#3607;&#3618;</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+        </ul>\n
+    </header>\n
+</section>\n
+\n
+<!-- DEBUG-VIEW START 616 APPPATH/Views/tracking_form.php -->\n
+<form role="form" id="addtrack" action="http://example.invalid/tracking" method="get">\n
+    <section id="track">\n
+        <div class="container">\n
+            <div class="row">\n
+                <div class="con-center-track">\n
+                    <div class="topic-txt-hm">TRACK &amp; TRACE</div>\n
+                    <div class="topic-txt-sm">Track Your Tracking Number</div>\n
+\n
+                    <input type="text" name="tracking_id" id="searchText" class="search-txt form-control required" value="" maxlength="100" required placeholder="Your Tracking ID" style="height: 70px; text-transform: uppercase;">\n
+\n
+                    <div>\n
+                        <button type="button" id="btnModal" class="main-btn-sm">HOW TO CHECK</button>\n
+                        <input type="submit" class="main-btn-sm" value="CHECK NOW">\n
+                    </div>\n
+\n
+                    \n
+                    <div class="mobile-only">\n
+                        <div class="btn-mobile">\n
+                            <a href="http://example.invalid/contact">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">CONTACT US</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                        <div class="btn-mobile">\n
+                            <a href="https://www.samsonite.co.th/">\n
+                                <div class="control-txt">\n
+                                    <div class="txt-sub-menu">SHOPPING</div>\n
+                                </div>\n
+                            </a>\n
+                        </div>\n
+                    </div>\n
+\n
+                    <dialog id="howToCheck" class="how-to-check">\n
+                        <div class="topic-txt-hm">HOW TO CHECK</div>\n
+                        <img class="rs-bg-size" src="http://example.invalid/assets/images/popup_en.png" alt="HOW TO CHECK">\n
+                        <button type="button" id="btnModalClose" class="btn custom-btn">Close</button>\n
+                    </dialog>\n
+\n
+                    <script>\n
+                        (function () {\n
+                            var dialog = document.getElementById('howToCheck');\n
+                            document.getElementById('btnModal').addEventListener('click', function () {\n
+                                dialog.showModal();\n
+                            });\n
+                            document.getElementById('btnModalClose').addEventListener('click', function () {\n
+                                dialog.close();\n
+                            });\n
+                        })();\n
+                    </script>\n
+                </div>\n
+            </div>\n
+        </div>\n
+    </section>\n
+</form>\n
+\n
+<!-- DEBUG-VIEW ENDED 616 APPPATH/Views/tracking_form.php -->\n
+\n
+<section id="footer">\n
+    <div class="bg-footer">\n
+        <img src="http://example.invalid/assets/images/img-footer.png" alt="">\n
+        <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>\n
+        <div class="txt-num">02-761-9999</div>\n
+    </div>\n
+</section>\n
+</body>\n
+</html><!-- DEBUG-VIEW ENDED 617 APPPATH/Views/layout_public.php -->\n
+' [ASCII](length: 6720) contains "@media (max-width: 850px)" [ASCII](length: 25).
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:450
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:188
+
+5) Tests\Ci4\PublicTrackingHttpTest::testResultUsesCi3HierarchyLanguageLabelsAndNoTrackingIdParagraph
+Failed asserting that '<!DOCTYPE html>\n
+<!-- DEBUG-VIEW START 619 APPPATH/Views/layout_public.php --><html lang="en">\n
+<head>\n
+    <meta charset="utf-8">\n
+    <meta name="viewport" content="width=device-width, initial-scale=1">\n
+    <title>Repair tracking | Samsonite</title>\n
+    <link href="http://example.invalid/assets/fonts/stylesheet.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/main.css" rel="stylesheet">\n
+    <link href="http://example.invalid/assets/css/public.css" rel="stylesheet">\n
+</head>\n
+<body>\n
+<section id="header">\n
+    <header class="header">\n
+        <a href="http://example.invalid/" class="position-logo">\n
+            <img class="logo-size" src="http://example.invalid/assets/images/main-logo.png" alt="Samsonite">\n
+        </a>\n
+\n
+        <input class="menu-btn" type="checkbox" id="menu-btn">\n
+        <label class="menu-icon" for="menu-btn"><span class="navicon"></span></label>\n
+\n
+        <ul class="menu">\n
+            <li>\n
+                <a href="http://example.invalid/tracking">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 176a80 80 0 1 0 0 160 80 80 0 0 0 0-160zm208 96 40-32-40-70-48 16a160 160 0 0 0-40-24l-8-50h-80l-8 50a160 160 0 0 0-40 24l-48-16-40 70 40 32a161 161 0 0 0 0 48l-40 32 40 70 48-16a160 160 0 0 0 40 24l8 50h80l8-50a160 160 0 0 0 40-24l48 16 40-70-40-32a161 161 0 0 0 0-48z"></path></svg>\n
+                        <div class="txt-sub-menu">TRACK &amp; TRACE</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="http://example.invalid/contact">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M48 96a16 16 0 0 0-16 16v288a16 16 0 0 0 16 16h416a16 16 0 0 0 16-16V112a16 16 0 0 0-16-16H48zm8 40 200 150 200-150v24L256 320 56 160v-24z"></path></svg>\n
+                        <div class="txt-sub-menu">CONTACT US</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li>\n
+                <a href="https://www.samsonite.co.th/">\n
+                    <div class="control-txt">\n
+                        <svg class="edit-ico" width="1em" height="1em" viewbox="0 0 448 512" fill="currentColor" aria-hidden="true"><path d="M144 128v16h160v-16a80 80 0 0 0-160 0zm-48 16v-16a128 128 0 0 1 256 0v16h64l24 320H8l24-320h64z"></path></svg>\n
+                        <div class="txt-sub-menu">SHOPPING</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+            <li style="margin: 0 auto; text-align: center;">\n
+                <a href="http://example.invalid/tracking" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/eng.png" class="img-lang" alt="English">\n
+                        <div class="txt-lang">English</div>\n
+                    </div>\n
+                </a>\n
+                <a href="http://example.invalid/tracking-th" style="display: inline-block">\n
+                    <div class="control-lang">\n
+                        <img src="http://example.invalid/assets/images/thai.png" class="img-lang" alt="&#3652;&#3607;&#3618;">\n
+                        <div class="txt-lang">&#3652;&#3607;&#3618;</div>\n
+                    </div>\n
+                </a>\n
+            </li>\n
+        </ul>\n
+    </header>\n
+</section>\n
+\n
+<!-- DEBUG-VIEW START 618 APPPATH/Views/tracking_result.php -->\n
+<section id="rs-track">\n
+    \n
+    <div class="container">\n
+        <div class="row">\n
+            <p data-tracking-id>WP00C-TRACK-005</p>\n
+            <div class="con-pro-bar">\n
+                                                                                                        <div class="con-step-pass">\n
+                            <div class="contain-process">\n
+                                <div class="circle-awe circle-awe-animate"></div>\n
+                                                                    <div class="line-normal line-progress"></div>\n
+                                                            </div>\n
+                            <div class="txt-normal">SYNTHETIC RETURN 08/08/2569</div>\n
+                        </div>\n
+                                                                    <div class="con-step-pass">\n
+                            <div class="contain-process">\n
+                                <div class="circle-awe bg-pass"></div>\n
+                                                                    <div class="line-normal line-progress"></div>\n
+                                                            </div>\n
+                            <div class="txt-normal">SYNTHETIC REPAIR COMPLETE 07/08/2569</div>\n
+                        </div>\n
+                                                                    <div class="con-step-pass">\n
+                            <div class="contain-process">\n
+                                <div class="circle-awe bg-pass"></div>\n
+                                                                    <div class="line-normal line-progress"></div>\n
+                                                            </div>\n
+                            <div class="txt-normal">SYNTHETIC REQUEST 06/08/2569</div>\n
+                        </div>\n
+                                                                    <div class="con-step-pass">\n
+                            <div class="contain-process">\n
+                                <div class="circle-awe bg-pass"></div>\n
+                                                            </div>\n
+                            <div class="txt-normal">SYNTHETIC NEW 05/08/2569</div>\n
+                        </div>\n
+                                                </div>\n
+        </div>\n
+    </div>\n
+</section>\n
+\n
+<!-- DEBUG-VIEW ENDED 618 APPPATH/Views/tracking_result.php -->\n
+\n
+<section id="footer">\n
+    <div class="bg-footer">\n
+        <img src="http://example.invalid/assets/images/img-footer.png" alt="">\n
+        <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>\n
+        <div class="txt-num">02-761-9999</div>\n
+    </div>\n
+</section>\n
+</body>\n
+</html><!-- DEBUG-VIEW ENDED 619 APPPATH/Views/layout_public.php -->\n
+' [ASCII](length: 6312) does not contain "data-tracking-id" [ASCII](length: 16).
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/PublicTrackingHttpTest.php:200
+
+--
+
+There was 1 risky test:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+Test code or tested code did not close its own output buffers
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/02-plus-login/tree/tests/ci4/MenuHttpTest.php:245
+
+ERRORS!
+Tests: 396, Assertions: 5555, Errors: 1, Failures: 5, Risky: 1.

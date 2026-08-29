@@ -1,0 +1,35 @@
+PHPUnit 11.5.56 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.7
+Configuration: /private/tmp/claude-501/task7-gate-incremental-fixed-63470/06-plus-contact/tree/phpunit.xml.dist
+
+...............................................................  63 / 396 ( 15%)
+............................................................... 126 / 396 ( 31%)
+............................................................... 189 / 396 ( 47%)
+.............................................................FF 252 / 396 ( 63%)
+............................................................... 315 / 396 ( 79%)
+.....................
+reset_delivery sent=1 retry=0 idle=1 released=0 rate_pruned=0
+.......................................... 378 / 396 ( 95%)
+..................                                              396 / 396 (100%)
+
+Time: 01:54.136, Memory: 54.50 MB
+
+There were 2 failures:
+
+1) Tests\Ci4\PasswordResetPageHttpTest::testForgotPasswordPageRendersEmailFormWiredToApi
+Element with selector 'input#email' is not seen in response.
+Failed asserting that false is true.
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/06-plus-contact/tree/vendor/codeigniter4/framework/system/Test/TestResponse.php:443
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/06-plus-contact/tree/tests/ci4/PasswordResetPageHttpTest.php:19
+
+2) Tests\Ci4\PasswordResetPageHttpTest::testResetPasswordPageRendersPasswordFieldsAndCarriesToken
+Element with selector 'input#password' is not seen in response.
+Failed asserting that false is true.
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/06-plus-contact/tree/vendor/codeigniter4/framework/system/Test/TestResponse.php:443
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/06-plus-contact/tree/tests/ci4/PasswordResetPageHttpTest.php:36
+
+FAILURES!
+Tests: 396, Assertions: 7902, Failures: 2.

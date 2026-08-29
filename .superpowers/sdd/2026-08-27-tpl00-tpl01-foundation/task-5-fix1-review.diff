@@ -1,0 +1,971 @@
+# Task 5 fix round 1 current package
+
+## Tracked diffs from HEAD
+diff --git a/app/Master/MenuStore.php b/app/Master/MenuStore.php
+index 605ca20..94eac98 100644
+--- a/app/Master/MenuStore.php
++++ b/app/Master/MenuStore.php
+@@ -202,20 +202,58 @@ final class MenuStore
+         foreach ($this->db->table('group_type')->select('group_type_id, group_type_name, icon_menu')->get()->getResultArray() as $row) {
+             $meta[(int) $row['group_type_id']] = [
+                 'name' => (string) $row['group_type_name'],
+                 'icon' => (string) $row['icon_menu'],
+             ];
+         }
+ 
+         return $meta;
+     }
+ 
++    public function branchName(?int $branchId): string
++    {
++        if ($branchId === null || $branchId < 1 || ! $this->db->tableExists($this->db->prefixTable('branch'), false)) {
++            return '';
++        }
++        $fields = $this->db->getFieldNames($this->db->prefixTable('branch'));
++        if (! is_array($fields) || ! in_array('branch_name', $fields, true)) {
++            return '';
++        }
++
++        $name = $this->db->table('branch')
++            ->select('branch_name')
++            ->where('branch_id', $branchId)
++            ->get()
++            ->getRow('branch_name');
++
++        return is_string($name) ? $name : '';
++    }
++
++    /** @return list<array{id: int, name: string}> */
++    public function branches(): array
++    {
++        if (! $this->db->tableExists($this->db->prefixTable('branch'), false)) {
++            return [];
++        }
++        $fields = $this->db->getFieldNames($this->db->prefixTable('branch'));
++        if (! is_array($fields)
++            || ! in_array('branch_id', $fields, true)
++            || ! in_array('branch_name', $fields, true)) {
++            return [];
++        }
++
++        return array_map(
++            static fn (array $row): array => ['id' => (int) $row['branch_id'], 'name' => (string) $row['branch_name']],
++            $this->db->table('branch')->select('branch_id, branch_name')->get()->getResultArray(),
++        );
++    }
++
+     /** @return list<array{id: int, name: string}> */
+     public function menuGroups(): array
+     {
+         if ($this->db->tableExists($this->db->prefixTable('group_type'), false)) {
+             return array_map(
+                 static fn (array $row): array => ['id' => (int) $row['group_type_id'], 'name' => (string) $row['group_type_name']],
+                 $this->db->table('group_type')->orderBy('group_type_id', 'ASC')->get()->getResultArray(),
+             );
+         }
+         if (! $this->db->tableExists($this->db->prefixTable('tbl_menu'), false)) {
+diff --git a/app/Presentation/AdminLayoutPresenter.php b/app/Presentation/AdminLayoutPresenter.php
+index fc49d51..282fa41 100644
+--- a/app/Presentation/AdminLayoutPresenter.php
++++ b/app/Presentation/AdminLayoutPresenter.php
+@@ -13,28 +13,39 @@ final class AdminLayoutPresenter
+     /**
+      * @param array<string, mixed> $session
+      *
+      * @return array<string, mixed>
+      */
+     public function present(array $session, string $title, string $content, string $profile = 'admin'): array
+     {
+         $isLoggedIn = ($session['isLoggedIn'] ?? false) === true;
+         $groupId = (int) ($session['GroupID'] ?? 0);
+         $branchId = ($session['BranchID'] ?? null) === null ? null : (int) $session['BranchID'];
++        $showBranchAutocomplete = $isLoggedIn && $groupId <= 3;
++        $branchOptions = [];
++        if ($showBranchAutocomplete) {
++            foreach ($this->menus->branches() as $branch) {
++                $branchOptions[] = [
++                    'label' => $branch['name'],
++                    'value' => base_url('ReportTrackingListing/0/' . $branch['id']),
++                ];
++            }
++        }
+ 
+         return [
+             'pageTitle' => $title,
+             'title' => $title,
+             'content' => $content,
+             'isLoggedIn' => $isLoggedIn,
+             'name' => (string) ($session['name'] ?? ''),
+             'role_text' => (string) ($session['roleText'] ?? ''),
+             'last_login' => (string) ($session['lastLogin'] ?? ''),
+             'GroupID' => $groupId,
+             'BranchID' => $branchId,
+-            'BranchName' => '',
++            'BranchName' => $isLoggedIn ? $this->menus->branchName($branchId) : '',
+             'menuItems' => $isLoggedIn ? $this->menus->visible($groupId, $branchId) : [],
+-            'branchOptions' => [],
++            'showBranchAutocomplete' => $showBranchAutocomplete,
++            'branchOptions' => $branchOptions,
+             'layoutProfile' => $profile,
+         ];
+     }
+ }
+diff --git a/app/Views/layout.php b/app/Views/layout.php
+index d13469d..37fceb3 100644
+--- a/app/Views/layout.php
++++ b/app/Views/layout.php
+@@ -1,96 +1,200 @@
+ <?php
+ /**
++ * @var string $pageTitle
+  * @var string $title
+  * @var string $content
+  * @var bool $isLoggedIn
+  * @var string $name
++ * @var string $role_text
++ * @var string $last_login
++ * @var int $GroupID
++ * @var int|null $BranchID
++ * @var string $BranchName
+  * @var string $subtitle
+  * @var string $actions
+  * @var list<array{group_id: int, group_name: string, icon: string, items: list<array{menu_name: string, menu_link: string}>}> $menuItems
++ * @var bool $showBranchAutocomplete
++ * @var list<array{label: string, value: string}> $branchOptions
++ * @var bool $accessDeniedProfile
+  */
+ 
+-// Map the group_type.icon_menu fontawesome string to an inline SVG (design §1.5).
+-// No fontawesome dependency; unknown values fall back to a neutral glyph.
+-$iconSvg = static function (string $icon): string {
+-    $paths = [
+-        'fa fa-dashboard'     => '<path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>',
+-        'fa fa-user'          => '<path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-5 0-9 2.5-9 5.5V22h18v-2.5c0-3-4-5.5-9-5.5z"/>',
+-        'fa fa-shopping-cart' => '<path d="M7 18a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4zM6.2 6l1.6 8h9.6l2-8H6.2zM4 3H1v2h2l1 11h14v-2H6l-.2-1H4V3z"/>',
+-        'fa fa-file-text'     => '<path d="M6 2h8l4 4v16H6V2zm7 1.5V7h3.5L13 3.5zM8 12h8v2H8v-2zm0 4h8v2H8v-2zm0-8h4v2H8V8z"/>',
+-        'fa fa-bar-chart'     => '<path d="M3 21h18v-2H3v2zM5 17h3V7H5v10zm5 0h3V3h-3v14zm5 0h3v-7h-3v7z"/>',
+-        'fa fa-upload'        => '<path d="M12 3l5 5h-3v6h-4V8H7l5-5zM5 18h14v2H5v-2z"/>',
+-        'fa fa-users'         => '<path d="M8 12a4 4 0 100-8 4 4 0 000 8zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20v-1.5C2 16 5 14.5 8 14.5s6 1.5 6 4V20H2zm14 0v-1.5c0-1.6-.8-2.8-2-3.6 2.6.2 6 1.4 6 3.6V20h-4z"/>',
+-        'fa fa-cogs'          => '<path d="M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 4l1.5-1.2-1.5-2.6-1.8.6a6.6 6.6 0 00-1.1-.6L17 4.5h-3l-.5 1.9c-.4.2-.7.4-1.1.6l-1.8-.6-1.5 2.6L10.1 12l-1.5 1.2 1.5 2.6 1.8-.6c.4.2.7.4 1.1.6l.5 1.9h3l.5-1.9c.4-.2.7-.4 1.1-.6l1.8.6 1.5-2.6L20.4 12z"/>',
+-    ];
+-
+-    return '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+-        . ($paths[$icon] ?? '<path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="2"/>')
+-        . '</svg>';
+-};
++$accessDeniedProfile = $accessDeniedProfile ?? false;
++$branchOptionsJson = json_encode(
++    $branchOptions,
++    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES,
++);
++if (! is_string($branchOptionsJson)) {
++    $branchOptionsJson = '[]';
++}
+ ?>
+-<!doctype html>
+-<html lang="en">
++<!DOCTYPE html>
++<html>
+ <head>
+-    <meta charset="utf-8">
+-    <meta name="viewport" content="width=device-width, initial-scale=1">
+-    <title><?= esc($title) ?> | Samsonite Tracking</title>
+-    <link rel="stylesheet" href="/assets/fonts/stylesheet.css">
+-    <link rel="stylesheet" href="/assets/css/admin.css">
++    <meta charset="UTF-8">
++    <title><?= esc($pageTitle) ?></title>
++    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
++    <link href="<?= base_url('assets/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/datatables/1.10.16/css/jquery.dataTables.min.css') ?>" rel="stylesheet">
++    <link href="<?= base_url('assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css') ?>" rel="stylesheet">
++    <link href="<?= base_url('assets/font-awesome/css/font-awesome.min.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/dist/css/AdminLTE.min.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/dist/css/CustomAdmin.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/css/main.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/css/multifreezer.css') ?>" rel="stylesheet" type="text/css">
++    <link href="<?= base_url('assets/dist/css/skins/_all-skins.min.css') ?>" rel="stylesheet" type="text/css">
++    <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-1.10.2.min.js') ?>"></script>
++    <link rel="stylesheet" media="all" type="text/css" href="<?= base_url('assets/js/jquerydatepicker/jquery-ui.css') ?>">
++    <link rel="stylesheet" media="all" type="text/css" href="<?= base_url('assets/js/jquerydatepicker/jquery-ui-timepicker-addon.css') ?>">
++    <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-ui.min.js') ?>"></script>
++    <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js') ?>"></script>
++    <script type="text/javascript" src="<?= base_url('assets/js/jquerydatepicker/jquery-ui-sliderAccess.js') ?>"></script>
++    <style>
++        .error {
++            color: red;
++            font-weight: normal;
++        }
++    </style>
++    <script type="text/javascript">
++        var baseURL = <?= json_encode(base_url(), JSON_UNESCAPED_SLASHES) ?>;
++    </script>
++    <!--[if lt IE 9]>
++        <script src="<?= base_url('assets/html5shiv/3.7.2/html5shiv.min.js') ?>"></script>
++        <script src="<?= base_url('assets/respond/1.4.2/respond.min.js') ?>"></script>
++    <![endif]-->
+ </head>
+ <?php if ($isLoggedIn): ?>
+-<body class="admin">
+-    <input type="checkbox" id="sidebar-toggle" class="sidebar-toggle">
+-    <aside class="sidebar">
+-        <a class="brand" href="<?= site_url('dashboard') ?>">
+-            <img src="/assets/images/main-logo.png" alt="Samsonite">
++<body class="skin-blue sidebar-mini">
++<div class="wrapper">
++    <header class="main-header">
++        <a href="<?= base_url() ?>" class="logo" style="padding: 0; background-color: #fff; color: #014c8f; border-right: 1px solid #014c8f;">
++            <img class="img-responsive" src="<?= base_url('assets/images/print-logo.jpg') ?>" alt="">
+         </a>
+-        <nav aria-label="Main navigation">
+-            <p class="menu-heading">MENU</p>
+-            <?php foreach ($menuItems as $group): ?>
+-                <ul class="menu-group">
+-                    <li class="menu-group-heading">
+-                        <p class="menu-group-title"><?= $iconSvg($group['icon']) ?><span><?= esc($group['group_name']) ?></span></p>
++        <nav class="navbar navbar-static-top" role="navigation" style="background-color: #fff; color: #014c8f; border-bottom: 1px solid #014c8f;">
++            <a href="#" class="sidebar-toggle" data-toggle="offcanvas" role="button" style="color: #000;">
++                <span class="sr-only">Toggle navigation</span>
++            </a>
++            <button class="btn btn-sm btn-default" onclick="history.back(-1)">Back</button>
++            <?php if ($BranchName !== ''): ?>
++            <div class="logo" style="background-color: #fff; color: #014c8f;">
++                <span class="logo-lg"><b>BRANCH <?= esc($BranchName) ?></b></span>
++            </div>
++            <?php endif ?>
++            <div class="navbar-custom-menu">
++                <ul class="nav navbar-nav">
++                    <li class="dropdown tasks-menu">
++                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="true">
++                            <i class="fa fa-history"></i>
++                        </a>
++                        <ul class="dropdown-menu">
++                            <li class="header"> Last Login : <i class="fa fa-clock-o"></i> <?= $last_login === '' ? 'First Time Login' : esc($last_login) ?></li>
++                        </ul>
++                    </li>
++                    <?php if ($showBranchAutocomplete): ?>
++                    <li class="dropdown tasks-menu">
++                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="true">
++                            <i class="fa fa-university"></i>
++                        </a>
++                        <ul class="dropdown-menu">
++                            <script>
++                                $(document).ready(function() {
++                                    var xsource = <?= $branchOptionsJson ?>;
++                                    $("input#autocomplete").autocomplete({
++                                        source: xsource,
++                                        select: function(event, ui) {
++                                            window.location.href = ui.item.value;
++                                        }
++                                    });
++                                });
++                            </script>
++                            <input id="autocomplete" class="form-control" placeholder="Search">
++                        </ul>
++                    </li>
++                    <?php endif ?>
++                    <li class="dropdown user user-menu">
++                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">
++                            <img src="<?= base_url('assets/dist/img/avatar.png') ?>" class="user-image" alt="User Image">
++                            <span class="hidden-xs"><?= esc($name) ?></span>
++                        </a>
++                        <ul class="dropdown-menu">
++                            <li class="user-header">
++                                <img src="<?= base_url('assets/dist/img/avatar.png') ?>" class="img-circle" alt="User Image">
++                                <p>
++                                    <?= esc($name) ?>
++                                    <small><?= esc($role_text) ?></small>
++                                </p>
++                            </li>
++                            <li class="user-footer">
++                                <div class="pull-right">
++                                    <a href="<?= site_url('change-password') ?>" class="btn btn-default btn-flat"><i class="fa fa-key"></i> Change Password</a>
++                                </div>
++                            </li>
++                        </ul>
++                    </li>
++                    <li class="btn-flat">
++                        <form action="<?= site_url('logout') ?>" method="post" style="display: inline;">
++                            <?= csrf_field() ?>
++                            <button type="submit" class="btn btn-link" style="background: transparent; border: 0; color: #777; padding: 15px; line-height: 20px;"><i class="fa fa-sign-out"></i> Sign out</button>
++                        </form>
+                     </li>
+-                    <?php foreach ($group['items'] as $item): ?>
+-                        <li><a href="<?= site_url($item['menu_link']) ?>"><?= esc($item['menu_name']) ?></a></li>
+-                    <?php endforeach ?>
+                 </ul>
+-            <?php endforeach ?>
++            </div>
+         </nav>
+-    </aside>
+-    <header class="topbar">
+-        <label class="sidebar-toggle-btn" for="sidebar-toggle" aria-label="Toggle navigation">&#9776;</label>
+-        <a class="topbar-back" href="javascript:history.back()">Back</a>
+-        <span class="topbar-user"><?= esc($name !== '' ? $name : 'user') ?></span>
+-        <form action="<?= site_url('logout') ?>" method="post">
+-            <?= csrf_field() ?>
+-            <button class="link-button" type="submit">Sign out</button>
+-        </form>
+     </header>
+-    <main class="content">
+-        <div class="page-header">
+-            <?php // CI3 keeps the subtitle inside the heading (`<h1>Title<br><small>…</small></h1>`),
+-                  // so screen readers and the parity comparison both read them as one title block. ?>
+-            <h1 id="page-title"><?= esc($title) ?><?php if ($subtitle !== ''): ?>
+-                <br><small><?= esc($subtitle) ?></small><?php endif ?></h1>
+-            <?php if ($actions !== ''): ?><div class="page-actions"><?= $actions ?></div><?php endif ?>
+-        </div>
++    <aside class="main-sidebar">
++        <section class="sidebar">
++            <ul class="sidebar-menu">
++                <li class="header">MENU</li>
++                <?php foreach ($menuItems as $group): ?>
++                <li class="treeview active">
++                    <a href="#"><i class="<?= esc($group['icon'], 'attr') ?>"></i><span><?= esc($group['group_name']) ?></span>
++                        <span class="pull-right-container">
++                            <i class="fa fa-angle-left pull-right"></i>
++                        </span>
++                    </a>
++                    <ul class="treeview-menu">
++                        <?php foreach ($group['items'] as $item): ?>
++                        <li><a href="<?= base_url($item['menu_link']) ?>"><?= esc($item['menu_name']) ?></a></li>
++                        <?php endforeach ?>
++                    </ul>
++                </li>
++                <?php endforeach ?>
++            </ul>
++        </section>
++    </aside>
++    <?php if ($accessDeniedProfile): ?>
+         <?= $content ?>
+-    </main>
+-    <footer class="site-footer">
+-        <img src="/assets/images/img-footer.png" alt="">
+-        <span>NEED HELP ? CALL OUR CUSTOMER CENTRE AT</span>
+-        <strong>02-761-9999</strong>
++    <?php else: ?>
++    <div class="content-wrapper">
++        <section class="content-header">
++            <h1><?= esc($title) ?><?php if ($subtitle !== ''): ?>
++                <small><?= esc($subtitle) ?></small><?php endif ?></h1>
++            <?php if ($actions !== ''): ?><?= $actions ?><?php endif ?>
++        </section>
++        <section class="content">
++            <?= $content ?>
++        </section>
++    </div>
++    <?php endif ?>
++    <footer class="main-footer">
++        <section id="footer">
++            <div class="bg-footer">
++                <img class="" src="<?= base_url('assets/images/img-footer.png') ?>">
++                <div class="txt-cen-footer">NEED HELP ? CALL OUR CUSTOMER CENTRE AT</div>
++                <div class="txt-num">02-761-9999</div>
++            </div>
++        </section>
+     </footer>
++    <?php require __DIR__ . '/partials/admin_legacy_scripts.php'; ?>
++</div>
+ </body>
+ <?php else: ?>
+ <body class="bare">
+     <main><?= $content ?></main>
+     <footer class="site-footer">
+-        <img src="/assets/images/img-footer.png" alt="">
++        <img src="<?= base_url('assets/images/img-footer.png') ?>" alt="">
+         <span>NEED HELP ? CALL OUR CUSTOMER CENTRE AT</span>
+         <strong>02-761-9999</strong>
+     </footer>
+ </body>
+ <?php endif ?>
+ </html>
+diff --git a/tests/ci4/AccessDeniedHttpTest.php b/tests/ci4/AccessDeniedHttpTest.php
+index f82bd25..449e3fa 100644
+--- a/tests/ci4/AccessDeniedHttpTest.php
++++ b/tests/ci4/AccessDeniedHttpTest.php
+@@ -46,38 +46,42 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
+ 
+     public function testAuthorizationDenialRendersCi3BodyInAuthenticatedAdminChrome(): void
+     {
+         $response = $this->htmlAuthorizationRequest();
+         $response->assertStatus(403);
+         $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
+         $response->assertNotRedirect();
+         $body = (string) $response->response()->getBody();
+ 
+         foreach ([
+-            '<title>Access Denied | Samsonite Tracking</title>',
+-            '<body class="admin">',
+-            '<nav aria-label="Main navigation">',
+-            '<main class="content">',
++            '<title>Access Denied</title>',
++            '<body class="skin-blue sidebar-mini">',
++            '<div class="wrapper">',
++            '<header class="main-header">',
++            '<aside class="main-sidebar">',
++            '<ul class="sidebar-menu">',
+             '<div class="content-wrapper">',
+             '<section class="content-header">',
+             '<small>You are not authorize user to use this</small>',
+             '<section class="content">',
+             '<img src="/assets/images/access.png" alt="Access Denied Image">',
++            '<footer class="main-footer">',
+         ] as $contract) {
+             self::assertStringContainsString($contract, $body, $contract);
+         }
+         self::assertSame(1, preg_match(
+-            '#<main class="content">(?:\s|<!--.*?-->)*<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Access Denied\s*<small>You are not authorize user to use this</small>#s',
++            '#<aside class="main-sidebar">.*?</aside>(?:\s|<!--.*?-->)*<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Access Denied\s*<small>You are not authorize user to use this</small>#s',
+             $body,
+         ));
+         self::assertStringNotContainsString('class="page-header"', $body);
+         self::assertStringNotContainsString('id="page-title"', $body);
++        self::assertStringNotContainsString('<main class="content">', $body);
+     }
+ 
+     public function testBranchlessDenialUsesTheSameHtmlRepresentationWithoutController(): void
+     {
+         $response = $this
+             ->withHeaders(['Accept' => 'text/html'])
+             ->withSession($this->branchSession())
+             ->get('/test/access/branchless');
+         $response->assertStatus(403);
+         $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
+@@ -129,23 +133,24 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
+             'malformed media type' => [['Accept' => 'text/htmlfoo'], false],
+             'quoted media type' => [['Accept' => '"text/html"'], false],
+             'empty range' => [['Accept' => 'text/html,'], false],
+             'whitespace in media type' => [['Accept' => 'text / html'], false],
+         ];
+     }
+ 
+     public function testJsonAjaxAndAnonymousDenialsDoNotQueryMenuData(): void
+     {
+         $menuQueries = [];
+-        $listener = static function (Query $query) use (&$menuQueries): void {
++        $branchTable = '`' . $this->db->prefixTable('branch') . '`';
++        $listener = static function (Query $query) use (&$menuQueries, $branchTable): void {
+             $sql = $query->getQuery();
+-            if (str_contains($sql, 'group_menu') || str_contains($sql, 'tbl_menu')) {
++            if (str_contains($sql, 'group_menu') || str_contains($sql, 'tbl_menu') || str_contains($sql, $branchTable)) {
+                 $menuQueries[] = $sql;
+             }
+         };
+         Events::on('DBQuery', $listener);
+ 
+         try {
+             $this->withSession($this->branchSession())
+                 ->get('/test/access/authorization')
+                 ->assertStatus(403);
+             $this->withHeaders(['Accept' => 'text/html', 'X-Requested-With' => 'XMLHttpRequest'])
+@@ -260,30 +265,30 @@ final class AccessDeniedHttpTest extends CIUnitTestCase
+                 self::addToAssertionCount(1);
+             }
+         }
+     }
+ 
+     public function testNormalLayoutDoesNotInheritTheAccessDeniedProfileAcrossRenders(): void
+     {
+         $this->withSession($this->adminSession())->get('/test/access/authorized-allowed')->assertStatus(200);
+ 
+         $before = $this->renderNormalBaseLayout('Before denial');
+-        self::assertStringContainsString('<div class="page-header">', $before);
+-        self::assertStringContainsString('id="page-title">Before denial', $before);
++        self::assertStringContainsString('<section class="content-header">', $before);
++        self::assertStringContainsString('<h1>Before denial</h1>', $before);
+ 
+         $denied = $this->htmlAuthorizationRequest();
+         $denied->assertStatus(403);
+-        self::assertStringNotContainsString('class="page-header"', (string) $denied->response()->getBody());
++        self::assertSame(1, substr_count((string) $denied->response()->getBody(), '<section class="content-header">'));
+ 
+         $after = $this->renderNormalBaseLayout('After denial');
+-        self::assertStringContainsString('<div class="page-header">', $after);
+-        self::assertStringContainsString('id="page-title">After denial', $after);
++        self::assertStringContainsString('<section class="content-header">', $after);
++        self::assertStringContainsString('<h1>After denial</h1>', $after);
+         self::assertStringNotContainsString('Access Denied</h1>', $after);
+     }
+ 
+     private function renderNormalBaseLayout(string $title): string
+     {
+         $controller = new class extends BaseController {
+             public function render(string $title): string
+             {
+                 return $this->layout($title, '<p>Normal layout content</p>');
+             }
+diff --git a/tests/ci4/MenuHttpTest.php b/tests/ci4/MenuHttpTest.php
+index 7183eac..3c15051 100644
+--- a/tests/ci4/MenuHttpTest.php
++++ b/tests/ci4/MenuHttpTest.php
+@@ -19,37 +19,43 @@ final class MenuHttpTest extends CIUnitTestCase
+     private int $adminId;
+     private int $branchId;
+ 
+     protected function setUp(): void
+     {
+         parent::setUp();
+         foreach ([
+             'group_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, group_type VARCHAR(250) NOT NULL, name VARCHAR(250) NOT NULL, cdate DATETIME NOT NULL',
+             'group_type' => 'group_type_id INTEGER PRIMARY KEY, group_type_name VARCHAR(250) NOT NULL, icon_menu VARCHAR(250) NOT NULL',
+             'tbl_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, menu_name VARCHAR(250) NOT NULL, menu_link VARCHAR(250) NOT NULL, group_type INTEGER NOT NULL, cdate DATETIME NOT NULL',
++            'branch' => 'branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250) NOT NULL, branch_user_name VARCHAR(250) NOT NULL',
+             'request_order' => 'request_id INTEGER PRIMARY KEY, branchID INTEGER, action_status INTEGER',
+         ] as $table => $definition) {
+             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
+             $this->db->query("DROP TABLE IF EXISTS {$name}");
+             $this->db->query("CREATE TABLE {$name} ({$definition})");
+         }
+         $this->db->resetDataCache();
+         $now = '2026-08-22 09:00:00';
+         $this->db->table('group_menu')->insertBatch([
+             ['id' => 1, 'group_type' => '1,2', 'name' => 'CENTRAL', 'cdate' => $now],
+             ['id' => 4, 'group_type' => '1,3', 'name' => 'BRANCH', 'cdate' => $now],
+         ]);
+         $this->db->table('group_type')->insertBatch([
+             ['group_type_id' => 1, 'group_type_name' => 'DASHBOARD', 'icon_menu' => 'fa fa-dashboard'],
+             ['group_type_id' => 2, 'group_type_name' => 'MASTER ADMIN', 'icon_menu' => 'fa fa-cogs'],
+             ['group_type_id' => 3, 'group_type_name' => 'ORDER', 'icon_menu' => 'fa fa-shopping-cart'],
+         ]);
++        $this->db->table('branch')->insert([
++            'branch_id' => 1,
++            'branch_name' => 'SYNTHETIC BRANCH',
++            'branch_user_name' => 'synthetic-branch',
++        ]);
+         $this->db->table('tbl_menu')->insertBatch([
+             ['id' => 1, 'menu_name' => 'DASH LINK', 'menu_link' => 'dashboard', 'group_type' => 1, 'cdate' => $now],
+             ['id' => 2, 'menu_name' => 'ADMIN MASTER LINK', 'menu_link' => 'brandListing', 'group_type' => 2, 'cdate' => $now],
+             ['id' => 3, 'menu_name' => 'BRANCH ORDER LINK', 'menu_link' => 'orders', 'group_type' => 3, 'cdate' => $now],
+             ['id' => 4, 'menu_name' => 'REPORT LINK', 'menu_link' => 'ReportTrackingListing', 'group_type' => 2, 'cdate' => $now],
+             ['id' => 5, 'menu_name' => 'RETIRED TEST LINK', 'menu_link' => 'ReportTrackingListingTest', 'group_type' => 2, 'cdate' => $now],
+             ['id' => 6, 'menu_name' => 'TRANSPORTING', 'menu_link' => 'TrackingListing', 'group_type' => 3, 'cdate' => $now],
+             ['id' => 7, 'menu_name' => 'STATUS REPAIR', 'menu_link' => 'TrackingcloseListing', 'group_type' => 3, 'cdate' => $now],
+             ['id' => 8, 'menu_name' => 'DELIVERED', 'menu_link' => 'TrackingreturnListing', 'group_type' => 3, 'cdate' => $now],
+         ]);
+@@ -80,21 +86,21 @@ final class MenuHttpTest extends CIUnitTestCase
+         self::assertSame('REPORT ONLY', $this->db->table('group_menu')->where('id', $row['id'])->get()->getRow('name'));
+     }
+ 
+     public function testMenuListingSearchFiltersByNameAndPrefills(): void
+     {
+         $session = $this->session($this->adminId, 1, 1, null);
+ 
+         $match = $this->withSession($session)->get('/menu?search=CENTRAL');
+         $match->assertStatus(200);
+         $match->assertSee('CENTRAL');
+-        $match->assertDontSee('BRANCH');
++        self::assertStringNotContainsString('<td>BRANCH</td>', $match->getBody());
+         $match->assertSee('Menu Group name');
+         $match->assertSee('>Edit</a>');
+         // 'Add, Edit, Delete' is CI3's page subtitle; assert the absence of a delete control,
+         // not of the word.
+         self::assertStringNotContainsString('>Delete<', $match->getBody());
+         self::assertStringContainsString('value="CENTRAL"', $match->getBody());
+ 
+         $missing = $this->withSession($session)->get('/menu?search=ABSENT');
+         $missing->assertStatus(200);
+         $missing->assertSee('Menu Group name');
+@@ -120,23 +126,188 @@ final class MenuHttpTest extends CIUnitTestCase
+ 
+         self::assertSame('Presenter title', $data['pageTitle']);
+         self::assertSame('Presenter title', $data['title']);
+         self::assertSame('<p>Presenter content</p>', $data['content']);
+         self::assertSame('Synthetic presenter', $data['name']);
+         self::assertSame('Admin', $data['role_text']);
+         self::assertSame('2026-08-27 08:15:00', $data['last_login']);
+         self::assertSame(1, $data['GroupID']);
+         self::assertNull($data['BranchID']);
+         self::assertSame('', $data['BranchName']);
+-        self::assertSame([], $data['branchOptions']);
++        self::assertTrue($data['showBranchAutocomplete']);
++        self::assertSame([
++            ['label' => 'SYNTHETIC BRANCH', 'value' => base_url('ReportTrackingListing/0/1')],
++        ], $data['branchOptions']);
+         self::assertSame('admin', $data['layoutProfile']);
+         self::assertSame([1, 2], array_column($data['menuItems'], 'group_id'));
++
++        $branchData = (new AdminLayoutPresenter(new MenuStore($this->db)))->present([
++            'isLoggedIn' => true,
++            'name' => 'Synthetic branch presenter',
++            'GroupID' => 4,
++            'BranchID' => 1,
++        ], 'Branch title', '<p>Branch content</p>');
++
++        self::assertSame('SYNTHETIC BRANCH', $branchData['BranchName']);
++        self::assertFalse($branchData['showBranchAutocomplete']);
++        self::assertSame([], $branchData['branchOptions']);
++    }
++
++    public function testAdminShellRestoresCi3HierarchyAssetsAndScripts(): void
++    {
++        $body = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++
++        $this->assertFragmentsInOrder($body, [
++            '<!DOCTYPE html>',
++            'assets/bootstrap/css/bootstrap.min.css',
++            'assets/datatables/1.10.16/css/jquery.dataTables.min.css',
++            'assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css',
++            'assets/font-awesome/css/font-awesome.min.css',
++            'assets/dist/css/AdminLTE.min.css',
++            'assets/dist/css/CustomAdmin.css',
++            'assets/css/main.css',
++            'assets/css/multifreezer.css',
++            'assets/dist/css/skins/_all-skins.min.css',
++            'assets/js/jquerydatepicker/jquery-1.10.2.min.js',
++            'assets/js/jquerydatepicker/jquery-ui.css',
++            'assets/js/jquerydatepicker/jquery-ui-timepicker-addon.css',
++            'assets/js/jquerydatepicker/jquery-ui.min.js',
++            'assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js',
++            'assets/js/jquerydatepicker/jquery-ui-sliderAccess.js',
++            'var baseURL =',
++            'assets/html5shiv/3.7.2/html5shiv.min.js',
++            'assets/respond/1.4.2/respond.min.js',
++            '<body class="skin-blue sidebar-mini">',
++            '<div class="wrapper">',
++            '<header class="main-header">',
++            'class="logo"',
++            'assets/images/print-logo.jpg',
++            '<nav class="navbar navbar-static-top"',
++            'class="sidebar-toggle" data-toggle="offcanvas"',
++            'onclick="history.back(-1)"',
++            '<div class="navbar-custom-menu">',
++            '<aside class="main-sidebar">',
++            '<section class="sidebar">',
++            '<ul class="sidebar-menu">',
++            '<div class="content-wrapper">',
++            '<footer class="main-footer">',
++            '<section id="footer">',
++            'assets/images/img-footer.png',
++            'assets/bootstrap/js/bootstrap.min.js',
++            'assets/dist/js/app.min.js',
++            'assets/js/jquery.validate.js',
++            'assets/js/validation.js',
++            'var windowURL = window.location.href;',
++            'assets/datatables/1.10.16/js/jquery.dataTables.min.js',
++            'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js',
++            "var table = $('#example').DataTable({",
++        ]);
++
++        self::assertMatchesRegularExpression('#<form action="[^"]*/logout" method="post"#', $body);
++        self::assertStringContainsString('<button type="submit"', $body);
++        self::assertMatchesRegularExpression(
++            '#<form action="[^"]*/logout" method="post".*name="csrf_test_name".*<button type="submit"#s',
++            $body,
++        );
++        self::assertStringNotContainsString('href="/logout"', $body);
++        self::assertMatchesRegularExpression(
++            '#<img class="" src="[^"]*/assets/images/img-footer\.png">#',
++            $body,
++        );
++        $dataTablesInitialization = implode("\n", [
++            '    $(document).ready(function() {',
++            "        var table = $('#example').DataTable({",
++            '            scrollY: "300px",',
++            '            scrollX: true,',
++            '            responsive: true,',
++            "            className: 'mdl-data-table__cell--non-numeric',",
++            '            scrollCollapse: true,',
++            '            paging: true,',
++            "            buttons: ['colvis'],",
++            '            fixedColumns: {',
++            '                leftColumns: 1,',
++            '                leftColumns: 2,',
++            '                leftColumns: 3',
++            '            }',
++            '        });',
++            '    });',
++        ]);
++        self::assertStringContainsString($dataTablesInitialization, $body);
++
++        foreach (['<svg', 'id="sidebar-toggle"', 'class="topbar"', '<body class="admin">'] as $replacement) {
++            self::assertStringNotContainsString($replacement, $body, $replacement);
++        }
++    }
++
++    public function testAdminShellUsesDatabaseBranchDataForHeaderAndAutocomplete(): void
++    {
++        $adminBody = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++        self::assertStringContainsString('id="autocomplete"', $adminBody);
++        self::assertStringContainsString('"label":"SYNTHETIC BRANCH"', $adminBody);
++        self::assertStringContainsString('ReportTrackingListing/0/1', $adminBody);
++
++        $branchBody = (string) $this
++            ->withSession($this->session($this->branchId, 2, 4, 1))
++            ->get('/dashboard')
++            ->getBody();
++        self::assertStringContainsString('<b>BRANCH SYNTHETIC BRANCH</b>', $branchBody);
++        self::assertStringNotContainsString('id="autocomplete"', $branchBody);
++    }
++
++    public function testCentralGroupKeepsAutocompleteWhenBranchListIsEmpty(): void
++    {
++        $this->db->table('branch')->truncate();
++
++        $adminBody = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++        self::assertStringContainsString('<i class="fa fa-university"></i>', $adminBody);
++        self::assertStringContainsString('var xsource = [];', $adminBody);
++        self::assertStringContainsString('id="autocomplete"', $adminBody);
++
++        $branchBody = (string) $this
++            ->withSession($this->session($this->branchId, 2, 4, 1))
++            ->get('/dashboard')
++            ->getBody();
++        self::assertStringNotContainsString('id="autocomplete"', $branchBody);
++    }
++
++    public function testBranchAutocompleteHexEscapesMaliciousDatabaseLabels(): void
++    {
++        $malicious = 'Campus "</script><script>alert(\'x\')</script><b>unsafe</b>';
++        $this->db->table('branch')->insert([
++            'branch_id' => 2,
++            'branch_name' => $malicious,
++            'branch_user_name' => 'malicious-fixture',
++        ]);
++
++        $body = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++
++        self::assertStringNotContainsString($malicious, $body);
++        self::assertStringNotContainsString('</script><script>', $body);
++        self::assertStringNotContainsString('<b>unsafe</b>', $body);
++        self::assertStringContainsString('\\u003C/script\\u003E', $body);
++        self::assertSame(1, preg_match('/var xsource = (\[[^\n]*\]);/', $body, $match));
++        $source = json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
++        $index = array_search($malicious, array_column($source, 'label'), true);
++        self::assertNotFalse($index);
++        self::assertSame(base_url('ReportTrackingListing/0/2'), $source[$index]['value']);
+     }
+ 
+     public function testSidebarUsesOnlyCurrentGroupCsvSelection(): void
+     {
+         $groups = (new MenuStore($this->db))->visible(1);
+         // Group order follows the CSV '1,2' of group_menu id 1; names/icons come from group_type.
+         self::assertSame([1, 2], array_column($groups, 'group_id'));
+         self::assertSame(['DASHBOARD', 'MASTER ADMIN'], array_column($groups, 'group_name'));
+ 
+         $flatNames = [];
+@@ -225,33 +396,34 @@ final class MenuHttpTest extends CIUnitTestCase
+ 
+     public function testSidebarAnchorCountMatchesVisibleItems(): void
+     {
+         $store = new MenuStore($this->db);
+         $expected = 0;
+         foreach ($store->visible(1, null) as $group) {
+             $expected += count($group['items']);
+         }
+ 
+         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
+-        self::assertSame(1, preg_match('#<nav aria-label="Main navigation">(.*?)</nav>#s', $body, $m));
+-        self::assertSame($expected, substr_count($m[1], '<a '));
++        self::assertGreaterThan(0, preg_match_all('#<ul class="treeview-menu"[^>]*>(.*?)</ul>#s', $body, $menus));
++        self::assertSame($expected, substr_count(implode('', $menus[1]), '<a '));
+     }
+ 
+-    public function testDashboardRendersSinglePageHeaderH1(): void
++    public function testDashboardRendersCi3ContentHeaderInsideContentWrapper(): void
+     {
+         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
+-        self::assertStringContainsString('class="page-header"', $body);
+-        // The blue header owns the only page heading; the view's own <h1> must be gone.
+-        // CI3 carries the subtitle inside that same <h1>, so match the opening tag only.
+-        self::assertSame(1, substr_count($body, '<h1 id="page-title">Dashboard'));
+-        self::assertSame(1, substr_count($body, '<h1 '));
+-        self::assertStringContainsString('<small>Control panel</small>', $body);
++        self::assertSame(1, preg_match(
++            '#<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Dashboard\s*<small>Control panel</small>#s',
++            $body,
++        ));
++        self::assertSame(1, substr_count($body, '<h1>'));
++        self::assertStringNotContainsString('class="page-header"', $body);
++        self::assertStringNotContainsString('id="page-title"', $body);
+         self::assertSame(0, substr_count($body, 'id="dashboard-title"'));
+     }
+ 
+     public function testAnonymousLayoutRendersNoNavigationAndNeedsNoMenuTables(): void
+     {
+         // AC-2 / AC-5: an unauthenticated page that uses the layout must render no
+         // navigation and must not depend on the menu tables. Drop them first so a
+         // page that still returns 200 proves the anonymous path never queries them.
+         foreach (['tbl_menu', 'group_menu', 'group_type'] as $table) {
+             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
+@@ -351,20 +523,31 @@ final class MenuHttpTest extends CIUnitTestCase
+     }
+ 
+     public function testMenuListingSearchFormCarriesNoResetButton(): void
+     {
+         // AC-7: the search/filter form on the listing must not carry a reset button.
+         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+         self::assertStringContainsString('<form method="get" action="/menu">', $body);
+         self::assertStringNotContainsString('type="reset"', $body);
+     }
+ 
++    /** @param list<string> $fragments */
++    private function assertFragmentsInOrder(string $body, array $fragments): void
++    {
++        $offset = 0;
++        foreach ($fragments as $fragment) {
++            $position = strpos($body, $fragment, $offset);
++            self::assertNotFalse($position, $fragment);
++            $offset = $position + strlen($fragment);
++        }
++    }
++
+     /**
+      * @param list<array{group_id: int, group_name: string, icon: string, items: list<array{menu_name: string, menu_link: string}>}> $groups
+      * @return list<array{menu_name: string, menu_link: string}>
+      */
+     private function groupItems(array $groups, int $groupId): array
+     {
+         foreach ($groups as $group) {
+             if ($group['group_id'] === $groupId) {
+                 return $group['items'];
+             }
+diff --git a/tests/ci4/OrderHttpTest.php b/tests/ci4/OrderHttpTest.php
+index 6f18265..d85b781 100644
+--- a/tests/ci4/OrderHttpTest.php
++++ b/tests/ci4/OrderHttpTest.php
+@@ -248,20 +248,33 @@ final class OrderHttpTest extends CIUnitTestCase
+         $branch = $this->session(2, 2, 1);
+         $this->withSession($branch)->get('/orders?status=2')->assertStatus(403);
+         $this->withSession($branch)->get('/orders?status=3')->assertStatus(403);
+ 
+         // AC-2: an admin (BranchID null) still reaches both queues through the query string.
+         $admin = $this->session(1, 1, null);
+         $this->withSession($admin)->get('/orders?status=2')->assertSee('WP00C-TRACK-002');
+         $this->withSession($admin)->get('/orders?status=3')->assertSee('WP00C-TRACK-003');
+     }
+ 
++    public function testControllerBusinessForbiddenRemainsJsonWhenHtmlIsRequested(): void
++    {
++        $response = $this
++            ->withHeaders(['Accept' => 'text/html'])
++            ->withSession($this->session(2, 2, 1))
++            ->get('/orders?status=2');
++
++        $response->assertStatus(403);
++        $response->assertHeader('Content-Type', 'application/json; charset=UTF-8');
++        $response->assertJSONExact(['error' => 'forbidden']);
++        $response->assertDontSee('Access Denied');
++    }
++
+     public function testBranchUserStillReachesEveryOtherQueueThroughQueryString(): void
+     {
+         // AC-6 (discriminator): only queues 2 and 3 are gated; every other status stays 200 for the
+         // branch user, proving the gate keys on the resolved status and does not over-block.
+         $branch = $this->session(2, 2, 1);
+         foreach ([1, 4, 5, 6, 7, 8] as $status) {
+             $this->withSession($branch)->get('/orders?status=' . $status)->assertStatus(200);
+         }
+     }
+ 
+@@ -1143,23 +1156,28 @@ final class OrderHttpTest extends CIUnitTestCase
+     }
+ 
+     public function testCompleteListingExposesBulkCompleteFormAlongsideRatingButton(): void
+     {
+         $body = $this->withSession($this->session(2, 2, 1))->get('/TrackingcompleteListing')->getBody();
+         self::assertStringContainsString('action="/sendorderUpdateStatus"', $body);
+         self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $body);
+         self::assertStringContainsString('<option value="7"', $body);
+         // The per-row rating button stays on the same page as the bulk form.
+         self::assertStringContainsString('class="rate-open"', $body);
+-        // AC-6: the rating modal partial no longer carries an inline <style> block (its rules
+-        // moved to admin.css), so a page that renders the modal has no <style in the document.
+-        self::assertStringNotContainsString('<style', $body);
++        // AC-6: the shared CI3 header intentionally retains its `.error` style. Scope the
++        // regression to the modal and its script as they actually appear in the response.
++        self::assertSame(1, preg_match(
++            '#(<dialog id="rating-modal".*?</dialog>\s*<script>.*?</script>)#s',
++            $body,
++            $modalRegion,
++        ));
++        self::assertStringNotContainsString('<style', $modalRegion[1]);
+     }
+ 
+     public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
+     {
+         foreach (['6', '8'] as $target) {
+             $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91005'], 'status_id' => $target])
+                 ->assertStatus(409);
+         }
+         $row = $this->db->table('request_order')->where('request_id', 91005)->get()->getRowArray();
+         self::assertSame(5, (int) $row['action_status']);
+diff --git a/tests/wp00c/test_presentation_inventory.py b/tests/wp00c/test_presentation_inventory.py
+index 6fbe49f..3b50985 100644
+--- a/tests/wp00c/test_presentation_inventory.py
++++ b/tests/wp00c/test_presentation_inventory.py
+@@ -53,21 +53,21 @@ def load_generator():
+ 
+ def create_ci3_fixture(root):
+     views = root / "application/views"
+     assets = root / "assets"
+     views.mkdir(parents=True)
+     assets.mkdir()
+     tracked = views / "tracked.php"
+     tracked.write_text("tracked", encoding="utf-8")
+     (assets / "tracked.css").write_text("tracked", encoding="utf-8")
+     subprocess.run(["git", "init", "-q", str(root)], check=True)
+-    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.test"], check=True)
++    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True)
+     subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+     subprocess.run(["git", "-C", str(root), "add", "application", "assets"], check=True)
+     subprocess.run(["git", "-C", str(root), "commit", "-qm", "fixture"], check=True)
+     return tracked
+ 
+ 
+ def run_fixture_inventory(ci3_root, output):
+     module = load_generator()
+     module.CI3_PIN = subprocess.run(
+         ["git", "-C", str(ci3_root), "rev-parse", "HEAD"],
+
+## Untracked resulting files
+diff --git a/app/Views/partials/admin_legacy_scripts.php b/app/Views/partials/admin_legacy_scripts.php
+new file mode 100644
+index 0000000..e674496
+--- /dev/null
++++ b/app/Views/partials/admin_legacy_scripts.php
+@@ -0,0 +1,34 @@
++<script src="<?= base_url('assets/bootstrap/js/bootstrap.min.js') ?>" type="text/javascript"></script>
++<script src="<?= base_url('assets/dist/js/app.min.js') ?>" type="text/javascript"></script>
++<script src="<?= base_url('assets/js/jquery.validate.js') ?>" type="text/javascript"></script>
++<script src="<?= base_url('assets/js/validation.js') ?>" type="text/javascript"></script>
++<script type="text/javascript">
++    var windowURL = window.location.href;
++    pageURL = windowURL.substring(0, windowURL.lastIndexOf('/'));
++    var x = $('a[href="' + pageURL + '"]');
++    x.addClass('active');
++    x.parent().addClass('active');
++    var y = $('a[href="' + windowURL + '"]');
++    y.addClass('active');
++    y.parent().addClass('active');
++</script>
++<script src="<?= base_url('assets/datatables/1.10.16/js/jquery.dataTables.min.js') ?>"></script>
++<script src="<?= base_url('assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js') ?>"></script>
++<script>
++    $(document).ready(function() {
++        var table = $('#example').DataTable({
++            scrollY: "300px",
++            scrollX: true,
++            responsive: true,
++            className: 'mdl-data-table__cell--non-numeric',
++            scrollCollapse: true,
++            paging: true,
++            buttons: ['colvis'],
++            fixedColumns: {
++                leftColumns: 1,
++                leftColumns: 2,
++                leftColumns: 3
++            }
++        });
++    });
++</script>
