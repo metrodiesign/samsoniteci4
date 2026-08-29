@@ -145,6 +145,24 @@ final class UserHttpTest extends CIUnitTestCase
         $changePage = $this->withSession($this->session(9002, 2, 1, 4))->get('/change-password');
         $changePage->assertStatus(200);
         self::assertStringContainsString('type="reset"', $changePage->getBody()); // t5 AC-6
+        foreach ([
+            'class="background-form"',
+            'action="http://example.invalid/changePassword" method="post"',
+            'id="inputOldPassword"',
+            'name="oldPassword"',
+            'id="inputPassword1"',
+            'name="newPassword"',
+            'id="inputPassword2"',
+            'name="cNewPassword"',
+        ] as $contract) {
+            self::assertStringContainsString($contract, $changePage->getBody(), $contract);
+        }
+        $legacyPage = $this->withSession($this->session(9002, 2, 1, 4))->get('/loadChangePass');
+        $legacyPage->assertStatus(200);
+        self::assertStringContainsString(
+            'action="http://example.invalid/changePassword" method="post"',
+            (string) $legacyPage->getBody(),
+        );
         $before = (string) $this->db->table('ci4_users')->where('id', 9002)->get()->getRow('password_hash');
 
         $wrong = $this->postAs(9002, 2, 1, 4, '/change-password', [
@@ -175,6 +193,13 @@ final class UserHttpTest extends CIUnitTestCase
         self::assertTrue(password_verify('Replacement passphrase', (string) $legacy['password']));
         self::assertSame(2, (int) $shadow['session_version']);
         self::assertSame(2, service('session')->get('sessionVersion'));
+
+        $legacy = $this->postAs(9002, 2, 1, 4, '/changePassword', [
+            'oldPassword' => 'Replacement passphrase',
+            'newPassword' => 'Another replacement passphrase',
+            'cNewPassword' => 'Another replacement passphrase',
+        ], 2);
+        $legacy->assertRedirectTo('/loadChangePass?changed=1');
     }
 
     public function testLoginHistoryAndBranchBookJsonAreEscapedAndBranchScoped(): void
@@ -383,7 +408,7 @@ final class UserHttpTest extends CIUnitTestCase
             $add = $this->withSession($session)->get('/users/new');
             $add->assertStatus(200);
             $addBody = $add->getBody();
-            self::assertStringContainsString('<form method="post" action="/users">', $addBody);
+            self::assertStringContainsString('<form method="post" action="/users" class="form-grid">', $addBody);
             foreach (['username', 'name', 'email', 'mobile', 'group_id', 'role_id', 'branch_id'] as $field) {
                 self::assertMatchesRegularExpression('/name="' . $field . '" value=""/', $addBody);
             }
@@ -398,7 +423,7 @@ final class UserHttpTest extends CIUnitTestCase
             $edit = $this->withSession($session)->get('/users/' . $targetId);
             $edit->assertStatus(200);
             $editBody = $edit->getBody();
-            self::assertStringContainsString('<form method="post" action="/users/' . $targetId . '">', $editBody);
+            self::assertStringContainsString('<form method="post" action="/users/' . $targetId . '" class="form-grid">', $editBody);
             self::assertStringContainsString('name="name" value="' . $targetName . '"', $editBody);
             self::assertStringNotContainsString('name="password" type="password" autocomplete="new-password" required', $editBody);
             self::assertStringNotContainsString('<table>', $editBody);
@@ -503,11 +528,16 @@ final class UserHttpTest extends CIUnitTestCase
     }
 
     /** @param array<string, string> $payload */
-    private function postAs(int $id, int $role, ?int $branch, int $group, string $path, array $payload)
+    private function postAs(int $id, int $role, ?int $branch, int $group, string $path, array $payload, ?int $sessionVersion = null)
     {
         $payload['csrf_test_name'] = service('security')->getHash();
 
-        return $this->withSession($this->session($id, $role, $branch, $group))->post($path, $payload);
+        $session = $this->session($id, $role, $branch, $group);
+        if ($sessionVersion !== null) {
+            $session['sessionVersion'] = $sessionVersion;
+        }
+
+        return $this->withSession($session)->post($path, $payload);
     }
 
     public function testC3LabelParityUserFormUsesCi3Text(): void

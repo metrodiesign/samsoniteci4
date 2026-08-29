@@ -1,0 +1,1100 @@
+# Task 6 fix round 1 review package
+
+## Source/test/main.css diff
+diff --git a/public/assets/css/admin.css b/public/assets/css/admin.css
+index b73490f..b6605fd 100644
+--- a/public/assets/css/admin.css
++++ b/public/assets/css/admin.css
+@@ -11,45 +11,85 @@
+     color: #333;
+     background: #ecf0f5;
+ }
+ 
+ * { box-sizing: border-box; }
+ body { margin: 0; }
+ a { color: #014c8f; }
+ 
+ /* --- shared page primitives (kept from the original inline theme) --- */
+ h1, h2 { margin-top: 0; }
+-label { display: block; font-weight: 650; margin-bottom: .35rem; }
++/* CI3's CustomAdmin.css uppercases and bolds every form label; the label text itself is stored
++   mixed-case (`request Date/วันที่ส่งซ่อม`), so the casing belongs here and not in the views.
++   Thai text is unaffected by text-transform, which is why CI3 gets away with it. */
++label { display: block; font-weight: 700; text-transform: uppercase; margin-bottom: .35rem; }
+ input, select, button, textarea { font: inherit; }
+ input, select, textarea {
+     width: 100%;
+     min-height: 2.7rem;
+     padding: .55rem .7rem;
+     border: 1px solid #aeb8ca;
+     border-radius: .35rem;
+     background: #fff;
+ }
++/* The rule above is written for text-like inputs. A checkbox or radio caught by it renders as a
++   full-width 2.7rem box with its control floating in the middle, and the `label { display: block }`
++   above stacks every choice on its own line. CI3 draws them as small inline controls with the text
++   beside them, so both rules are undone for the two control types and for any label wrapping one. */
++input[type="checkbox"], input[type="radio"] {
++    width: auto;
++    min-height: 0;
++    padding: 0;
++    margin: 0;
++}
++label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) {
++    display: inline-flex;
++    align-items: center;
++    gap: .35rem;
++    margin: 0 1rem .35rem 0;
++}
+ button, .button {
+     display: inline-flex;
+     align-items: center;
+     justify-content: center;
+     min-height: 2.7rem;
+     padding: .55rem 1rem;
+     border: 0;
+     border-radius: .35rem;
+     background: #014c8f;
+     color: #fff;
+     cursor: pointer;
+     text-decoration: none;
+ }
+ .link-button { min-height: auto; padding: 0; background: none; color: inherit; }
+ .field { margin-bottom: 1rem; }
++
++/* CI3 lays its forms out on a bootstrap col-lg-6 grid: two field columns, each label sitting
++   directly above its control. Opting a form in with .form-grid gives the same shape; the grid
++   only works on forms whose label/control pairs are wrapped in .field, so the class is added
++   per form rather than to `form` globally. Anything that spans the full width (fieldsets of
++   checkboxes, the button row) says so explicitly. */
++.form-grid {
++    display: grid;
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++    gap: 0 1.6rem;
++    align-items: start;
++}
++.form-grid > .field { min-width: 0; }
++.form-grid > fieldset,
++.form-grid > .field-wide,
++.form-grid > .form-actions { grid-column: 1 / -1; }
++.form-actions { display: flex; gap: .5rem; margin-top: .5rem; }
++
++@media (max-width: 767px) {
++    .form-grid { grid-template-columns: minmax(0, 1fr); }
++}
+ .alert {
+     padding: .75rem 1rem;
+     margin-bottom: 1rem;
+     border: 1px solid #c93737;
+     border-radius: .35rem;
+     color: #8b1515;
+     background: #fff1f1;
+ }
+ .muted { color: #5b6578; }
+ .dashboard-actions {
+@@ -285,23 +325,24 @@ body.bare footer.site-footer { grid-area: auto; }
+ 
+ /* --- rating modal (moved from orders_rating_modal.php so AC-8 holds on every admin page) --- */
+ #rating-modal .lang-en { display: none; }
+ #rating-modal.show-en .lang-th { display: none; }
+ #rating-modal.show-en .lang-en { display: block; }
+ #rating-modal .star { cursor: pointer; color: #ccc; font-size: 1.4em; }
+ #rating-modal .star.on { color: #f5a623; }
+ 
+ /* --- CI3-style card chrome: caption, inline search tools and icon row actions --- */
+ .box-title {
+-    margin: 0 0 .75rem;
++    margin: 0 0 1.2rem;
+     font-size: 1.05rem;
+     font-weight: 400;
++    text-transform: uppercase;
+     color: #26324b;
+ }
+ .box-tools {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+     gap: .5rem;
+     margin-bottom: 1rem;
+ }
+ .box-tools input {
+diff --git a/public/assets/css/main.css b/public/assets/css/main.css
+index 79d5669..5cf8e42 100644
+--- a/public/assets/css/main.css
++++ b/public/assets/css/main.css
+@@ -604,21 +604,21 @@ section#rating {
+          }
+          section#contact {
+           background-position: center;
+         }
+       }
+         @media only screen and (max-width:480px) {
+           .btn-mobile {
+             width: 40%;
+           }
+           section#contact {
+-             background: url(../../uploads/web/contact_mobile.jpg);
++             background: url(../../uploads/web/contact_mobile.png);
+              background-color: #f9f9fb;
+              background-size: contain;
+              background-repeat: no-repeat;
+              background-position: center;
+          }
+          section#track {
+              background-size: contain;
+              background-color: #f9f9fb;
+              background-repeat: no-repeat;
+              min-height: 767px;
+diff --git a/tests/ci4/MenuHttpTest.php b/tests/ci4/MenuHttpTest.php
+index 3c15051..1ff422d 100644
+--- a/tests/ci4/MenuHttpTest.php
++++ b/tests/ci4/MenuHttpTest.php
+@@ -1,20 +1,21 @@
+ <?php
+ 
+ namespace Tests\Ci4;
+ 
+ use App\Authentication\ShadowUserStore;
+ use App\Master\MenuStore;
+ use App\Presentation\AdminLayoutPresenter;
+ use CodeIgniter\Test\CIUnitTestCase;
+ use CodeIgniter\Test\DatabaseTestTrait;
+ use CodeIgniter\Test\FeatureTestTrait;
++use PHPUnit\Framework\AssertionFailedError;
+ 
+ final class MenuHttpTest extends CIUnitTestCase
+ {
+     use DatabaseTestTrait;
+     use FeatureTestTrait;
+ 
+     protected $namespace = 'App';
+ 
+     private int $adminId;
+     private int $branchId;
+@@ -234,20 +235,230 @@ final class MenuHttpTest extends CIUnitTestCase
+             '        });',
+             '    });',
+         ]);
+         self::assertStringContainsString($dataTablesInitialization, $body);
+ 
+         foreach (['<svg', 'id="sidebar-toggle"', 'class="topbar"', '<body class="admin">'] as $replacement) {
+             self::assertStringNotContainsString($replacement, $body, $replacement);
+         }
+     }
+ 
++    public function testSharedRuntimeAssetClosureExistsAndIsGitTracked(): void
++    {
++        $documents = [];
++        foreach (['/login', '/forgot-password', '/reset-password', '/contact', '/contact-th', '/tracking', '/tracking-th'] as $route) {
++            $response = $this->get($route);
++            $response->assertStatus(200);
++            $documents[] = (string) $response->getBody();
++        }
++        $documents[] = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++        $documents[] = view('layout_public', [
++            'content' => '',
++            'title' => 'Samsonite',
++            'language' => 'en',
++            'legacyContactProfile' => false,
++            'legacyTrackingProfile' => false,
++        ]);
++        $documents[] = view('access_denied');
++        $documents[] = view('errors/html/error_404');
++
++        $entrypoints = [];
++        foreach ($documents as $document) {
++            $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
++        }
++        $closure = $this->runtimeAssetClosure($entrypoints);
++        self::assertCount(109, $closure);
++
++        foreach ([
++            'public/assets/datatables/1.10.16/images/sort_both.png',
++            'public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2',
++            'public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2',
++            'public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf',
++            'public/assets/js/jquerydatepicker/images/animated-overlay.gif',
++            'public/assets/images/bg-login.jpg',
++            'public/uploads/web/contact_mobile.png',
++            'public/uploads/web/track_mobile.png',
++        ] as $recursiveAsset) {
++            self::assertContains($recursiveAsset, $closure, $recursiveAsset);
++        }
++
++        $trackedFiles = [
++            ...$closure,
++            'public/assets/fonts/source-sans-pro/OFL.txt',
++            'public/assets/licenses/bootstrap-3.3.7-LICENSE',
++            'public/assets/licenses/datatables-1.10.16-license.txt',
++            'public/assets/licenses/fixedcolumns-3.2.4-License.txt',
++            'public/assets/licenses/respond-1.4.2-LICENSE-MIT',
++            'public/assets/licenses/MIT.txt',
++            'public/assets/licenses/OFL-1.1.txt',
++            'tests/ci4/MenuHttpTest.php',
++            'outputs/reference/2026-08-27_tpl01-asset-closure_v1.md',
++        ];
++        $trackedFiles = array_values(array_unique($trackedFiles));
++        sort($trackedFiles);
++        $process = proc_open(
++            ['/usr/bin/env', 'git', 'ls-files', '--error-unmatch', '--', ...$trackedFiles],
++            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
++            $pipes,
++            ROOTPATH,
++        );
++        self::assertIsResource($process);
++        stream_get_contents($pipes[1]);
++        fclose($pipes[1]);
++        $error = stream_get_contents($pipes[2]);
++        fclose($pipes[2]);
++
++        self::assertSame(0, proc_close($process), trim($error));
++
++        $process = proc_open(
++            ['/usr/bin/env', 'git', 'diff', '--quiet', '--no-ext-diff', '--', ...$trackedFiles],
++            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
++            $pipes,
++            ROOTPATH,
++        );
++        self::assertIsResource($process);
++        stream_get_contents($pipes[1]);
++        fclose($pipes[1]);
++        $error = stream_get_contents($pipes[2]);
++        fclose($pipes[2]);
++
++        self::assertSame(0, proc_close($process), trim($error) ?: 'Git index blob differs from worktree runtime input.');
++    }
++
++    public function testRuntimeAssetReferencesScansStyleAttributes(): void
++    {
++        self::assertSame(
++            ['/assets/images/bg-login.jpg'],
++            $this->runtimeAssetReferences('<div style="background-image: url(\'/assets/images/bg-login.jpg\')"></div>'),
++        );
++    }
++
++    public function testCssAssetParserKeepsQuotedImportAndEveryUrlAndSkipsEmbeddedData(): void
++    {
++        self::assertSame(
++            ['a.css', 'b.png?cache=1#icon', 'c.png'],
++            $this->cssAssetReferences(
++                '@import "a.css"; .a{background:url(b.png?cache=1#icon)} .b{src:url(DATA:image/png;base64,AA)} .c{background:url("c.png")}',
++            ),
++        );
++    }
++
++    #[\PHPUnit\Framework\Attributes\DataProvider('mismatchedRuntimeOrigins')]
++    public function testRuntimeAssetPathRejectsMismatchedOrigin(string $reference): void
++    {
++        $this->expectException(AssertionFailedError::class);
++        $this->runtimeAssetPath($reference, null);
++    }
++
++    /** @return iterable<string, array{string}> */
++    public static function mismatchedRuntimeOrigins(): iterable
++    {
++        return [
++            'scheme' => ['https://example.invalid/assets/app.css'],
++            'host'   => ['http://cdn.example.invalid/assets/app.css'],
++            'port'   => ['http://example.invalid:8080/assets/app.css'],
++            'protocol relative' => ['//example.invalid/assets/app.css'],
++        ];
++    }
++
++    public function testRuntimeAssetPathAcceptsOnlyStaticEntrypointPrefixesAndStripsQueryFragment(): void
++    {
++        self::assertSame('public/assets/app.css', $this->runtimeAssetPath('/assets/app.css?v=1#theme', null));
++        self::assertSame('public/uploads/web/banner.png', $this->runtimeAssetPath('/uploads/web/banner.png?x=1#hero', null));
++        self::assertNull($this->runtimeAssetPath('/background-image/assets/app.css', null));
++        self::assertNull($this->runtimeAssetPath('/uploads/website/banner.png', null));
++    }
++
++    #[\PHPUnit\Framework\Attributes\DataProvider('escapingRuntimePaths')]
++    public function testRuntimeAssetPathRejectsTraversalOutsidePublic(string $reference, ?string $parent): void
++    {
++        $this->expectException(AssertionFailedError::class);
++        $this->runtimeAssetPath($reference, $parent);
++    }
++
++    /** @return iterable<string, array{string, ?string}> */
++    public static function escapingRuntimePaths(): iterable
++    {
++        return [
++            'absolute' => ['/assets/../../outside.css', null],
++            'relative' => ['../../../outside.css', 'public/assets/css/app.css'],
++            'leave and re-enter' => ['/assets/../../public/secret.css', null],
++        ];
++    }
++
++    public function testRuntimeAssetClosureStopsAtCssCycles(): void
++    {
++        $first = ROOTPATH . 'public/assets/css/.asset-closure-cycle-a.css';
++        $second = ROOTPATH . 'public/assets/css/.asset-closure-cycle-b.css';
++        file_put_contents($first, '@import ".asset-closure-cycle-b.css";');
++        file_put_contents($second, '@import ".asset-closure-cycle-a.css";');
++
++        try {
++            self::assertSame(
++                [
++                    'public/assets/css/.asset-closure-cycle-a.css',
++                    'public/assets/css/.asset-closure-cycle-b.css',
++                ],
++                $this->runtimeAssetClosure(['/assets/css/.asset-closure-cycle-a.css']),
++            );
++        } finally {
++            unlink($first);
++            unlink($second);
++        }
++    }
++
++    public function testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts(): void
++    {
++        foreach ([
++            'assets/bootstrap/css/bootstrap.min.css' => 'f75e846cc83bd11432f4b1e21a45f31bc85283d11d372f7b19accd1bf6a2635c',
++            'assets/bootstrap/css/bootstrap.css' => '7e630d90c7234b0df1729f62b8f9e4bbfaf293d91a5a0ac46df25f2a6759e39a',
++            'assets/bootstrap/js/bootstrap.min.js' => '53964478a7c634e8dad34ecc303dd8048d00dce4993906de1bacf67f663486ef',
++            'assets/datatables/1.10.16/css/jquery.dataTables.min.css' => '618d62ceaca1223e16de2c8939a1963a95c34b0ac75852f835f93e5b42f20871',
++            'assets/datatables/1.10.16/js/jquery.dataTables.min.js' => 'a9c575c2bf9b9f836806dc58aa0866cb558806fc5ea1ef2f4250a8c0b1be7278',
++            'assets/datatables/1.10.16/images/sort_asc.png' => '595704c3f3cf4cb65c7d9c8508a99e7480e150095473faed31a07c21b13389b8',
++            'assets/datatables/1.10.16/images/sort_asc_disabled.png' => 'a65b8f4f84d6427a81c360282fc5394d51bf99dada5f159e6aa0fce3c396825c',
++            'assets/datatables/1.10.16/images/sort_both.png' => '3e016c23ae51417382b640ae2d19eb48047532c37ad53894bd185586559ccffb',
++            'assets/datatables/1.10.16/images/sort_desc.png' => 'd08ed0e21f187dd309030d465224da8085119a15a17d616ba0e477bb50c6f10d',
++            'assets/datatables/1.10.16/images/sort_desc_disabled.png' => '6c0f0c1b21ef6807057afc8ddc1a925d1dbd21cb11e9270ec84ff4ac40d9a3fa',
++            'assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css' => '2cac99438be2f9aacaf1a63f220f5a4e0fb5f54d443ecde09652a650b0509f8b',
++            'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js' => 'e44ec8df1b3ae7c386f670b1e9d4b4cad0b55fa28f934f31fd9a893c81c50298',
++            'assets/font-awesome/css/font-awesome.min.css' => '0fb1bbca73646e8e2b93c82e8d8b219647b13d4b440c48e338290b9a685b8de1',
++            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => '541ac58217a8ade1a5e292a65a0661dc9db7a49ae13654943817a4fbc6761afd',
++            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => '799aeb25cc0373fdee0e1b1db7ad6c2f6a0e058dfadaa3379689f583213190bd',
++            'assets/fontawesome/css/font-awesome.css' => '36e0a7e08bee65774168528938072c536437669c1b7458ac77976ec788e4439c',
++            'assets/html5shiv/3.7.2/html5shiv.min.js' => 'e0eac80838c161f29e7c46d54fbc044d12cd164baae13255e562c6be3aa91809',
++            'assets/respond/1.4.2/respond.min.js' => '83a8807ef669fa70d0d9375347f5552897f76c6ae8e2e6f97ef592595462d8d1',
++            'assets/fonts/source-sans-pro/stylesheet.css' => '31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f',
++            'assets/fonts/source-sans-pro/OFL.txt' => 'fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa',
++            'assets/licenses/bootstrap-3.3.7-LICENSE' => '8a68c27ad022244b78dc5c9adb4cc5a4c92a994e3e11d356b291f227b2b04eaf',
++            'assets/licenses/datatables-1.10.16-license.txt' => 'c6a873f21550ed804f76013c36e14225704c1aa551fdb870e0c626eb91c19247',
++            'assets/licenses/fixedcolumns-3.2.4-License.txt' => 'e8e92f97216f9ea00cb2735b933a91ec8e3869bed37b6d63a90f76f41508f2de',
++            'assets/licenses/respond-1.4.2-LICENSE-MIT' => '96ef890049d3089064f9965e661057d5c3d42be86421c10cc8e9400a104f0b36',
++            'assets/licenses/MIT.txt' => 'b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5',
++            'assets/licenses/OFL-1.1.txt' => '8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd',
++        ] as $path => $checksum) {
++            self::assertSame($checksum, hash_file('sha256', PUBLICPATH . $path), $path);
++        }
++
++        foreach ([
++            'assets/bootstrap/css/bootstrap.min.css' => 'Bootstrap v3.3.7',
++            'assets/font-awesome/css/font-awesome.min.css' => 'Font Awesome 4.2.0',
++            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => 'Font Awesome 4.3.0',
++            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => 'Font Awesome 4.7.0',
++        ] as $path => $version) {
++            self::assertStringContainsString($version, (string) file_get_contents(PUBLICPATH . $path), $path);
++        }
++    }
++
+     public function testAdminShellUsesDatabaseBranchDataForHeaderAndAutocomplete(): void
+     {
+         $adminBody = (string) $this
+             ->withSession($this->session($this->adminId, 1, 1, null))
+             ->get('/dashboard')
+             ->getBody();
+         self::assertStringContainsString('id="autocomplete"', $adminBody);
+         self::assertStringContainsString('"label":"SYNTHETIC BRANCH"', $adminBody);
+         self::assertStringContainsString('ReportTrackingListing/0/1', $adminBody);
+ 
+@@ -523,20 +734,152 @@ final class MenuHttpTest extends CIUnitTestCase
+     }
+ 
+     public function testMenuListingSearchFormCarriesNoResetButton(): void
+     {
+         // AC-7: the search/filter form on the listing must not carry a reset button.
+         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+         self::assertStringContainsString('<form method="get" action="/menu">', $body);
+         self::assertStringNotContainsString('type="reset"', $body);
+     }
+ 
++    /** @return list<string> */
++    private function runtimeAssetReferences(string $html): array
++    {
++        preg_match_all(
++            '/<(?:script|img|link)\b[^>]*\b(?:src|href)\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s"\'=<>`]+))/i',
++            $html,
++            $tags,
++            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
++        );
++        $references = [];
++        foreach ($tags as $tag) {
++            $references[] = $tag[1] ?? $tag[2] ?? $tag[3];
++        }
++        preg_match_all('/<style\b[^>]*>(.*?)<\/style>/is', $html, $styles);
++        foreach ($styles[1] as $css) {
++            $references = array_merge($references, $this->cssAssetReferences($css));
++        }
++        preg_match_all(
++            '/\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))/i',
++            $html,
++            $styleAttributes,
++            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
++        );
++        foreach ($styleAttributes as $styleAttribute) {
++            $references = array_merge(
++                $references,
++                $this->cssAssetReferences($styleAttribute[1] ?? $styleAttribute[2] ?? $styleAttribute[3]),
++            );
++        }
++
++        return $references;
++    }
++
++    /** @param list<string> $entrypoints @return list<string> */
++    private function runtimeAssetClosure(array $entrypoints): array
++    {
++        $pending = [];
++        foreach ($entrypoints as $reference) {
++            $path = $this->runtimeAssetPath($reference, null);
++            if ($path !== null) {
++                $pending[] = $path;
++            }
++        }
++        $seen = [];
++
++        while ($pending !== []) {
++            $path = array_pop($pending);
++            if (isset($seen[$path])) {
++                continue;
++            }
++            self::assertFileExists(ROOTPATH . $path, $path);
++            $seen[$path] = true;
++            if (! str_ends_with(strtolower($path), '.css')) {
++                continue;
++            }
++            foreach ($this->cssAssetReferences((string) file_get_contents(ROOTPATH . $path)) as $reference) {
++                $dependency = $this->runtimeAssetPath($reference, $path);
++                if ($dependency !== null) {
++                    $pending[] = $dependency;
++                }
++            }
++        }
++
++        $closure = array_keys($seen);
++        sort($closure);
++
++        return $closure;
++    }
++
++    /** @return list<string> */
++    private function cssAssetReferences(string $css): array
++    {
++        preg_match_all(
++            '/@import\s+(?:url\(\s*)?(?:"([^"]+)"|\'([^\']+)\'|([^\s;)]+))\s*\)?|url\(\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s)]+))\s*\)/i',
++            $css,
++            $matches,
++            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
++        );
++        $references = [];
++        foreach ($matches as $match) {
++            $reference = trim($match[1] ?? $match[2] ?? $match[3] ?? $match[4] ?? $match[5] ?? $match[6]);
++            if ($reference !== '' && preg_match('/^(?:data:|#)/i', $reference) !== 1) {
++                $references[] = $reference;
++            }
++        }
++
++        return $references;
++    }
++
++    private function runtimeAssetPath(string $reference, ?string $parent): ?string
++    {
++        self::assertDoesNotMatchRegularExpression('#^//#', $reference, $reference);
++        $base = parse_url(base_url());
++        $origin = parse_url($reference);
++        self::assertIsArray($origin, $reference);
++        if (isset($origin['host'])) {
++            self::assertSame(strtolower((string) $base['scheme']), strtolower((string) ($origin['scheme'] ?? '')), $reference);
++            self::assertSame(strtolower((string) $base['host']), strtolower((string) $origin['host']), $reference);
++            self::assertSame($base['port'] ?? null, $origin['port'] ?? null, $reference);
++        }
++        $path = $origin['path'] ?? null;
++        self::assertIsString($path, $reference);
++        $path = rawurldecode($path);
++        if ($path === '') {
++            return null;
++        }
++        if ($parent === null && ! str_starts_with($path, '/assets/') && ! str_starts_with($path, '/uploads/web/')) {
++            return null;
++        }
++
++        $candidate = str_starts_with($path, '/')
++            ? 'public/' . ltrim($path, '/')
++            : dirname((string) $parent) . '/' . $path;
++        self::assertStringStartsWith('public/', $candidate, $reference);
++        $segments = [];
++        foreach (explode('/', $candidate) as $segment) {
++            if ($segment === '' || $segment === '.') {
++                continue;
++            }
++            if ($segment === '..') {
++                self::assertGreaterThan(1, count($segments), $reference);
++                array_pop($segments);
++                continue;
++            }
++            $segments[] = $segment;
++        }
++        $resolved = implode('/', $segments);
++        self::assertStringStartsWith('public/', $resolved, $reference);
++
++        return $resolved;
++    }
++
+     /** @param list<string> $fragments */
+     private function assertFragmentsInOrder(string $body, array $fragments): void
+     {
+         $offset = 0;
+         foreach ($fragments as $fragment) {
+             $position = strpos($body, $fragment, $offset);
+             self::assertNotFalse($position, $fragment);
+             $offset = $position + strlen($fragment);
+         }
+     }
+
+## Evidence
+diff --git a/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md b/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md
+new file mode 100644
+index 0000000..61497ae
+--- /dev/null
++++ b/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md
+@@ -0,0 +1,249 @@
++# TPL-01 runtime asset closure v1
++
++เอกสารนี้บันทึก runtime asset graph จาก current CI4 views/CSS, exact checkpoint candidate, checksum, provenance และ license evidence เทียบ CI3 pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6` โดยไม่ upgrade หรือ replace frontend dependency
++
++## คำตัดสิน
++
++| แกน | ผล | สถานะ |
++|---|---:|---|
++| Runtime closure | 109 files | resolve บน disk ครบ |
++| Git tracked ใน closure | 16 files | 15 files ตรง index, `main.css` มี WIP ที่ต้องรวม candidate |
++| Git untracked ใน closure | 93 files | `BLOCKED` จนกว่า gitops จะ add และ commit |
++| License evidence นอก runtime graph | 7 files | Source Sans Pro 1 file และ license set ใหม่ 6 files |
++| Frontend dependency upgrade | 0 | ผ่าน |
++| Frontend dependency replacement | 0 | ผ่าน |
++| Exact checkpoint candidate | 103 files | temporary-index simulation ผ่าน; real index ไม่ถูกเปลี่ยน |
++| Upload snapshot provenance | 4 files | `BLOCKED` เพราะไม่พบ durable archive path ใน repo |
++
++สถานะรวม: `PREPARED_AWAITING_REVIEW_AND_GITOPS`
++
++## วิธีสร้าง graph
++
++Test `MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked` render HTML จริงแล้วเดิน CSS แบบ recursive
++
++| Profile | Runtime source |
++|---|---|
++| Admin | `GET /dashboard` |
++| Standalone auth | `GET /login`, `/forgot-password`, `/reset-password` |
++| Public Contact | `GET /contact`, `/contact-th` |
++| Public Tracking | `GET /tracking`, `/tracking-th` |
++| Public non-legacy | render `layout_public` |
++| Error views | render `access_denied` และ `errors/html/error_404` |
++
++กติกา graph:
++
++- อ่าน `src`, `href`, `<style>` และ `style="..."`
++- เดิน CSS `url()` และ `@import` จน closure ปิด พร้อม cycle guard
++- ตัด `data:` แบบ case-insensitive และ fragment-only reference
++- เทียบ absolute URL ด้วย exact scheme, host และ port ของ `base_url()`
++- รับ HTML entrypoint เฉพาะ `/assets/` และ `/uploads/web/`
++- strip query/fragment ก่อน resolve และ fail เมื่อ traversal ออกนอก `public/`
++- ตรวจทุก required path ว่าอยู่ใน Git index
++- ตรวจ `git diff --quiet --no-ext-diff` ต่อ required path เพื่อยืนยัน index blob ตรง worktree
++
++Direct parser regressions ครอบ quoted `@import`, หลาย `url()`, `DATA:`, origin mismatch, dynamic prefix, query/fragment, traversal และ CSS cycle
++
++## Runtime closure 109 files
++
++### Untracked runtime 93 files
++
++| จำนวน | กลุ่ม | สมาชิก |
++|---:|---|---|
++| 8 | `public/assets/bootstrap/` | CSS 2, Glyphicons 5 formats, JavaScript 1 |
++| 1 | `public/assets/css/` | `multifreezer.css` |
++| 7 | `public/assets/datatables/1.10.16/` | CSS 1, JavaScript 1, sort images 5 |
++| 2 | `public/assets/datatables-fixedcolumns/3.2.4/` | CSS 1, JavaScript 1 |
++| 6 | `public/assets/dist/` | CSS 3, images 2, JavaScript 1 |
++| 6 | `public/assets/font-awesome/` | CSS 2, fonts 4 |
++| 6 | `public/assets/font-awesome/4.3.0/` | CSS 1, fonts 5 |
++| 6 | `public/assets/font-awesome/4.7.0/` | CSS 1, fonts 5 |
++| 6 | `public/assets/fontawesome/` | CSS 1, fonts 5 |
++| 8 | `public/assets/fonts/source-sans-pro/` | stylesheet 1, TTF 7 |
++| 1 | `public/assets/html5shiv/3.7.2/` | `html5shiv.min.js` |
++| 5 | `public/assets/images/` | `404.png`, `access.png`, tracking images 2, `print-logo.jpg` |
++| 6 | root `public/assets/js/` | Contact/Tracking scripts, jQuery 2 files, validate 2 files |
++| 20 | `public/assets/js/jquerydatepicker/` | JavaScript/CSS 6, recursive images 14 |
++| 1 | `public/assets/respond/1.4.2/` | `respond.min.js` |
++| 4 | `public/uploads/web/` | Contact desktop/mobile และ Tracking desktop/mobile |
++
++Recursive jQuery UI image set 14 files:
++
++- `animated-overlay.gif`
++- `ui-bg_flat_0_aaaaaa_40x100.png`
++- `ui-bg_flat_75_ffffff_40x100.png`
++- `ui-bg_glass_55_fbf9ee_1x400.png`
++- `ui-bg_glass_65_ffffff_1x400.png`
++- `ui-bg_glass_75_dadada_1x400.png`
++- `ui-bg_glass_75_e6e6e6_1x400.png`
++- `ui-bg_glass_95_fef1ec_1x400.png`
++- `ui-bg_highlight-soft_75_cccccc_1x100.png`
++- `ui-icons_222222_256x240.png`
++- `ui-icons_2e83ff_256x240.png`
++- `ui-icons_454545_256x240.png`
++- `ui-icons_888888_256x240.png`
++- `ui-icons_cd0a0a_256x240.png`
++
++### Tracked runtime 16 files
++
++- `public/assets/css/main.css`
++- `public/assets/css/public.css`
++- `public/assets/fonts/stylesheet.css`
++- DB Helvethaica fonts 4 filesใต้ `public/assets/fonts/`
++- `public/assets/images/bg-login.jpg`
++- `public/assets/images/eng.png`
++- `public/assets/images/img-contact-1.png`
++- `public/assets/images/img-contact-2.png`
++- `public/assets/images/img-footer.png`
++- `public/assets/images/main-logo.png`
++- `public/assets/images/popup_en.png`
++- `public/assets/images/popup_th.png`
++- `public/assets/images/thai.png`
++
++`bg-login.jpg` เข้าสู่ graph จาก `style="background-image: url(...)"` ใน login และ forgot-password หลังแก้ parser
++
++`public/assets/css/admin.css` tracked อยู่ก่อน แต่ไม่มี current rendered caller จึงไม่อยู่ใน runtime closure และไม่อยู่ใน candidate
++
++## Exact checkpoint candidate 103 files
++
++| จำนวน | กลุ่ม | เหตุผล |
++|---:|---|---|
++| 93 | untracked runtime closure | browser runtime caller มีจริง |
++| 1 | `public/assets/fonts/source-sans-pro/OFL.txt` | Source Sans Pro license |
++| 6 | `public/assets/licenses/` | full license texts และ exact bundle licenses |
++| 1 | `public/assets/css/main.css` | `.jpg` เป็น `.png`; index blob ต้องตรง worktree |
++| 1 | `tests/ci4/MenuHttpTest.php` | parser, checksum และ index-blob gates |
++| 1 | `outputs/reference/2026-08-27_tpl01-asset-closure_v1.md` | durable evidence |
++| รวม | 103 | exclude `admin.css` และทุก must-not-add group |
++
++License candidate 6 files:
++
++- `public/assets/licenses/bootstrap-3.3.7-LICENSE`
++- `public/assets/licenses/datatables-1.10.16-license.txt`
++- `public/assets/licenses/fixedcolumns-3.2.4-License.txt`
++- `public/assets/licenses/respond-1.4.2-LICENSE-MIT`
++- `public/assets/licenses/MIT.txt`
++- `public/assets/licenses/OFL-1.1.txt`
++
++Required index inputs รวม 118 paths: runtime closure 109, license evidence 7, test 1 และ evidence 1
++
++## Must not add
++
++| กลุ่ม | เหตุผล |
++|---|---|
++| `public/assets/css/admin.css` | ไม่มี current runtime caller และเป็น WIP คนละ scope |
++| `public/assets/plugins/**` | ไม่มี current caller และเป็น plugin tree ขนาดใหญ่ |
++| SCSS, LESS, examples, docs, tests, specimen, demo | ไม่ใช่ runtime closure |
++| `multifreezer.js` | CI3 caller อยู่ใน HTML comment |
++| `cms-logo.png` | CI3 caller อยู่ใน HTML comment |
++| Order browse chain และ `assets/css/style.css` | ขอบเขต Task 7 |
++| Dependency version อื่น | ห้าม upgrade หรือ replacement |
++
++## Version และ provenance
++
++### Prior repo evidence ที่อ้างตรง
++
++| กลุ่ม | Evidence path | Section |
++|---|---|---|
++| Bootstrap, Font Awesome 4.3, html5shiv, Respond.js | `outputs/reference/2026-08-27_wp03h-standalone-auth-traceability_v1.md` | `Dependency recovery round 2` และ `Local asset checksums` |
++| Font Awesome 4.7, Source Sans Pro, uploads | `outputs/reference/2026-08-27_wp03h-standalone-auth-traceability_v1.md` | `Dependency recovery round 3: recursive local CSS graph` |
++| DataTables และ FixedColumns | `outputs/reference/2026-08-27_wp03m-admin-layout-adapter-evidence_v1.md` | `Asset evidence` |
++| Contact `main.css` adapter | `outputs/reference/2026-08-27_wp03i-contact-presentation-traceability_v1.md` | `Template และ dependency` |
++
++Upload evidence ก่อนหน้าอ้างเพียง “archived CI3 deployment snapshot” โดยไม่มี archive identifier หรือ durable repo path งานนี้จึง downgrade provenance ของ upload 4 files เป็น `BLOCKED` แม้ checksum local ยัง pinned
++
++### Exact DataTables CDN retrieval
++
++ดึงวันที่ `2026-08-27` ด้วยคำสั่งรูปแบบนี้:
++
++```bash
++curl --fail-with-body -sS -L -o "$file" -w '%{http_code}' "$url"
++shasum -a 256 "$file"
++```
++
++| HTTP | SHA-256 | Exact URL |
++|---:|---|---|
++| 200 | `618d62ceaca1223e16de2c8939a1963a95c34b0ac75852f835f93e5b42f20871` | `https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css` |
++| 200 | `a9c575c2bf9b9f836806dc58aa0866cb558806fc5ea1ef2f4250a8c0b1be7278` | `https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js` |
++| 200 | `595704c3f3cf4cb65c7d9c8508a99e7480e150095473faed31a07c21b13389b8` | `https://cdn.datatables.net/1.10.16/images/sort_asc.png` |
++| 200 | `a65b8f4f84d6427a81c360282fc5394d51bf99dada5f159e6aa0fce3c396825c` | `https://cdn.datatables.net/1.10.16/images/sort_asc_disabled.png` |
++| 200 | `3e016c23ae51417382b640ae2d19eb48047532c37ad53894bd185586559ccffb` | `https://cdn.datatables.net/1.10.16/images/sort_both.png` |
++| 200 | `d08ed0e21f187dd309030d465224da8085119a15a17d616ba0e477bb50c6f10d` | `https://cdn.datatables.net/1.10.16/images/sort_desc.png` |
++| 200 | `6c0f0c1b21ef6807057afc8ddc1a925d1dbd21cb11e9270ec84ff4ac40d9a3fa` | `https://cdn.datatables.net/1.10.16/images/sort_desc_disabled.png` |
++| 200 | `2cac99438be2f9aacaf1a63f220f5a4e0fb5f54d443ecde09652a650b0509f8b` | `https://cdn.datatables.net/fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css` |
++| 200 | `e44ec8df1b3ae7c386f670b1e9d4b4cad0b55fa28f934f31fd9a893c81c50298` | `https://cdn.datatables.net/fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js` |
++
++Local hashes ตรง remote ทั้ง 9 files และ DataTables image 5 hashesอยู่ใน automated test
++
++## License closure
++
++License files ดึงวันที่ `2026-08-27` ด้วย `curl --fail-with-body -sS -L`; ทุก URL ตอบ HTTP `200` และ local SHA-256 ถูก pin ใน `MenuHttpTest`
++
++| Bundle/caller | Exact upstream/tag | Full license path | SHA-256 |
++|---|---|---|---|
++| Bootstrap 3.3.7 | `twbs/bootstrap` tag `v3.3.7`, SHA `0b9c4a4007c44201dce9a6cc1a38407005c26c86` | `public/assets/licenses/bootstrap-3.3.7-LICENSE` | `8a68c27ad022244b78dc5c9adb4cc5a4c92a994e3e11d356b291f227b2b04eaf` |
++| DataTables 1.10.16 | tag object `e6f02439...`, commit `75a665f64f02982c0f4666b15a25c4670e5e6b18` | `public/assets/licenses/datatables-1.10.16-license.txt` | `c6a873f21550ed804f76013c36e14225704c1aa551fdb870e0c626eb91c19247` |
++| FixedColumns 3.2.4 | tag object `69c3242b...`, commit `8284753fde71c1d42ead1b9e89c306764df3f1d2` | `public/assets/licenses/fixedcolumns-3.2.4-License.txt` | `e8e92f97216f9ea00cb2735b933a91ec8e3869bed37b6d63a90f76f41508f2de` |
++| Respond.js 1.4.2 | tag object `3eda118b...`, commit `20b7f4a192bb910c8c7e067b961de38519d334e4` | `public/assets/licenses/respond-1.4.2-LICENSE-MIT` | `96ef890049d3089064f9965e661057d5c3d42be86421c10cc8e9400a104f0b36` |
++| Font Awesome CSS 4.2/4.3/4.7 | exact tag README/config ระบุ MIT | `public/assets/licenses/MIT.txt` | `b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5` |
++| Font Awesome fonts 4.2/4.3/4.7 | exact tag README/config ระบุ SIL OFL 1.1 | `public/assets/licenses/OFL-1.1.txt` | `8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd` |
++| html5shiv 3.7.2 | tag `3.7.2`, SHA `40df868a76f1f19ea23b123d1480d44a7195f349`; header ระบุ MIT/GPL2 | `public/assets/licenses/MIT.txt` ตาม MIT option | `b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5` |
++| Source Sans Pro | `google/fonts` commit `a7bc06df72f7e1b4e20342e2b04423e579222316` | `public/assets/fonts/source-sans-pro/OFL.txt` | `fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa` |
++
++Font Awesome exact tags:
++
++- `v4.2.0`: tag object `0b924144...`, commit `a65bd93d81e9e6bd5ebfa41757a4474960b973b4`
++- `v4.3.0`: tag object `e9665bad...`, commit `41b9ed01103e6820c3cb043ba7ddab30ecd3f4c0`
++- `v4.7.0`: tag object `a3fe90fa...`, commit `a8386aae19e200ddb0f6845b5feeee5eb7013687`
++
++Font Awesome และ html5shiv exact tags ไม่มี standalone full license text จึงใช้ declaration จาก exact tag จับคู่ full canonical text จาก SPDX `license-list-data` tag `v3.27.0`, tag object `60e0de29...`, commit `d46e94e2c78ceede1cfc63cfa0396472d2798d4c` ห้ามตีความว่า SPDX เป็น provenance ของ runtime bytes
++
++Exact license URLs:
++
++- `https://raw.githubusercontent.com/twbs/bootstrap/v3.3.7/LICENSE`
++- `https://raw.githubusercontent.com/DataTables/DataTables/1.10.16/license.txt`
++- `https://raw.githubusercontent.com/DataTables/FixedColumns/3.2.4/License.txt`
++- `https://raw.githubusercontent.com/scottjehl/Respond/1.4.2/LICENSE-MIT`
++- `https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt`
++- `https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/OFL-1.1.txt`
++
++## Bootstrap version conflict
++
++Brief ระบุ Bootstrap 3.3.4 แต่ active CI3 bytes และ local headersระบุ Bootstrap 3.3.7 ตาม presentation authority จึงคง 3.3.7 และไม่ downgrade
++
++## TDD และ verification
++
++### RED ที่ reproduce
++
++| Finding | RED result |
++|---|---|
++| style attribute | expected `bg-login.jpg`, parser คืน array ว่าง |
++| quoted import/หลาย URL/DATA | ตก `b.png`, รับ `DATA:image/png` ผิด |
++| exact origin | scheme และ port mismatch ไม่ throw |
++| dynamic prefix | `/background-image/assets/app.css` ถูกนับเป็น static |
++| traversal leave/re-enter | path ออกแล้วกลับ `public/` ผ่าน |
++| CSS cycle mutation | `cycle guard mutation`, 1 failure |
++| DataTables image mutation | `sort_both.png` expected hashผิด, 1 failure |
++| temp index ขาด `main.css` | `Git index blob differs from worktree runtime input.` |
++
++### GREEN ปัจจุบัน
++
++| Gate | ผล |
++|---|---|
++| Parser regressions | `OK (11 tests, 79 assertions)` |
++| Dependency/license pins | `OK (1 test, 30 assertions)` |
++| Closure บน exact temporary index | `OK (1 test, 1669 assertions)` |
++| Focused asset suites | `OK (105 tests, 3894 assertions)` |
++| PHPStan | `[OK] No errors` |
++| Full PHPUnit | `OK (415 tests, 8312 assertions)` |
++| Full `scripts/ci-check.sh` | ผ่านทุก gate รวม secret file policy และ candidate-tree PII guard |
++| `git diff --check` | ผ่าน ไม่มี output |
++| Real index unchanged | `yes` ทุก temporary-index run |
++
++Temporary index สร้างจาก `HEAD`, add exact candidate 103 files แล้วรัน test โดยส่ง `GIT_INDEX_FILE` เฉพาะ CI4 process ส่วน wrapper ชั่วคราว unset ตัวแปรนี้เฉพาะคำสั่ง Git/PHP ที่ตรวจ CI3 checkout เพื่อไม่ให้ index ของ CI4 รั่วข้าม repository
++
++## Blockers และไม้ต่อ
++
++1. gitops ต้อง add และ commit exact candidate 103 files หลัง review ผ่าน
++2. ต้อง rerun focused suite, PHPStan, full PHPUnit และ `scripts/ci-check.sh` จาก real checkpoint index
++3. Upload images 4 filesยังมี runtime checksum แต่ provenance คง `BLOCKED` จนมี durable archive identifier/path
++4. Browser DOM, JavaScript interaction และ visual parity ยังไม่ใช่ผลของ Task 6
+
+## License files
+diff --git a/public/assets/licenses/bootstrap-3.3.7-LICENSE b/public/assets/licenses/bootstrap-3.3.7-LICENSE
+new file mode 100644
+index 0000000..7a30002
+--- /dev/null
++++ b/public/assets/licenses/bootstrap-3.3.7-LICENSE
+@@ -0,0 +1,21 @@
++The MIT License (MIT)
++
++Copyright (c) 2011-2016 Twitter, Inc.
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
+diff --git a/public/assets/licenses/datatables-1.10.16-license.txt b/public/assets/licenses/datatables-1.10.16-license.txt
+new file mode 100644
+index 0000000..e22fb65
+--- /dev/null
++++ b/public/assets/licenses/datatables-1.10.16-license.txt
+@@ -0,0 +1,20 @@
++Copyright (c) 2008-2015 SpryMedia Limited
++http://datatables.net
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
+diff --git a/public/assets/licenses/fixedcolumns-3.2.4-License.txt b/public/assets/licenses/fixedcolumns-3.2.4-License.txt
+new file mode 100644
+index 0000000..f58aa59
+--- /dev/null
++++ b/public/assets/licenses/fixedcolumns-3.2.4-License.txt
+@@ -0,0 +1,22 @@
++MIT license
++
++Copyright (c) 2010-2016 SpryMedia Limited
++http://datatables.net
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
+diff --git a/public/assets/licenses/MIT.txt b/public/assets/licenses/MIT.txt
+new file mode 100644
+index 0000000..d817195
+--- /dev/null
++++ b/public/assets/licenses/MIT.txt
+@@ -0,0 +1,18 @@
++MIT License
++
++Copyright (c) <year> <copyright holders>
++
++Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
++associated documentation files (the "Software"), to deal in the Software without restriction, including
++without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
++following conditions:
++
++The above copyright notice and this permission notice shall be included in all copies or substantial
++portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
++LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
++EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
++IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
++USE OR OTHER DEALINGS IN THE SOFTWARE.
+diff --git a/public/assets/licenses/OFL-1.1.txt b/public/assets/licenses/OFL-1.1.txt
+new file mode 100644
+index 0000000..6fe84ee
+--- /dev/null
++++ b/public/assets/licenses/OFL-1.1.txt
+@@ -0,0 +1,43 @@
++SIL OPEN FONT LICENSE
++
++Version 1.1 - 26 February 2007
++
++PREAMBLE
++
++The goals of the Open Font License (OFL) are to stimulate worldwide development of collaborative font projects, to support the font creation efforts of academic and linguistic communities, and to provide a free and open framework in which fonts may be shared and improved in partnership with others.
++
++The OFL allows the licensed fonts to be used, studied, modified and redistributed freely as long as they are not sold by themselves. The fonts, including any derivative works, can be bundled, embedded, redistributed and/or sold with any software provided that any reserved names are not used by derivative works. The fonts and derivatives, however, cannot be released under any other type of license. The requirement for fonts to remain under this license does not apply to any document created using the fonts or their derivatives.
++
++DEFINITIONS
++
++"Font Software" refers to the set of files released by the Copyright Holder(s) under this license and clearly marked as such. This may include source files, build scripts and documentation.
++
++"Reserved Font Name" refers to any names specified as such after the copyright statement(s).
++
++"Original Version" refers to the collection of Font Software components as distributed by the Copyright Holder(s).
++
++"Modified Version" refers to any derivative made by adding to, deleting, or substituting — in part or in whole — any of the components of the Original Version, by changing formats or by porting the Font Software to a new environment.
++
++"Author" refers to any designer, engineer, programmer, technical writer or other person who contributed to the Font Software.
++
++PERMISSION & CONDITIONS
++
++Permission is hereby granted, free of charge, to any person obtaining a copy of the Font Software, to use, study, copy, merge, embed, modify, redistribute, and sell modified and unmodified copies of the Font Software, subject to the following conditions:
++
++1) Neither the Font Software nor any of its individual components, in Original or Modified Versions, may be sold by itself.
++
++2) Original or Modified Versions of the Font Software may be bundled, redistributed and/or sold with any software, provided that each copy contains the above copyright notice and this license. These can be included either as stand-alone text files, human-readable headers or in the appropriate machine-readable metadata fields within text or binary files as long as those fields can be easily viewed by the user.
++
++3) No Modified Version of the Font Software may use the Reserved Font Name(s) unless explicit written permission is granted by the corresponding Copyright Holder. This restriction only applies to the primary font name as presented to the users.
++
++4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font Software shall not be used to promote, endorse or advertise any Modified Version, except to acknowledge the contribution(s) of the Copyright Holder(s) and the Author(s) or with their explicit written permission.
++
++5) The Font Software, modified or unmodified, in part or in whole, must be distributed entirely under this license, and must not be distributed under any other license. The requirement for fonts to remain under this license does not apply to any document created using the Font Software.
++
++TERMINATION
++
++This license becomes null and void if any of the above conditions are not met.
++
++DISCLAIMER
++
++THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+diff --git a/public/assets/licenses/respond-1.4.2-LICENSE-MIT b/public/assets/licenses/respond-1.4.2-LICENSE-MIT
+new file mode 100644
+index 0000000..c7cf40d
+--- /dev/null
++++ b/public/assets/licenses/respond-1.4.2-LICENSE-MIT
+@@ -0,0 +1,22 @@
++Copyright (c) 2012 Scott Jehl
++
++Permission is hereby granted, free of charge, to any person
++obtaining a copy of this software and associated documentation
++files (the "Software"), to deal in the Software without
++restriction, including without limitation the rights to use,
++copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the
++Software is furnished to do so, subject to the following
++conditions:
++
++The above copyright notice and this permission notice shall be
++included in all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
++OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
++HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++OTHER DEALINGS IN THE SOFTWARE.
+
+## Candidate untracked paths
+public/assets/bootstrap/css/bootstrap.css
+public/assets/bootstrap/css/bootstrap.min.css
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.eot
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.svg
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.ttf
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.woff
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.woff2
+public/assets/bootstrap/js/bootstrap.min.js
+public/assets/css/multifreezer.css
+public/assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css
+public/assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js
+public/assets/datatables/1.10.16/css/jquery.dataTables.min.css
+public/assets/datatables/1.10.16/images/sort_asc_disabled.png
+public/assets/datatables/1.10.16/images/sort_asc.png
+public/assets/datatables/1.10.16/images/sort_both.png
+public/assets/datatables/1.10.16/images/sort_desc_disabled.png
+public/assets/datatables/1.10.16/images/sort_desc.png
+public/assets/datatables/1.10.16/js/jquery.dataTables.min.js
+public/assets/dist/css/AdminLTE.min.css
+public/assets/dist/css/CustomAdmin.css
+public/assets/dist/css/skins/_all-skins.min.css
+public/assets/dist/img/avatar.png
+public/assets/dist/img/boxed-bg.jpg
+public/assets/dist/js/app.min.js
+public/assets/font-awesome/4.3.0/css/font-awesome.min.css
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2
+public/assets/font-awesome/4.7.0/css/font-awesome.min.css
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2
+public/assets/font-awesome/css/font-awesome.css
+public/assets/font-awesome/css/font-awesome.min.css
+public/assets/font-awesome/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/fonts/fontawesome-webfont.woff
+public/assets/fontawesome/css/font-awesome.css
+public/assets/fontawesome/fonts/fontawesome-webfont.eot
+public/assets/fontawesome/fonts/fontawesome-webfont.svg
+public/assets/fontawesome/fonts/fontawesome-webfont.ttf
+public/assets/fontawesome/fonts/fontawesome-webfont.woff
+public/assets/fontawesome/fonts/fontawesome-webfont.woff2
+public/assets/fonts/source-sans-pro/OFL.txt
+public/assets/fonts/source-sans-pro/SourceSansPro-Bold.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Italic.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Light.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-LightItalic.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-SemiBold.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-SemiBoldItalic.ttf
+public/assets/fonts/source-sans-pro/stylesheet.css
+public/assets/html5shiv/3.7.2/html5shiv.min.js
+public/assets/images/404.png
+public/assets/images/access.png
+public/assets/images/bg-tracking-mb.png
+public/assets/images/bg-tracking.png
+public/assets/images/print-logo.jpg
+public/assets/js/addContact.js
+public/assets/js/addtrack.js
+public/assets/js/jQuery-2.1.4.min.js
+public/assets/js/jquery-3.2.1.min.js
+public/assets/js/jquery.validate.js
+public/assets/js/jquerydatepicker/images/animated-overlay.gif
+public/assets/js/jquerydatepicker/images/ui-bg_flat_0_aaaaaa_40x100.png
+public/assets/js/jquerydatepicker/images/ui-bg_flat_75_ffffff_40x100.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_55_fbf9ee_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_65_ffffff_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_75_dadada_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_75_e6e6e6_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_95_fef1ec_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_highlight-soft_75_cccccc_1x100.png
+public/assets/js/jquerydatepicker/images/ui-icons_222222_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_2e83ff_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_454545_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_888888_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_cd0a0a_256x240.png
+public/assets/js/jquerydatepicker/jquery-1.10.2.min.js
+public/assets/js/jquerydatepicker/jquery-ui-sliderAccess.js
+public/assets/js/jquerydatepicker/jquery-ui-timepicker-addon.css
+public/assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js
+public/assets/js/jquerydatepicker/jquery-ui.css
+public/assets/js/jquerydatepicker/jquery-ui.min.js
+public/assets/js/validation.js
+public/assets/licenses/bootstrap-3.3.7-LICENSE
+public/assets/licenses/datatables-1.10.16-license.txt
+public/assets/licenses/fixedcolumns-3.2.4-License.txt
+public/assets/licenses/MIT.txt
+public/assets/licenses/OFL-1.1.txt
+public/assets/licenses/respond-1.4.2-LICENSE-MIT
+public/assets/respond/1.4.2/respond.min.js
+public/uploads/web/contact_laptop.png
+public/uploads/web/contact_mobile.png
+public/uploads/web/track_laptop.png
+public/uploads/web/track_mobile.png

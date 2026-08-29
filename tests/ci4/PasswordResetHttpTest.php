@@ -7,6 +7,7 @@ use App\Authentication\ResetTokenFactory;
 use App\Authentication\ResetTokenStore;
 use App\Authentication\ShadowUserStore;
 use CodeIgniter\Encryption\EncrypterInterface;
+use CodeIgniter\Security\Exceptions\SecurityException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -62,6 +63,203 @@ final class PasswordResetHttpTest extends CIUnitTestCase
         self::assertNull((new ResetDeliveryIntentStore($this->db, $this->encrypter))->reserveNext(
             new DateTimeImmutable('+1 minute'),
         ));
+    }
+
+    public function testLegacyResetRequestFormUsesSameGenericWorkflowForKnownAndUnknownEmail(): void
+    {
+        (new ShadowUserStore($this->db))->create(
+            'form-known@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            2,
+            1,
+        );
+
+        $known = $this->postForm('/resetPasswordUser', ['login_email' => ' form-known@example.invalid ']);
+        $unknown = $this->postForm('/resetPasswordUser', ['login_email' => 'form-unknown@example.invalid']);
+
+        $known->assertRedirectTo('/forgotPassword');
+        $unknown->assertRedirectTo('/forgotPassword');
+        self::assertSame($known->response()->getStatusCode(), $unknown->response()->getStatusCode());
+        self::assertSame(
+            $known->response()->getHeaderLine('Location'),
+            $unknown->response()->getHeaderLine('Location'),
+        );
+
+        $delivery = (new ResetDeliveryIntentStore($this->db, $this->encrypter))->reserveNext(
+            new DateTimeImmutable('+1 minute'),
+        );
+        self::assertNotNull($delivery);
+        self::assertSame('form-known@example.invalid', $delivery->recipient());
+        self::assertNull((new ResetDeliveryIntentStore($this->db, $this->encrypter))->reserveNext(
+            new DateTimeImmutable('+1 minute'),
+        ));
+    }
+
+    public function testLegacyResetRequestFormRequiresCsrfBeforeWorkflow(): void
+    {
+        $before = $this->db->table('ci4_password_reset_audit')->countAllResults();
+
+        try {
+            $this->post('/resetPasswordUser', ['login_email' => 'csrf@example.invalid']);
+            self::fail('Expected CSRF rejection.');
+        } catch (SecurityException) {
+            // The route filter rejects before the controller operation.
+        }
+
+        self::assertSame($before, $this->db->table('ci4_password_reset_audit')->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_password_reset_tokens')->countAllResults());
+    }
+
+    public function testLegacyResetRequestFormUsesSameIdentityRateLimit(): void
+    {
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $this->postForm('/resetPasswordUser', ['login_email' => 'form-throttle@example.invalid'])
+                ->assertRedirectTo('/forgotPassword');
+        }
+
+        $limited = $this->postForm('/resetPasswordUser', ['login_email' => 'form-throttle@example.invalid']);
+
+        $limited->assertStatus(429);
+        self::assertMatchesRegularExpression('/^[1-9][0-9]*$/D', $limited->response()->getHeaderLine('Retry-After'));
+        self::assertStringContainsString('Too many requests', (string) $limited->getBody());
+        self::assertSame(0, $this->db->table('ci4_password_reset_tokens')->countAllResults());
+    }
+
+    public function testLegacyResetCompletionConsumesTokenOnceAndRevokesSessions(): void
+    {
+        $users = new ShadowUserStore($this->db);
+        $userId = $users->create(
+            'form-complete@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            3,
+            7,
+        );
+        $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x14", $length));
+        $issued = $factory->issue(new DateTimeImmutable());
+        (new ResetTokenStore($this->db, $factory))->issue($userId, $issued);
+        $payload = [
+            'email'           => 'form-complete@example.invalid',
+            'activation_code' => $issued->token(),
+            'password'        => 'Synthetic modern passphrase',
+            'cpassword'       => 'Synthetic modern passphrase',
+        ];
+
+        $this->postForm('/createPasswordUser', $payload)->assertRedirectTo('/login');
+        $replay = $this->postForm('/createPasswordUser', $payload);
+
+        $replay->assertStatus(400);
+        self::assertStringContainsString('invalid or has expired', (string) $replay->getBody());
+        self::assertStringNotContainsString($issued->token(), (string) $replay->getBody());
+        self::assertTrue($users->verifyPassword($userId, 'Synthetic modern passphrase'));
+        self::assertSame(2, $users->currentSessionVersion($userId));
+    }
+
+    public function testLegacyResetCompletionRequiresCsrfBeforePasswordChange(): void
+    {
+        $users = new ShadowUserStore($this->db);
+        $userId = $users->create(
+            'complete-csrf@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            3,
+            7,
+        );
+        $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x17", $length));
+        $issued = $factory->issue(new DateTimeImmutable());
+        $tokens = new ResetTokenStore($this->db, $factory);
+        $tokens->issue($userId, $issued);
+
+        try {
+            $this->post('/createPasswordUser', [
+                'email'           => 'complete-csrf@example.invalid',
+                'activation_code' => $issued->token(),
+                'password'        => 'Synthetic modern passphrase',
+                'cpassword'       => 'Synthetic modern passphrase',
+            ]);
+            self::fail('Expected CSRF rejection.');
+        } catch (SecurityException) {
+            // The route filter rejects before the controller operation.
+        }
+
+        self::assertTrue($users->verifyPassword($userId, 'Synthetic old passphrase'));
+        self::assertTrue($tokens->isValid($userId, $issued->token(), new DateTimeImmutable()));
+    }
+
+    public function testLegacyResetCompletionRejectsMismatchedEmailWithoutReflectingPayload(): void
+    {
+        $users = new ShadowUserStore($this->db);
+        $userId = $users->create(
+            'form-owner@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            3,
+            7,
+        );
+        $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x15", $length));
+        $issued = $factory->issue(new DateTimeImmutable());
+        $tokens = new ResetTokenStore($this->db, $factory);
+        $tokens->issue($userId, $issued);
+
+        $result = $this->postForm('/createPasswordUser', [
+            'email'           => 'attacker@example.invalid',
+            'activation_code' => $issued->token(),
+            'password'        => 'Synthetic modern passphrase',
+            'cpassword'       => 'Synthetic modern passphrase',
+        ]);
+
+        $result->assertStatus(400);
+        $body = (string) $result->getBody();
+        self::assertStringNotContainsString('attacker@example.invalid', $body);
+        self::assertStringNotContainsString('form-owner@example.invalid', $body);
+        self::assertStringNotContainsString($issued->token(), $body);
+        self::assertTrue($users->verifyPassword($userId, 'Synthetic old passphrase'));
+        self::assertTrue($tokens->isValid($userId, $issued->token(), new DateTimeImmutable()));
+    }
+
+    public function testLegacyResetCompletionRejectsWeakPasswordWithoutConsumingToken(): void
+    {
+        $users = new ShadowUserStore($this->db);
+        $userId = $users->create(
+            'form-weak@example.invalid',
+            password_hash('Synthetic old passphrase', PASSWORD_DEFAULT),
+            3,
+            7,
+        );
+        $factory = new ResetTokenFactory(static fn (int $length): string => str_repeat("\x16", $length));
+        $issued = $factory->issue(new DateTimeImmutable());
+        $tokens = new ResetTokenStore($this->db, $factory);
+        $tokens->issue($userId, $issued);
+
+        $result = $this->postForm('/createPasswordUser', [
+            'email'           => 'form-weak@example.invalid',
+            'activation_code' => $issued->token(),
+            'password'        => 'short',
+            'cpassword'       => 'short',
+        ]);
+
+        $result->assertStatus(422);
+        $body = (string) $result->getBody();
+        self::assertStringContainsString('value="form-weak@example.invalid" readonly', $body);
+        self::assertStringContainsString('name="password" required value=""', $body);
+        self::assertStringNotContainsString('value="short"', $body);
+        self::assertTrue($tokens->isValid($userId, $issued->token(), new DateTimeImmutable()));
+        self::assertTrue($users->verifyPassword($userId, 'Synthetic old passphrase'));
+    }
+
+    public function testResetDocumentKeepsServiceUnavailableMessageWithoutReflectingResetData(): void
+    {
+        $controller = new \App\Controllers\PasswordReset();
+        $method = new \ReflectionMethod($controller, 'resetDocument');
+        $token = str_repeat('a', 64);
+        $body = (string) $method->invoke(
+            $controller,
+            $token,
+            'The reset service is temporarily unavailable. Please try again later.',
+            'lookup-failure@example.invalid',
+        );
+
+        self::assertStringContainsString('reset service is temporarily unavailable', $body);
+        self::assertStringNotContainsString('invalid or has expired', $body);
+        self::assertStringNotContainsString($token, $body);
+        self::assertStringNotContainsString('lookup-failure@example.invalid', $body);
     }
 
     public function testKnownAndUnknownResetRequestsBothObserveMinimumResponseTime(): void
@@ -187,11 +385,14 @@ final class PasswordResetHttpTest extends CIUnitTestCase
     public function testResetRequestWithoutCsrfTokenIsRejectedWithoutDebugDetails(): void
     {
         $result = $this
+            ->withHeaders(['Accept' => 'text/html'])
             ->withBodyFormat('json')
             ->post('/password-reset/request', ['email' => 'unknown@example.invalid']);
 
         $result->assertStatus(403);
+        $result->assertHeader('Content-Type', 'application/json; charset=UTF-8');
         $result->assertJSONExact(['error' => 'csrf_rejected']);
+        $result->assertDontSee('Access Denied');
         self::assertStringNotContainsString('trace', $result->getJSON());
         self::assertStringNotContainsString('unknown@example.invalid', $result->getJSON());
     }
@@ -310,5 +511,13 @@ final class PasswordResetHttpTest extends CIUnitTestCase
             ])
             ->withBody('{"email":')
             ->post($path);
+    }
+
+    /** @param array<string, string> $payload */
+    private function postForm(string $path, array $payload)
+    {
+        $payload[csrf_token()] = csrf_hash();
+
+        return $this->post($path, $payload);
     }
 }

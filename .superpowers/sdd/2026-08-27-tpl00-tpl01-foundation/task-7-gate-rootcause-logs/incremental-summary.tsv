@@ -1,0 +1,7 @@
+01-access-denied	c9cd5c13f7a1cbc56c7f7ec5dad0e00ace398350	3	2	Tests: 396, Assertions: 5552, Errors: 1, Failures: 6, Risky: 1.
+02-plus-login	a33bc43297ceac125338405990a0d76da210901b	5	2	Tests: 396, Assertions: 5555, Errors: 1, Failures: 5, Risky: 1.
+03-plus-tracking	6181b880909c1d81d0e5801558dafcfca5479d32	10	2	Tests: 396, Assertions: 5785, Errors: 1, Risky: 1.
+04-plus-error-404	a292c4d5dd386a709b8fda1e32bf4d8ca89aa412	11	1	Tests: 396, Assertions: 7983, Failures: 1.
+06-plus-contact	0365370fa1111467fb2651ddc7d12721280f43aa	17	1	Tests: 396, Assertions: 7902, Failures: 2.
+07-plus-auth-contract	b3617b298c960db80ef6ddaae1721d0791b2dccf	18	1	Tests: 399, Assertions: 8189, Failures: 1.
+08-plus-shadow-user	c6773717227fd49c55661c86d23a34a46ece34d3	19	0	OK (399 tests, 8225 assertions)

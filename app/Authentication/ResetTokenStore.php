@@ -91,6 +91,27 @@ final class ResetTokenStore
             ->countAllResults() === 1;
     }
 
+    public function findActiveUserId(string $token, DateTimeImmutable $now): ?int
+    {
+        $hash = $this->tokens->hashCandidate($token);
+
+        if ($hash === null) {
+            return null;
+        }
+
+        $row = $this->db->table(self::TABLE)
+            ->select('user_id')
+            ->where('purpose', self::PURPOSE)
+            ->where('token_hash', $hash)
+            ->where('consumed_at', null)
+            ->where('revoked_at', null)
+            ->where('expires_at >', $this->timestamp($now))
+            ->get()
+            ->getRowArray();
+
+        return isset($row['user_id']) && (int) $row['user_id'] > 0 ? (int) $row['user_id'] : null;
+    }
+
     public function consume(
         int $userId,
         string $token,

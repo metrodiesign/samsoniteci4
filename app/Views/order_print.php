@@ -18,15 +18,15 @@ $fmtDate = static function ($raw): string {
     return substr($raw, 8, 2) . '/' . substr($raw, 5, 2) . '/' . substr($raw, 0, 4);
 };
 
-$renderChecks = static function (array $items, string $idKey, string $labelKey, $selectedRaw, $other): void {
+$renderChecks = static function (array $items, string $idKey, string $labelKey, string $field, $selectedRaw, $other): void {
     $selectedRaw = (string) ($selectedRaw ?? '');
     $selected    = $selectedRaw === '' ? [] : explode('|', $selectedRaw);
     foreach ($items as $item) {
-        $checked = in_array((string) $item[$idKey], $selected, true) ? ' checked' : '';
-        echo '<label class="custom-form"><input type="checkbox" value="' . esc((string) $item[$idKey]) . '" disabled' . $checked . '> <span class="label-text">' . esc((string) $item[$labelKey]) . '</span></label> ';
+        $checked = in_array((string) $item[$idKey], $selected, true) ? ' checked="checked"' : '';
+        echo '<label class="custom-form"><input type="checkbox" id="' . esc($field) . '[]" name="' . esc($field) . '[]" value="' . esc((string) $item[$idKey]) . '" disabled' . $checked . '> <span class="label-text">' . esc((string) $item[$labelKey]) . '</span></label> ';
     }
     $other = (string) ($other ?? '');
-    echo '<label class="custom-form"><input type="checkbox" value="etc" disabled' . ($other !== '' ? ' checked' : '') . '> <span class="label-text">อื่นๆ</span></label> ';
+    echo '<label class="custom-form"><input type="checkbox" class="form-check-input" id="' . esc($field) . '_etc" name="' . esc($field) . '_etc" value="' . esc($field) . '_etc" disabled' . ($other !== '' ? ' checked="checked"' : '') . '> <span class="label-text">อื่นๆ</span></label> ';
     echo esc($other);
 };
 ?>
@@ -34,9 +34,13 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
 <html lang="th">
 <head>
     <meta charset="utf-8">
-    <title><?= esc($row['trackID'] ?? '') ?></title>
+    <title>PDF FORM</title>
     <style media="print">
         @page { size: A4; margin: 0 10mm; }
+        .sheet { margin: 0; overflow: hidden; position: relative; box-sizing: border-box; page-break-after: always; }
+        body.A4 .sheet { width: 210mm; height: 326mm; }
+        .sheet.padding-10mm { padding: 10mm 0 0; }
+        .size-print { width: 100%; }
         .no-print { display: none; }
     </style>
     <style>
@@ -49,29 +53,32 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
     </style>
 </head>
 <body class="A4">
-<section class="sheet">
-    <input class="no-print" id="btnPrint" name="btnPrint" type="button" value="Print" onclick="this.style.display='none';window.print();">
+<section class="sheet padding-10mm">
+    <script language="javascript">
+        function printpr()
+        {
+            window.print();
+        }
+    </script>
+    <input name="btnPrint" type="button" id="btnPrint" value="Print" onClick="JavaScript:this.style.display='none';printpr();">
 
+    <div class="size-print">
     <table style="width: 100%; text-align: left;">
-        <?php // CI3 puts the receipt title in a header cell of its own and the company block
-              // in the row below it; keep both the elements and the split. ?>
+        <th style="width: 100%;">
+            <h1 style="line-height: 1; margin-bottom: 25px; text-align:right; margin-right: 20%; color: #014c8f;">ใบรับซ่อม</h1>
+        </th>
         <tr>
-            <th style="width: 50%;">
-                <h1 style="line-height: 1; color: #014c8f;">ใบรับซ่อม</h1>
-            </th>
-            <td rowspan="2" style="width: 50%;">
-                <img src="/assets/images/main-logo.png" alt="" style="max-width: 230px; width: 230px; height: auto;">
+            <td style="width: 50%;">
+                <h2 style="font-size: 18px; line-height: 1; color: #014c8f; margin-bottom: 5px; margin-top: 5px;">บริษัท แซมโซไนท์ (ประเทศไทย) จำกัด<br>SAMSONITE (THAILAND) CO., LTD<br>สาขา <?= esc($branchName) ?></h2>
             </td>
-        </tr>
-        <tr>
-            <td>
-                <h2 style="font-size: 18px; line-height: 1; color: #014c8f;">บริษัท แซมโซไนท์ (ประเทศไทย) จำกัด<br>SAMSONITE (THAILAND) CO., LTD<br>สาขา <?= esc($branchName) ?></h2>
+            <td style="width: 50%;">
+                <div class=""><img src="/assets/images/print-logo.jpg" alt="" style="max-width: 230px; height: auto; width: 230px;"></div>
             </td>
         </tr>
     </table>
     <br>
 
-    <table class="detail">
+    <table class="detail" style="width: 100%; text-align: left; line-height: 1.5;">
         <?php if ((string) ($row['detailAgent'] ?? '') === '1') { ?>
             <tr><td colspan="3"><strong style="color: red; text-decoration: underline;">URGENT/ซ่อมด่วน</strong></td></tr>
         <?php } ?>
@@ -84,8 +91,8 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
         <tr>
             <td><?= esc($row['trackID'] ?? '') ?></td>
             <td><?= esc($row['orderIDShow'] ?? '') ?></td>
-            <td><?= esc($fmtDate($row['requestDate'] ?? '')) ?></td>
         </tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 
         <tr>
             <td><strong>FULLNAME/ชื่อลูกค้า</strong></td>
@@ -97,6 +104,7 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
             <td><?= esc($row['customerEmail'] ?? '') ?></td>
             <td><?= esc($row['customerTel'] ?? '') ?></td>
         </tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 
         <tr>
             <td><strong>TEL2/เบอร์โทรศัพท์ลูกค้า2</strong></td>
@@ -108,6 +116,7 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
             <td><?= esc($fmtDate($row['detailDatePurchase'] ?? '')) ?></td>
             <td><?= esc($typeName) ?></td>
         </tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 
         <tr>
             <td><strong>BRAND/ยี่ห้อ</strong></td>
@@ -122,18 +131,23 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
                 <?= $waranty !== '' ? 'มี ' . esc($waranty) : 'ไม่มี' ?>
             </td>
         </tr>
+        <tr><td>&nbsp;</td></tr>
 
         <tr><td colspan="3"><strong>CONDITION/อาการที่ส่งซ่อม</strong></td></tr>
-        <tr><td colspan="3"><?php $renderChecks($conditions, 'condition_id', 'condition_details', $row['detailCondition'] ?? '', $row['detailConditionOther'] ?? ''); ?></td></tr>
+        <tr><td colspan="3"><?php $renderChecks($conditions, 'condition_id', 'condition_details', 'condition', $row['detailCondition'] ?? '', $row['detailConditionOther'] ?? ''); ?></td></tr>
+        <tr><td>&nbsp;</td></tr>
 
         <tr><td colspan="3"><strong>ESTIMATE PRICE/ประเมินราคาส่งซ่อม</strong></td></tr>
-        <tr><td colspan="3"><?php $renderChecks($estimatePrices, 'estimateprice_id', 'estimateprice_details', $row['detailEstimatePrice'] ?? '', $row['detailEstimatePriceOther'] ?? ''); ?></td></tr>
+        <tr><td colspan="3"><?php $renderChecks($estimatePrices, 'estimateprice_id', 'estimateprice_details', 'estimateprice', $row['detailEstimatePrice'] ?? '', $row['detailEstimatePriceOther'] ?? ''); ?></td></tr>
+        <tr><td>&nbsp;</td></tr>
 
         <tr><td colspan="3"><strong>FIXED/สภาพ,ตำหนิ</strong></td></tr>
-        <tr><td colspan="3"><?php $renderChecks($fixedItems, 'fixed_id', 'fixed_details', $row['detailFixed'] ?? '', $row['detailFixedOther'] ?? ''); ?></td></tr>
+        <tr><td colspan="3"><?php $renderChecks($fixedItems, 'fixed_id', 'fixed_details', 'fixed', $row['detailFixed'] ?? '', $row['detailFixedOther'] ?? ''); ?></td></tr>
+        <tr><td>&nbsp;</td></tr>
 
         <tr><td colspan="3"><strong>EQUIPMENT/อุปกรณ์ที่มาพร้อมกับสินค้า</strong></td></tr>
         <tr><td colspan="3"><?= esc($row['detailEquipment'] ?? '') ?></td></tr>
+        <tr><td>&nbsp;</td></tr>
 
         <tr><td colspan="3"><strong>NOTE/หมายเหตุ</strong></td></tr>
         <tr><td colspan="3"><?= esc($row['detailNote'] ?? '') ?></td></tr>
@@ -153,12 +167,12 @@ $renderChecks = static function (array $items, string $idKey, string $labelKey, 
         </tr>
     </table>
 
-    <br>
-    <address style="font-style: normal; line-height: 1.5;">
+    <div style="display: -webkit-box; padding: 20px 0;"><div style="width: 100%; line-height: 1.5; font-weight: 400;"><address style="font-style: normal;">
         98 อาคารสาทร สแควร์ ออฟฟิศ ทาวเวอร์ ชั้น 37 ห้องเลขที่ 3705-3706 ถนนสาทรเหนือ แขวงสีลม เขตบางรัก กรุงเทพฯ 10500<br>
         98 Sathorn Square Office Tower 37<sup>th</sup> floor room no.3705-3706, North Sathorn Road, Silom, Bangkok, Bangkok 10500
         <p>Tel. (66) 2761-9999 <span>Fax: (66) 2761-9900</span></p>
-    </address>
+    </address></div><div></div></div>
+    </div>
 </section>
 </body>
 </html>

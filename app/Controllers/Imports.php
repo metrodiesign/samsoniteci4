@@ -18,9 +18,14 @@ final class Imports extends BaseController
             'price' => 'Upload Price Management',
             'new-order' => 'Upload NEW REQUEST Management',
         ];
+        $legacy = [
+            'status' => ['preview' => 'ExcelDataAdd', 'confirm' => 'ExcelConfirm'],
+            'price' => ['preview' => 'ExcelPriceDataAdd', 'confirm' => 'ExcelPriceConfirm'],
+            'new-order' => ['preview' => 'ExcelNewOrderDataAdd', 'confirm' => 'ExcelNewOrderConfirm'],
+        ][$kind];
 
         return $this->layout($titles[$kind] ?? ('Import ' . $kind), view('import_form', [
-            'kind' => $kind, 'caption' => 'Enter Upload Details',
+            'kind' => $kind, 'caption' => 'Enter Upload Details', 'legacyPreview' => $legacy['preview'],
         ]), ['subtitle' => 'Add / Upload']);
     }
 
@@ -56,7 +61,9 @@ final class Imports extends BaseController
             return $this->response->setStatusCode(503)->setJSON(['error' => 'import_unavailable']);
         }
 
-        return $this->layout('Import preview', view('import_preview', ['kind' => $kind, ...$preview]));
+        $legacyConfirm = ['status' => 'ExcelConfirm', 'price' => 'ExcelPriceConfirm', 'new-order' => 'ExcelNewOrderConfirm'][$kind];
+
+        return $this->layout('Import preview', view('import_preview', ['kind' => $kind, 'legacyConfirm' => $legacyConfirm, ...$preview]));
     }
 
     public function confirm(string $kind, string $batchId): ResponseInterface

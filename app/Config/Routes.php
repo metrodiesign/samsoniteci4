@@ -7,10 +7,12 @@ $routes->get('/', 'Tracking::form');
 $routes->get('health', 'Health::index');
 $routes->get('track', 'Tracking::form');
 $routes->get('track_th', 'Tracking::formThai');
+$routes->post('track/trackstatus', 'Tracking::legacyEnglish');
+$routes->post('track_th/trackstatus', 'Tracking::legacyThai');
 $routes->get('tracking', 'Tracking::form');
 $routes->get('tracking-th', 'Tracking::formThai');
-$routes->get('tracking/(:segment)', 'Tracking::english/$1');
-$routes->get('tracking-th/(:segment)', 'Tracking::thai/$1');
+$routes->get('tracking/(:any)', 'Tracking::english/$1');
+$routes->get('tracking-th/(:any)', 'Tracking::thai/$1');
 $routes->get('rating/(:segment)', 'Rating::form/$1');
 $routes->post('rating', 'Rating::submit', ['filter' => 'csrf']);
 $routes->post('addRating', 'Rating::submit', ['filter' => 'csrf']);
@@ -21,9 +23,11 @@ $routes->post('contact-th', 'Contact::submitThai', ['filter' => 'csrf']);
 $routes->get('contact_th', 'Contact::formThai');
 $routes->post('addContact', 'Contact::submit', ['filter' => 'csrf']);
 $routes->post('addContact_th', 'Contact::submitThai', ['filter' => 'csrf']);
+$routes->post('contact/addContact', 'Contact::submit', ['filter' => 'csrf']);
+$routes->post('contact_th/addContact', 'Contact::submitThai', ['filter' => 'csrf']);
 $routes->get('contact-list', 'Contact::listing', ['filter' => 'authorized:read']);
-$routes->get('contactListing', 'Contact::listing', ['filter' => 'authorized:read']);
-$routes->get('contactListing/(:num)', 'Contact::listing', ['filter' => 'authorized:read']);
+$routes->match(['GET', 'POST'], 'contactListing', 'Contact::listing', ['filter' => 'authorized:read']);
+$routes->match(['GET', 'POST'], 'contactListing/(:num)', 'Contact::listing', ['filter' => 'authorized:read']);
 $routes->get('master/(:segment)', 'MasterData::listing/$1', ['filter' => 'authorized:read']);
 $routes->get('master/(:segment)/new', 'MasterData::add/$1', ['filter' => 'authorized:read']);
 $routes->post('master/(:segment)', 'MasterData::create/$1', ['filter' => ['authorized:write', 'csrf']]);
@@ -31,13 +35,48 @@ $routes->get('master/(:segment)/(:num)', 'MasterData::edit/$1/$2', ['filter' => 
 $routes->post('master/(:segment)/(:num)', 'MasterData::update/$1/$2', ['filter' => ['authorized:write', 'csrf']]);
 $routes->post('master/(:segment)/(:num)/delete', 'MasterData::delete/$1/$2', ['filter' => ['authorized:delete', 'csrf']]);
 $routes->get('branch-type-image/(:segment)', 'MasterData::image/$1');
-$routes->get('bookListing', 'MasterData::listing/book', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('bookListing/(:num)', 'MasterData::listing/book', ['filter' => ['web-auth', 'authorized:read']]);
+// CI3 master listing, add and edit URLs remain public browser contracts. POST aliases
+// need the legacy record-id payload adapter and are added with each source form migration.
+foreach ([
+    'branch' => ['branchListing', 'BranchNew', 'addNewBranch', 'editBranchOld', 'editBranch'],
+    'branchtype' => ['branchtypeListing', 'add_new_branchtype', 'addNewBranchtype', 'editBranchtypeOld', 'editBranchtype'],
+    'statustype' => ['statustypeListing', 'add_new_statustype', 'addNewStatustype', 'editStatustypeOld', 'editStatustype'],
+    'producttype' => ['producttypeListing', 'add_new_producttype', 'addNewProducttype', 'editProducttypeOld', 'editProducttype'],
+    'book' => ['bookListing', 'BookNew', 'addNewBook', 'editBookOld', 'editBook'],
+    'brand' => ['brandListing', 'add_new_brand', 'addNewBrand', 'editBrandOld', 'editBrand'],
+    'condition' => ['conditionListing', 'add_new_condition', 'addNewCondition', 'editConditionOld', 'editCondition'],
+    'estimateprice' => ['estimatepriceListing', 'add_new_estimateprice', 'addNewEstimateprice', 'editEstimatepriceOld', 'editEstimateprice'],
+    'fixed' => ['fixedListing', 'add_new_fixed', 'addNewFixed', 'editFixedOld', 'editFixed'],
+    'provider' => ['providerListing', 'add_new_provider', 'addNewProvider', 'editProviderOld', 'editProvider'],
+] as $type => [$listing, $new, $create, $edit, $update]) {
+    $routes->match(['GET', 'POST'], $listing, 'MasterData::legacyListing/' . $type, ['filter' => ['web-auth', 'authorized:read']]);
+    $routes->match(['GET', 'POST'], $listing . '/(:num)', 'MasterData::legacyListing/' . $type . '/$1', ['filter' => ['web-auth', 'authorized:read']]);
+    $routes->get($new, 'MasterData::add/' . $type, ['filter' => ['web-auth', 'authorized:read']]);
+    $routes->post($create, 'MasterData::legacyCreate/' . $type, ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+    $routes->get($edit, 'MasterData::legacyEditMissing/' . $type, ['filter' => ['web-auth', 'authorized:read']]);
+    $routes->get($edit . '/(:num)', 'MasterData::edit/' . $type . '/$1', ['filter' => ['web-auth', 'authorized:read']]);
+    $routes->post($update, 'MasterData::legacyUpdate/' . $type, ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+}
+foreach ([
+    'branch' => 'deleteBranch', 'branchtype' => 'deleteBranchtype', 'statustype' => 'deleteStatustype',
+    'producttype' => 'deleteProducttype', 'book' => 'deleteBook', 'brand' => 'deleteBrand',
+    'condition' => 'deleteCondition', 'estimateprice' => 'deleteEstimateprice', 'fixed' => 'deleteFixed',
+    'provider' => 'deleteProvider',
+] as $type => $route) {
+    $routes->post($route, 'MasterData::legacyDelete/' . $type, ['filter' => ['web-auth', 'authorized:delete', 'csrf']]);
+}
 $routes->get('menu', 'Menu::listing', ['filter' => 'web-auth']);
 $routes->get('menu/new', 'Menu::add', ['filter' => 'web-auth']);
 $routes->post('menu', 'Menu::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('menu/(:num)', 'Menu::edit/$1', ['filter' => 'web-auth']);
 $routes->post('menu/(:num)', 'Menu::update/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->match(['GET', 'POST'], 'menuListing', 'Menu::legacyListing', ['filter' => 'web-auth']);
+$routes->match(['GET', 'POST'], 'menuListing/(:num)', 'Menu::legacyListing', ['filter' => 'web-auth']);
+$routes->get('addNewMenu', 'Menu::legacyAdd', ['filter' => 'web-auth']);
+$routes->post('addMenu', 'Menu::legacyCreate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->get('editMunuOld', 'Menu::legacyEditMissing', ['filter' => 'web-auth']);
+$routes->get('editMunuOld/(:num)', 'Menu::legacyEdit/$1', ['filter' => 'web-auth']);
+$routes->post('editMenu', 'Menu::legacyUpdate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('backgrounds', 'Background::listing', ['filter' => 'web-auth']);
 $routes->get('backgrounds/new', 'Background::add', ['filter' => 'web-auth']);
 $routes->post('backgrounds', 'Background::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
@@ -45,6 +84,13 @@ $routes->get('backgrounds/(:num)', 'Background::edit/$1', ['filter' => 'web-auth
 $routes->post('backgrounds/(:num)', 'Background::update/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('backgrounds/(:num)/delete', 'Background::delete/$1', ['filter' => ['web-auth', 'authorized:delete', 'csrf']]);
 $routes->get('background-image/(:segment)', 'Background::image/$1');
+$routes->get('BackgroundListing', 'Background::legacyListing', ['filter' => 'web-auth']);
+$routes->get('BackgroundListing/(:num)', 'Background::legacyListing', ['filter' => 'web-auth']);
+$routes->get('BackgroundNew', 'Background::legacyAdd', ['filter' => 'web-auth']);
+$routes->post('addBackground', 'Background::legacyCreate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->get('editBackgroundOld', 'Background::legacyEditMissing', ['filter' => 'web-auth']);
+$routes->get('editBackgroundOld/(:num)', 'Background::legacyEdit/$1', ['filter' => 'web-auth']);
+$routes->post('editBackground', 'Background::legacyUpdate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->post('users', 'Users::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users/email-exists', 'Users::emailExists', ['filter' => ['web-auth', 'authorized:read']]);
@@ -59,11 +105,17 @@ $routes->get('api/branches', 'Users::branches', ['filter' => ['web-auth', 'autho
 $routes->get('api/books', 'Users::books', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('change-password', 'Users::passwordForm', ['filter' => 'web-auth']);
 $routes->post('change-password', 'Users::changePassword', ['filter' => ['web-auth', 'csrf']]);
+$routes->get('loadChangePass', 'Users::legacyPasswordForm', ['filter' => 'web-auth']);
+$routes->post('changePassword', 'Users::changePasswordLegacy', ['filter' => ['web-auth', 'csrf']]);
 $routes->get('orders', 'Order::listing', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('orders/new', 'Order::newOrder', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->post('orders/new', 'Order::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('Orders', 'Order::newOrder', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->post('addNewOrders', 'Order::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->get('editOrdersOld/(:num)', 'Order::editForm/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->post('editOrders', 'Order::legacyEdit', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
+$routes->get('OrderPrint/(:num)', 'Order::print/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->post('order/do_upload_multi/(:segment)', 'Order::previewUpload/$1', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorderUpdate', 'Order::sendToProvider', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorderUpdateStatus', 'Order::updateStatus', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('sendorder_deliver', 'Order::deliver', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
@@ -134,7 +186,12 @@ foreach (['ReportTrackingListing', 'Order/ReportTrackingListing'] as $reportRout
 }
 
 $routes->get('forgot-password', 'PasswordReset::forgotForm');
+$routes->get('forgotPassword', 'PasswordReset::forgotForm');
+$routes->post('resetPasswordUser', 'PasswordReset::requestResetForm', ['filter' => 'csrf']);
 $routes->get('reset-password', 'PasswordReset::resetForm');
+$routes->get('resetPasswordConfirmUser/(:any)/(:any)', 'PasswordReset::legacyResetForm');
+$routes->get('resetPasswordConfirmUser/(:any)', 'PasswordReset::legacyResetForm');
+$routes->post('createPasswordUser', 'PasswordReset::completeResetForm', ['filter' => 'csrf']);
 $routes->get('password-reset/csrf', 'PasswordReset::csrf');
 $routes->post('password-reset/request', 'PasswordReset::requestReset', ['filter' => 'api-csrf']);
 $routes->post('password-reset/complete', 'PasswordReset::completeReset', ['filter' => 'api-csrf']);

@@ -1,0 +1,18 @@
+PHPUnit 11.5.56 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.7
+Configuration: /private/tmp/claude-501/task7-gate-incremental-fixed-63470/05-plus-auth-reset/tree/phpunit.xml.dist
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:00.412, Memory: 18.00 MB
+
+There was 1 failure:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+Failed asserting that actual size 117 matches expected size 118.
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/05-plus-auth-reset/tree/tests/ci4/MenuHttpTest.php:292
+
+FAILURES!
+Tests: 1, Assertions: 2087, Failures: 1.

@@ -99,7 +99,7 @@ final class MasterCatalog
                 'branch_id' => ['kind' => 'int', 'required' => true, 'fk' => 'branch', 'formText' => 'Branch', 'listText' => 'Branch name'],
                 'book_detail' => ['kind' => 'string', 'max' => 3, 'required' => true, 'formText' => 'Book Detail', 'listText' => 'Book Details'],
                 'status' => ['kind' => 'int', 'required' => true, 'allowZero' => true, 'formText' => 'Publishing Status', 'listText' => 'Status'],
-                'bunber_limit' => ['kind' => 'int', 'required' => true, 'formText' => 'Number Limit', 'listText' => 'Number Limit'], // INVENTED: no CI3 counterpart
+                'bunber_limit' => ['kind' => 'int', 'allowZero' => true, 'visible' => false],
             ],
         ],
         'brand' => [

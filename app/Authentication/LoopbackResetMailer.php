@@ -24,6 +24,7 @@ final class LoopbackResetMailer
             return;
         }
 
+        (new ResetEmailRenderer())->render($delivery);
         $this->messages[$idempotencyKey] = ['request_id' => $delivery->requestId()];
     }
 

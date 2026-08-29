@@ -1,0 +1,690 @@
+# Task 6 review package
+
+## Source/test diff
+diff --git a/public/assets/css/admin.css b/public/assets/css/admin.css
+index b73490f..b6605fd 100644
+--- a/public/assets/css/admin.css
++++ b/public/assets/css/admin.css
+@@ -11,45 +11,85 @@
+     color: #333;
+     background: #ecf0f5;
+ }
+ 
+ * { box-sizing: border-box; }
+ body { margin: 0; }
+ a { color: #014c8f; }
+ 
+ /* --- shared page primitives (kept from the original inline theme) --- */
+ h1, h2 { margin-top: 0; }
+-label { display: block; font-weight: 650; margin-bottom: .35rem; }
++/* CI3's CustomAdmin.css uppercases and bolds every form label; the label text itself is stored
++   mixed-case (`request Date/วันที่ส่งซ่อม`), so the casing belongs here and not in the views.
++   Thai text is unaffected by text-transform, which is why CI3 gets away with it. */
++label { display: block; font-weight: 700; text-transform: uppercase; margin-bottom: .35rem; }
+ input, select, button, textarea { font: inherit; }
+ input, select, textarea {
+     width: 100%;
+     min-height: 2.7rem;
+     padding: .55rem .7rem;
+     border: 1px solid #aeb8ca;
+     border-radius: .35rem;
+     background: #fff;
+ }
++/* The rule above is written for text-like inputs. A checkbox or radio caught by it renders as a
++   full-width 2.7rem box with its control floating in the middle, and the `label { display: block }`
++   above stacks every choice on its own line. CI3 draws them as small inline controls with the text
++   beside them, so both rules are undone for the two control types and for any label wrapping one. */
++input[type="checkbox"], input[type="radio"] {
++    width: auto;
++    min-height: 0;
++    padding: 0;
++    margin: 0;
++}
++label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) {
++    display: inline-flex;
++    align-items: center;
++    gap: .35rem;
++    margin: 0 1rem .35rem 0;
++}
+ button, .button {
+     display: inline-flex;
+     align-items: center;
+     justify-content: center;
+     min-height: 2.7rem;
+     padding: .55rem 1rem;
+     border: 0;
+     border-radius: .35rem;
+     background: #014c8f;
+     color: #fff;
+     cursor: pointer;
+     text-decoration: none;
+ }
+ .link-button { min-height: auto; padding: 0; background: none; color: inherit; }
+ .field { margin-bottom: 1rem; }
++
++/* CI3 lays its forms out on a bootstrap col-lg-6 grid: two field columns, each label sitting
++   directly above its control. Opting a form in with .form-grid gives the same shape; the grid
++   only works on forms whose label/control pairs are wrapped in .field, so the class is added
++   per form rather than to `form` globally. Anything that spans the full width (fieldsets of
++   checkboxes, the button row) says so explicitly. */
++.form-grid {
++    display: grid;
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++    gap: 0 1.6rem;
++    align-items: start;
++}
++.form-grid > .field { min-width: 0; }
++.form-grid > fieldset,
++.form-grid > .field-wide,
++.form-grid > .form-actions { grid-column: 1 / -1; }
++.form-actions { display: flex; gap: .5rem; margin-top: .5rem; }
++
++@media (max-width: 767px) {
++    .form-grid { grid-template-columns: minmax(0, 1fr); }
++}
+ .alert {
+     padding: .75rem 1rem;
+     margin-bottom: 1rem;
+     border: 1px solid #c93737;
+     border-radius: .35rem;
+     color: #8b1515;
+     background: #fff1f1;
+ }
+ .muted { color: #5b6578; }
+ .dashboard-actions {
+@@ -285,23 +325,24 @@ body.bare footer.site-footer { grid-area: auto; }
+ 
+ /* --- rating modal (moved from orders_rating_modal.php so AC-8 holds on every admin page) --- */
+ #rating-modal .lang-en { display: none; }
+ #rating-modal.show-en .lang-th { display: none; }
+ #rating-modal.show-en .lang-en { display: block; }
+ #rating-modal .star { cursor: pointer; color: #ccc; font-size: 1.4em; }
+ #rating-modal .star.on { color: #f5a623; }
+ 
+ /* --- CI3-style card chrome: caption, inline search tools and icon row actions --- */
+ .box-title {
+-    margin: 0 0 .75rem;
++    margin: 0 0 1.2rem;
+     font-size: 1.05rem;
+     font-weight: 400;
++    text-transform: uppercase;
+     color: #26324b;
+ }
+ .box-tools {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+     gap: .5rem;
+     margin-bottom: 1rem;
+ }
+ .box-tools input {
+diff --git a/public/assets/css/main.css b/public/assets/css/main.css
+index 79d5669..5cf8e42 100644
+--- a/public/assets/css/main.css
++++ b/public/assets/css/main.css
+@@ -604,21 +604,21 @@ section#rating {
+          }
+          section#contact {
+           background-position: center;
+         }
+       }
+         @media only screen and (max-width:480px) {
+           .btn-mobile {
+             width: 40%;
+           }
+           section#contact {
+-             background: url(../../uploads/web/contact_mobile.jpg);
++             background: url(../../uploads/web/contact_mobile.png);
+              background-color: #f9f9fb;
+              background-size: contain;
+              background-repeat: no-repeat;
+              background-position: center;
+          }
+          section#track {
+              background-size: contain;
+              background-color: #f9f9fb;
+              background-repeat: no-repeat;
+              min-height: 767px;
+diff --git a/tests/ci4/MenuHttpTest.php b/tests/ci4/MenuHttpTest.php
+index 3c15051..2d2628a 100644
+--- a/tests/ci4/MenuHttpTest.php
++++ b/tests/ci4/MenuHttpTest.php
+@@ -234,20 +234,109 @@ final class MenuHttpTest extends CIUnitTestCase
+             '        });',
+             '    });',
+         ]);
+         self::assertStringContainsString($dataTablesInitialization, $body);
+ 
+         foreach (['<svg', 'id="sidebar-toggle"', 'class="topbar"', '<body class="admin">'] as $replacement) {
+             self::assertStringNotContainsString($replacement, $body, $replacement);
+         }
+     }
+ 
++    public function testSharedRuntimeAssetClosureExistsAndIsGitTracked(): void
++    {
++        $documents = [];
++        foreach (['/login', '/forgot-password', '/reset-password', '/contact', '/contact-th', '/tracking', '/tracking-th'] as $route) {
++            $response = $this->get($route);
++            $response->assertStatus(200);
++            $documents[] = (string) $response->getBody();
++        }
++        $documents[] = (string) $this
++            ->withSession($this->session($this->adminId, 1, 1, null))
++            ->get('/dashboard')
++            ->getBody();
++        $documents[] = view('layout_public', [
++            'content' => '',
++            'title' => 'Samsonite',
++            'language' => 'en',
++            'legacyContactProfile' => false,
++            'legacyTrackingProfile' => false,
++        ]);
++        $documents[] = view('access_denied');
++        $documents[] = view('errors/html/error_404');
++
++        $entrypoints = [];
++        foreach ($documents as $document) {
++            $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
++        }
++        $closure = $this->runtimeAssetClosure($entrypoints);
++
++        foreach ([
++            'public/assets/datatables/1.10.16/images/sort_both.png',
++            'public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2',
++            'public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2',
++            'public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf',
++            'public/assets/js/jquerydatepicker/images/animated-overlay.gif',
++            'public/uploads/web/contact_mobile.png',
++            'public/uploads/web/track_mobile.png',
++        ] as $recursiveAsset) {
++            self::assertContains($recursiveAsset, $closure, $recursiveAsset);
++        }
++
++        $trackedFiles = [...$closure, 'public/assets/fonts/source-sans-pro/OFL.txt'];
++        sort($trackedFiles);
++        $process = proc_open(
++            ['git', 'ls-files', '--error-unmatch', '--', ...$trackedFiles],
++            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
++            $pipes,
++            ROOTPATH,
++        );
++        self::assertIsResource($process);
++        stream_get_contents($pipes[1]);
++        fclose($pipes[1]);
++        $error = stream_get_contents($pipes[2]);
++        fclose($pipes[2]);
++
++        self::assertSame(0, proc_close($process), trim($error));
++    }
++
++    public function testSharedFrontendDependencyPinsMatchCi3RuntimeArtifacts(): void
++    {
++        foreach ([
++            'assets/bootstrap/css/bootstrap.min.css' => 'f75e846cc83bd11432f4b1e21a45f31bc85283d11d372f7b19accd1bf6a2635c',
++            'assets/bootstrap/css/bootstrap.css' => '7e630d90c7234b0df1729f62b8f9e4bbfaf293d91a5a0ac46df25f2a6759e39a',
++            'assets/bootstrap/js/bootstrap.min.js' => '53964478a7c634e8dad34ecc303dd8048d00dce4993906de1bacf67f663486ef',
++            'assets/datatables/1.10.16/css/jquery.dataTables.min.css' => '618d62ceaca1223e16de2c8939a1963a95c34b0ac75852f835f93e5b42f20871',
++            'assets/datatables/1.10.16/js/jquery.dataTables.min.js' => 'a9c575c2bf9b9f836806dc58aa0866cb558806fc5ea1ef2f4250a8c0b1be7278',
++            'assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css' => '2cac99438be2f9aacaf1a63f220f5a4e0fb5f54d443ecde09652a650b0509f8b',
++            'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js' => 'e44ec8df1b3ae7c386f670b1e9d4b4cad0b55fa28f934f31fd9a893c81c50298',
++            'assets/font-awesome/css/font-awesome.min.css' => '0fb1bbca73646e8e2b93c82e8d8b219647b13d4b440c48e338290b9a685b8de1',
++            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => '541ac58217a8ade1a5e292a65a0661dc9db7a49ae13654943817a4fbc6761afd',
++            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => '799aeb25cc0373fdee0e1b1db7ad6c2f6a0e058dfadaa3379689f583213190bd',
++            'assets/fontawesome/css/font-awesome.css' => '36e0a7e08bee65774168528938072c536437669c1b7458ac77976ec788e4439c',
++            'assets/html5shiv/3.7.2/html5shiv.min.js' => 'e0eac80838c161f29e7c46d54fbc044d12cd164baae13255e562c6be3aa91809',
++            'assets/respond/1.4.2/respond.min.js' => '83a8807ef669fa70d0d9375347f5552897f76c6ae8e2e6f97ef592595462d8d1',
++            'assets/fonts/source-sans-pro/stylesheet.css' => '31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f',
++            'assets/fonts/source-sans-pro/OFL.txt' => 'fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa',
++        ] as $path => $checksum) {
++            self::assertSame($checksum, hash_file('sha256', PUBLICPATH . $path), $path);
++        }
++
++        foreach ([
++            'assets/bootstrap/css/bootstrap.min.css' => 'Bootstrap v3.3.7',
++            'assets/font-awesome/css/font-awesome.min.css' => 'Font Awesome 4.2.0',
++            'assets/font-awesome/4.3.0/css/font-awesome.min.css' => 'Font Awesome 4.3.0',
++            'assets/font-awesome/4.7.0/css/font-awesome.min.css' => 'Font Awesome 4.7.0',
++        ] as $path => $version) {
++            self::assertStringContainsString($version, (string) file_get_contents(PUBLICPATH . $path), $path);
++        }
++    }
++
+     public function testAdminShellUsesDatabaseBranchDataForHeaderAndAutocomplete(): void
+     {
+         $adminBody = (string) $this
+             ->withSession($this->session($this->adminId, 1, 1, null))
+             ->get('/dashboard')
+             ->getBody();
+         self::assertStringContainsString('id="autocomplete"', $adminBody);
+         self::assertStringContainsString('"label":"SYNTHETIC BRANCH"', $adminBody);
+         self::assertStringContainsString('ReportTrackingListing/0/1', $adminBody);
+ 
+@@ -523,20 +612,120 @@ final class MenuHttpTest extends CIUnitTestCase
+     }
+ 
+     public function testMenuListingSearchFormCarriesNoResetButton(): void
+     {
+         // AC-7: the search/filter form on the listing must not carry a reset button.
+         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
+         self::assertStringContainsString('<form method="get" action="/menu">', $body);
+         self::assertStringNotContainsString('type="reset"', $body);
+     }
+ 
++    /** @return list<string> */
++    private function runtimeAssetReferences(string $html): array
++    {
++        preg_match_all(
++            '/<(?:script|img|link)\b[^>]*\b(?:src|href)\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s"\'=<>`]+))/i',
++            $html,
++            $tags,
++            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
++        );
++        $references = [];
++        foreach ($tags as $tag) {
++            $references[] = $tag[1] ?? $tag[2] ?? $tag[3];
++        }
++        preg_match_all('/<style\b[^>]*>(.*?)<\/style>/is', $html, $styles);
++        foreach ($styles[1] as $css) {
++            $references = array_merge($references, $this->cssAssetReferences($css));
++        }
++
++        return $references;
++    }
++
++    /** @param list<string> $entrypoints @return list<string> */
++    private function runtimeAssetClosure(array $entrypoints): array
++    {
++        $pending = [];
++        foreach ($entrypoints as $reference) {
++            $path = $this->runtimeAssetPath($reference, null);
++            if ($path !== null) {
++                $pending[] = $path;
++            }
++        }
++        $seen = [];
++
++        while ($pending !== []) {
++            $path = array_pop($pending);
++            if (isset($seen[$path])) {
++                continue;
++            }
++            self::assertFileExists(ROOTPATH . $path, $path);
++            $seen[$path] = true;
++            if (! str_ends_with(strtolower($path), '.css')) {
++                continue;
++            }
++            foreach ($this->cssAssetReferences((string) file_get_contents(ROOTPATH . $path)) as $reference) {
++                $dependency = $this->runtimeAssetPath($reference, $path);
++                if ($dependency !== null) {
++                    $pending[] = $dependency;
++                }
++            }
++        }
++
++        $closure = array_keys($seen);
++        sort($closure);
++
++        return $closure;
++    }
++
++    /** @return list<string> */
++    private function cssAssetReferences(string $css): array
++    {
++        preg_match_all('/(?:@import\s+(?:url\()?|url\()\s*[\'\"]?([^\'\")\s;]+)[^)]*\)?/i', $css, $matches);
++
++        return array_values(array_filter(array_map(
++            static fn (string $reference): string => trim($reference),
++            $matches[1],
++        ), static fn (string $reference): bool => $reference !== '' && ! str_starts_with($reference, 'data:') && ! str_starts_with($reference, '#')));
++    }
++
++    private function runtimeAssetPath(string $reference, ?string $parent): ?string
++    {
++        self::assertDoesNotMatchRegularExpression('#^//#', $reference, $reference);
++        $host = parse_url($reference, PHP_URL_HOST);
++        self::assertTrue($host === null || $host === parse_url(base_url(), PHP_URL_HOST), $reference);
++        $path = parse_url($reference, PHP_URL_PATH);
++        self::assertIsString($path, $reference);
++        $path = rawurldecode($path);
++        if ($path === '' || ($parent === null && ! str_contains($path, 'assets/') && ! str_contains($path, 'uploads/web/'))) {
++            return null;
++        }
++
++        $candidate = str_starts_with($path, '/')
++            ? 'public/' . ltrim($path, '/')
++            : ($parent === null ? 'public/' . $path : dirname($parent) . '/' . $path);
++        $segments = [];
++        foreach (explode('/', $candidate) as $segment) {
++            if ($segment === '' || $segment === '.') {
++                continue;
++            }
++            if ($segment === '..') {
++                array_pop($segments);
++                continue;
++            }
++            $segments[] = $segment;
++        }
++        $resolved = implode('/', $segments);
++        self::assertStringStartsWith('public/', $resolved, $reference);
++
++        return $resolved;
++    }
++
+     /** @param list<string> $fragments */
+     private function assertFragmentsInOrder(string $body, array $fragments): void
+     {
+         $offset = 0;
+         foreach ($fragments as $fragment) {
+             $position = strpos($body, $fragment, $offset);
+             self::assertNotFalse($position, $fragment);
+             $offset = $position + strlen($fragment);
+         }
+     }
+
+## Evidence document
+diff --git a/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md b/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md
+new file mode 100644
+index 0000000..08d78fe
+--- /dev/null
++++ b/outputs/reference/2026-08-27_tpl01-asset-closure_v1.md
+@@ -0,0 +1,204 @@
++# TPL-01 runtime asset closure v1
++
++เอกสารนี้บันทึก runtime asset graph จาก current CI4 views และ CSS พร้อมสถานะ Git tracking, version, checksum, provenance และ license เทียบ CI3 pin `ee1c95e59ec0eb51a8886e24ed9dda0a5b49d1a6` โดยไม่เพิ่มหรือเปลี่ยน frontend dependency
++
++## คำตัดสิน
++
++| แกน | ผล | สถานะ |
++|---|---:|---|
++| Runtime closure | 109 files | ทุกไฟล์ resolve บน disk |
++| Git tracked ใน closure | 16 files | ผ่าน |
++| Git untracked ใน closure | 93 files | `BLOCKED` จนกว่า gitops จะ add และ commit |
++| Source Sans Pro license evidence | 1 file นอก runtime graph | มีไฟล์จริง แต่ยัง untracked |
++| Frontend dependency upgrade | 0 | ผ่าน |
++| Frontend dependency replacement | 0 | ผ่าน |
++| Full bundled license text | มีเฉพาะ Source Sans Pro ในชุดที่ตรวจ | Font Awesome, DataTables และ FixedColumns เป็น `BLOCKED` |
++
++สถานะรวม: `PREPARED_BLOCKED_ON_GIT_TRACKING_AND_LICENSE_EVIDENCE`
++
++## วิธีสร้าง graph
++
++Test `MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked` สร้าง graph จาก rendered HTML จริง แล้วเดิน CSS แบบ recursive
++
++| Profile | Runtime source |
++|---|---|
++| Admin | `GET /dashboard` |
++| Standalone auth | `GET /login`, `/forgot-password`, `/reset-password` |
++| Public Contact | `GET /contact`, `/contact-th` |
++| Public Tracking | `GET /tracking`, `/tracking-th` |
++| Public non-legacy | render `layout_public` เพื่อครอบ `public.css` |
++| Error views | render `access_denied` และ `errors/html/error_404` |
++
++กติกา graph:
++
++- อ่าน `src` และ `href` จาก `script`, `img` และ `link`
++- อ่าน `url()` จาก inline `style`
++- เดิน `url()` และ `@import` ใน CSS ต่อจน closure ปิด
++- ตัด `data:` และ fragment ออกจาก file graph
++- ปฏิเสธ external host และ local file ที่หาย
++- ตรวจ `git ls-files --error-unmatch` ด้วย path แบบ relative ต่อ repository
++- รวม `public/assets/fonts/source-sans-pro/OFL.txt` เป็น required evidence file แยกจาก 109 runtime files
++
++เลข `106/91` ใน brief ไม่ถูกนำมาใช้ซ้ำ ผล rerun จาก current source คือ `109/93`
++
++## Must add
++
++93 runtime files และ Source Sans Pro license 1 file ต้องถูก add รวม 94 files โดย exact groups มีดังนี้
++
++| จำนวน | กลุ่ม | สมาชิก |
++|---:|---|---|
++| 8 | `public/assets/bootstrap/` | `css/bootstrap.css`, `css/bootstrap.min.css`, font Glyphicons 5 formats, `js/bootstrap.min.js` |
++| 1 | `public/assets/css/` | `multifreezer.css` |
++| 7 | `public/assets/datatables/1.10.16/` | CSS 1, JavaScript 1, `sort_asc.png`, `sort_asc_disabled.png`, `sort_both.png`, `sort_desc.png`, `sort_desc_disabled.png` |
++| 2 | `public/assets/datatables-fixedcolumns/3.2.4/` | `css/fixedColumns.dataTables.min.css`, `js/dataTables.fixedColumns.min.js` |
++| 6 | `public/assets/dist/` | `css/AdminLTE.min.css`, `css/CustomAdmin.css`, `css/skins/_all-skins.min.css`, `img/avatar.png`, `img/boxed-bg.jpg`, `js/app.min.js` |
++| 6 | `public/assets/font-awesome/` | CSS 4.2.0 จำนวน 2 และ font 4 formats ใต้ `fonts/` |
++| 6 | `public/assets/font-awesome/4.3.0/` | CSS 1 และ font 5 formats |
++| 6 | `public/assets/font-awesome/4.7.0/` | CSS 1 และ font 5 formats |
++| 6 | `public/assets/fontawesome/` | CSS 4.7.0 จำนวน 1 และ font 5 formats |
++| 9 | `public/assets/fonts/source-sans-pro/` | stylesheet 1, TTF 7 และ `OFL.txt` 1 |
++| 1 | `public/assets/html5shiv/3.7.2/` | `html5shiv.min.js` |
++| 5 | `public/assets/images/` | `404.png`, `access.png`, `bg-tracking.png`, `bg-tracking-mb.png`, `print-logo.jpg` |
++| 6 | `public/assets/js/` | `addContact.js`, `addtrack.js`, `jQuery-2.1.4.min.js`, `jquery-3.2.1.min.js`, `jquery.validate.js`, `validation.js` |
++| 20 | `public/assets/js/jquerydatepicker/` | JavaScript/CSS 6 และ recursive image dependencies 14 |
++| 1 | `public/assets/respond/1.4.2/` | `respond.min.js` |
++| 4 | `public/uploads/web/` | `contact_laptop.png`, `contact_mobile.png`, `track_laptop.png`, `track_mobile.png` |
++
++Recursive image dependencies ใต้ `public/assets/js/jquerydatepicker/images/` คือ:
++
++- `animated-overlay.gif`
++- `ui-bg_flat_0_aaaaaa_40x100.png`
++- `ui-bg_flat_75_ffffff_40x100.png`
++- `ui-bg_glass_55_fbf9ee_1x400.png`
++- `ui-bg_glass_65_ffffff_1x400.png`
++- `ui-bg_glass_75_dadada_1x400.png`
++- `ui-bg_glass_75_e6e6e6_1x400.png`
++- `ui-bg_glass_95_fef1ec_1x400.png`
++- `ui-bg_highlight-soft_75_cccccc_1x100.png`
++- `ui-icons_222222_256x240.png`
++- `ui-icons_2e83ff_256x240.png`
++- `ui-icons_454545_256x240.png`
++- `ui-icons_888888_256x240.png`
++- `ui-icons_cd0a0a_256x240.png`
++
++## Already tracked ใน closure
++
++16 runtime files มีอยู่ใน Git แล้ว:
++
++- `public/assets/css/main.css`
++- `public/assets/css/public.css`
++- `public/assets/fonts/stylesheet.css`
++- DB Helvethaica font 4 files ใต้ `public/assets/fonts/`
++- `public/assets/images/bg-login.jpg`
++- `public/assets/images/eng.png`
++- `public/assets/images/img-contact-1.png`
++- `public/assets/images/img-contact-2.png`
++- `public/assets/images/img-footer.png`
++- `public/assets/images/main-logo.png`
++- `public/assets/images/popup_en.png`
++- `public/assets/images/popup_th.png`
++- `public/assets/images/thai.png`
++
++`public/assets/css/admin.css` tracked อยู่ก่อนแล้ว แต่ current rendered profiles ไม่อ้าง จึงไม่อยู่ใน 109-file runtime closure และไม่มีการลบหรือแก้เพื่อ Task 6
++
++## Must not add
++
++| กลุ่ม | เหตุผล |
++|---|---|
++| `public/assets/plugins/**` | ไม่มี current caller และเป็น plugin tree ขนาดใหญ่ |
++| SCSS, LESS, examples, docs, tests, specimen และ demo tree | ไม่ใช่ runtime closure |
++| `multifreezer.js` | CI3 caller อยู่ใน HTML comment |
++| `cms-logo.png` | CI3 caller อยู่ใน HTML comment |
++| Order browse chain และ `assets/css/style.css` | เป็นขอบเขต Task 7 และยังไม่มี current layout caller |
++| Dependency version อื่น | ห้าม upgrade หรือ replacement |
++
++## Version, checksum และ provenance
++
++### Runtime identity หลัก
++
++| Artifact | Active version | SHA-256 | Provenance | License |
++|---|---|---|---|---|
++| Bootstrap CSS min | 3.3.7 | `f75e846cc83bd11432f4b1e21a45f31bc85283d11d372f7b19accd1bf6a2635c` | bytes ตรง CI3 path เดียวกัน | header ระบุ MIT แต่ไม่มี full bundled text: `BLOCKED` |
++| Bootstrap CSS | 3.3.7 | `7e630d90c7234b0df1729f62b8f9e4bbfaf293d91a5a0ac46df25f2a6759e39a` | bytes ตรง CI3 path เดียวกัน | header ระบุ MIT แต่ไม่มี full bundled text: `BLOCKED` |
++| Bootstrap JavaScript | 3.3.7 | `53964478a7c634e8dad34ecc303dd8048d00dce4993906de1bacf67f663486ef` | bytes ตรง CI3 path เดียวกัน | header ระบุ MIT แต่ไม่มี full bundled text: `BLOCKED` |
++| DataTables CSS | 1.10.16 | `618d62ceaca1223e16de2c8939a1963a95c34b0ac75852f835f93e5b42f20871` | live CI3 CDN URL ให้ hash ตรง local | header ไม่มี full license text: `BLOCKED` |
++| DataTables JavaScript | 1.10.16 | `a9c575c2bf9b9f836806dc58aa0866cb558806fc5ea1ef2f4250a8c0b1be7278` | live CI3 CDN URL ให้ hash ตรง local | มีเพียง `datatables.net/license`: `BLOCKED` |
++| FixedColumns CSS | 3.2.4 | `2cac99438be2f9aacaf1a63f220f5a4e0fb5f54d443ecde09652a650b0509f8b` | live CI3 CDN URL ให้ hash ตรง local | ไม่มี full bundled text: `BLOCKED` |
++| FixedColumns JavaScript | 3.2.4 | `e44ec8df1b3ae7c386f670b1e9d4b4cad0b55fa28f934f31fd9a893c81c50298` | live CI3 CDN URL ให้ hash ตรง local | มีเพียง `datatables.net/license`: `BLOCKED` |
++| Font Awesome admin CSS | 4.2.0 | `0fb1bbca73646e8e2b93c82e8d8b219647b13d4b440c48e338290b9a685b8de1` | bytes ตรง CI3 path เดียวกัน | header ระบุ SIL OFL 1.1 และ MIT แต่ไม่มี full text: `BLOCKED` |
++| Font Awesome reset CSS | 4.3.0 | `541ac58217a8ade1a5e292a65a0661dc9db7a49ae13654943817a4fbc6761afd` | prior evidence ผูก official tag `v4.3.0` | ไม่มี full bundled text: `BLOCKED` |
++| Font Awesome public CSS | 4.7.0 | `36e0a7e08bee65774168528938072c536437669c1b7458ac77976ec788e4439c` | bytes ตรง CI3 path เดียวกัน | ไม่มี full bundled text: `BLOCKED` |
++| Font Awesome imported CSS | 4.7.0 | `799aeb25cc0373fdee0e1b1db7ad6c2f6a0e058dfadaa3379689f583213190bd` | prior evidence ผูก official tag `v4.7.0` | ไม่มี full bundled text: `BLOCKED` |
++| html5shiv | 3.7.2 | `e0eac80838c161f29e7c46d54fbc044d12cd164baae13255e562c6be3aa91809` | prior evidence ผูก official tag `3.7.2` | embedded header เท่านั้น: `BLOCKED` |
++| Respond.js | 1.4.2 | `83a8807ef669fa70d0d9375347f5552897f76c6ae8e2e6f97ef592595462d8d1` | prior evidence ผูก official tag `1.4.2` | embedded header เท่านั้น: `BLOCKED` |
++| Source Sans Pro stylesheet | pinned commit | `31105045a28207422c3da95d2dbade1d4b26790035a903d8c5263fe999675f8f` | official `google/fonts` commit `a7bc06df72f7e1b4e20342e2b04423e579222316` | `OFL.txt` มีจริง |
++| Source Sans Pro license | OFL | `fce9f9e2fb268507a89fceea0b3eccc044f39fc3492968a04fd9e04df5ae95fa` | file จริงจาก source เดียวกัน | ผ่าน |
++
++### DataTables image hashes
++
++| File | SHA-256 |
++|---|---|
++| `sort_asc.png` | `595704c3f3cf4cb65c7d9c8508a99e7480e150095473faed31a07c21b13389b8` |
++| `sort_asc_disabled.png` | `a65b8f4f84d6427a81c360282fc5394d51bf99dada5f159e6aa0fce3c396825c` |
++| `sort_both.png` | `3e016c23ae51417382b640ae2d19eb48047532c37ad53894bd185586559ccffb` |
++| `sort_desc.png` | `d08ed0e21f187dd309030d465224da8085119a15a17d616ba0e477bb50c6f10d` |
++| `sort_desc_disabled.png` | `6c0f0c1b21ef6807057afc8ddc1a925d1dbd21cb11e9270ec84ff4ac40d9a3fa` |
++
++ทุก hash ตรง live versioned CDN URL ที่ CI3 pin อ้างเมื่อ fetch วันที่ 2026-08-27
++
++### Upload images
++
++| File group | SHA-256 | Provenance |
++|---|---|---|
++| `contact_laptop.png`, `contact_mobile.png` | `2520b9e21373a7822bf2388cd043684a8e0bcdc41071c6a562d539964e7f038f` | prior evidence ระบุ archived CI3 deployment snapshot |
++| `track_laptop.png`, `track_mobile.png` | `16b99ac15ba78c5dd6a462de19b8c349747b7621301a7a1cb3858e09753c813a` | prior evidence ระบุ archived snapshot และ bytes ตรง CI3 `assets/images/bg-tracking.png` |
++
++ไฟล์ desktop/mobile ซ้ำ bytes โดยตั้งใจ เพราะ CSS ใช้คนละ path และห้าม dedupe จน stylesheet-relative graph แตก
++
++## Bootstrap version conflict
++
++Brief ระบุ Bootstrap 3.3.4 แต่ CI3 active pin และ local runtime artifacts ระบุ Bootstrap 3.3.7 พร้อม checksum ตรงกันทั้ง CSS และ JavaScript
++
++ตาม authority ของ design ใช้ CI3 active pin เป็นหลัก จึงไม่ downgrade เป็น 3.3.4 และไม่เปลี่ยน bytes งานนี้ต้องบันทึก conflict นี้แทนการแก้ dependency โดยไม่มี human decision
++
++## Verification
++
++### RED จาก real Git index
++
++```bash
++vendor/bin/phpunit --configuration phpunit.xml.dist \
++  tests/ci4/MenuHttpTest.php tests/ci4/PasswordResetPageHttpTest.php \
++  tests/ci4/ContactHttpTest.php tests/ci4/PublicTrackingHttpTest.php \
++  tests/ci4/AccessDeniedHttpTest.php
++```
++
++ผล: `94 tests, 3115 assertions, 1 failure` โดย failure เดียวคือ 93 runtime files และ `OFL.txt` ยังไม่อยู่ใน `git ls-files`
++
++### GREEN simulation โดยไม่ stage real index
++
++ใช้ `GIT_INDEX_FILE` ชั่วคราวใต้ `$TMPDIR`, add เฉพาะ 94 must-add files แล้วรัน focused suite
++
++ผล: `OK (94 tests, 3115 assertions)` และ `real-index-unchanged=yes`
++
++### Dependency pin test
++
++ผล: `OK (1 test, 19 assertions)`
++
++### Full gates
++
++| Gate | ผล |
++|---|---|
++| PHPStan | `[OK] No errors` |
++| Full PHPUnit ด้วย temporary index | `OK (404 tests, 7525 assertions)` |
++| Full `ci-check` ใน sandbox | หยุดเพราะ sandbox อ่าน `.env.example` ไม่ได้ |
++| Full `ci-check` นอก sandbox | ผ่านจนถึง CI3 identity test แล้วล้มเพราะ temporary CI4 index ถูกส่งผ่าน `GIT_INDEX_FILE`; real CI3 repository ตรวจแยกแล้ว clean |
++| `git diff --check` | ผ่าน ไม่มี output |
++
++Full `ci-check` ต้อง rerun หลัง gitops commit closure จริง โดยไม่ใช้ temporary index จึงจะเป็น release-grade result
++
++## สถานะที่ยังเปิด
++
++1. gitops ต้อง add และ commit 93 runtime files กับ `OFL.txt` รวม 94 files
++2. ต้อง rerun focused suite, full PHPUnit และ full `ci-check` บน real committed index
++3. Font Awesome, DataTables และ FixedColumns ยังไม่มี full bundled license text จึงคง `BLOCKED`
++4. Bootstrap `3.3.4` ใน brief ขัดกับ active pin `3.3.7`; ห้ามแก้ version โดยไม่มี human decision
+
+## Candidate untracked asset paths
+public/assets/bootstrap/css/bootstrap.css
+public/assets/bootstrap/css/bootstrap.min.css
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.eot
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.svg
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.ttf
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.woff
+public/assets/bootstrap/fonts/glyphicons-halflings-regular.woff2
+public/assets/bootstrap/js/bootstrap.min.js
+public/assets/css/multifreezer.css
+public/assets/datatables-fixedcolumns/3.2.4/css/fixedColumns.dataTables.min.css
+public/assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js
+public/assets/datatables/1.10.16/css/jquery.dataTables.min.css
+public/assets/datatables/1.10.16/images/sort_asc_disabled.png
+public/assets/datatables/1.10.16/images/sort_asc.png
+public/assets/datatables/1.10.16/images/sort_both.png
+public/assets/datatables/1.10.16/images/sort_desc_disabled.png
+public/assets/datatables/1.10.16/images/sort_desc.png
+public/assets/datatables/1.10.16/js/jquery.dataTables.min.js
+public/assets/dist/css/AdminLTE.min.css
+public/assets/dist/css/CustomAdmin.css
+public/assets/dist/css/skins/_all-skins.min.css
+public/assets/dist/img/avatar.png
+public/assets/dist/img/boxed-bg.jpg
+public/assets/dist/js/app.min.js
+public/assets/font-awesome/4.3.0/css/font-awesome.min.css
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff
+public/assets/font-awesome/4.3.0/fonts/fontawesome-webfont.woff2
+public/assets/font-awesome/4.7.0/css/font-awesome.min.css
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff
+public/assets/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2
+public/assets/font-awesome/css/font-awesome.css
+public/assets/font-awesome/css/font-awesome.min.css
+public/assets/font-awesome/fonts/fontawesome-webfont.eot
+public/assets/font-awesome/fonts/fontawesome-webfont.svg
+public/assets/font-awesome/fonts/fontawesome-webfont.ttf
+public/assets/font-awesome/fonts/fontawesome-webfont.woff
+public/assets/fontawesome/css/font-awesome.css
+public/assets/fontawesome/fonts/fontawesome-webfont.eot
+public/assets/fontawesome/fonts/fontawesome-webfont.svg
+public/assets/fontawesome/fonts/fontawesome-webfont.ttf
+public/assets/fontawesome/fonts/fontawesome-webfont.woff
+public/assets/fontawesome/fonts/fontawesome-webfont.woff2
+public/assets/fonts/source-sans-pro/OFL.txt
+public/assets/fonts/source-sans-pro/SourceSansPro-Bold.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Italic.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Light.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-LightItalic.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-Regular.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-SemiBold.ttf
+public/assets/fonts/source-sans-pro/SourceSansPro-SemiBoldItalic.ttf
+public/assets/fonts/source-sans-pro/stylesheet.css
+public/assets/html5shiv/3.7.2/html5shiv.min.js
+public/assets/images/404.png
+public/assets/images/access.png
+public/assets/images/bg-tracking-mb.png
+public/assets/images/bg-tracking.png
+public/assets/images/print-logo.jpg
+public/assets/js/addContact.js
+public/assets/js/addtrack.js
+public/assets/js/jQuery-2.1.4.min.js
+public/assets/js/jquery-3.2.1.min.js
+public/assets/js/jquery.validate.js
+public/assets/js/jquerydatepicker/images/animated-overlay.gif
+public/assets/js/jquerydatepicker/images/ui-bg_flat_0_aaaaaa_40x100.png
+public/assets/js/jquerydatepicker/images/ui-bg_flat_75_ffffff_40x100.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_55_fbf9ee_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_65_ffffff_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_75_dadada_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_75_e6e6e6_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_glass_95_fef1ec_1x400.png
+public/assets/js/jquerydatepicker/images/ui-bg_highlight-soft_75_cccccc_1x100.png
+public/assets/js/jquerydatepicker/images/ui-icons_222222_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_2e83ff_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_454545_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_888888_256x240.png
+public/assets/js/jquerydatepicker/images/ui-icons_cd0a0a_256x240.png
+public/assets/js/jquerydatepicker/jquery-1.10.2.min.js
+public/assets/js/jquerydatepicker/jquery-ui-sliderAccess.js
+public/assets/js/jquerydatepicker/jquery-ui-timepicker-addon.css
+public/assets/js/jquerydatepicker/jquery-ui-timepicker-addon.js
+public/assets/js/jquerydatepicker/jquery-ui.css
+public/assets/js/jquerydatepicker/jquery-ui.min.js
+public/assets/js/validation.js
+public/assets/respond/1.4.2/respond.min.js
+public/uploads/web/contact_laptop.png
+public/uploads/web/contact_mobile.png
+public/uploads/web/track_laptop.png
+public/uploads/web/track_mobile.png

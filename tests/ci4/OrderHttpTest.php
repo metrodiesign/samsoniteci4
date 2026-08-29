@@ -29,7 +29,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $encryption->key = str_repeat("\x40", 32);
         Services::injectMock('encrypter', Services::encrypter($encryption, false));
         foreach ([
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), warantyType INTEGER, detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), create_by_user VARCHAR(250), CONSTRAINT uq_request_order_order_show_tel UNIQUE (orderIDShow, customerTel)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, bookID VARCHAR(100), numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), customerTel2 VARCHAR(100), customerEmail VARCHAR(100), detailAgent VARCHAR(10), detailTypeId INTEGER, detailBrandId INTEGER, detailDatePurchase DATETIME, detailSKUName VARCHAR(250), detailNumberWaranty VARCHAR(250), detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250), detailEquipment VARCHAR(250), warantyType INTEGER, detailNote TEXT, detailImage VARCHAR(500), branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, provider_id INTEGER, logistics_etc_detail TEXT, date_create DATETIME, date_repair DATETIME, date_repair_waranty DATETIME, date_repair_complete DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), number_cmg VARCHAR(100), waranty_cmg VARCHAR(10), create_by_user VARCHAR(250), CONSTRAINT uq_request_order_order_show_tel UNIQUE (orderIDShow, customerTel)',
             'book' => 'book_id INTEGER PRIMARY KEY, branch_id INTEGER NOT NULL, book_detail VARCHAR(3) NOT NULL, status INTEGER NOT NULL',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100) NOT NULL, action_id INTEGER, update_id INTEGER, cdate DATETIME NOT NULL',
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250) NOT NULL, status_name_th VARCHAR(250)',
@@ -125,6 +125,19 @@ final class OrderHttpTest extends CIUnitTestCase
         $search->assertDontSee('WP00C-TRACK-001');
         $injection = $this->withSession($admin)->get('/orders?status=2&search=%25%27%20OR%201%3D1--');
         $injection->assertDontSee('WP00C-TRACK-002');
+    }
+
+    public function testCi3OrderEditAndPrintAliasesKeepSourceFormActions(): void
+    {
+        $session = $this->session(1, 1, null);
+        $edit = $this->withSession($session)->get('/editOrdersOld/91001');
+        $edit->assertStatus(200);
+        self::assertStringContainsString('action="http://example.invalid/editOrders"', (string) $edit->getBody());
+        self::assertStringContainsString('name="request_id" value="91001"', (string) $edit->getBody());
+
+        $print = $this->withSession($session)->get('/OrderPrint/91001');
+        $print->assertStatus(200);
+        $print->assertSee('WP00C-TRACK-001');
     }
 
     public function testOrderListingSearchMatchesParityFieldsAndDropsExtras(): void
@@ -253,6 +266,19 @@ final class OrderHttpTest extends CIUnitTestCase
         $admin = $this->session(1, 1, null);
         $this->withSession($admin)->get('/orders?status=2')->assertSee('WP00C-TRACK-002');
         $this->withSession($admin)->get('/orders?status=3')->assertSee('WP00C-TRACK-003');
+    }
+
+    public function testControllerBusinessForbiddenRemainsJsonWhenHtmlIsRequested(): void
+    {
+        $response = $this
+            ->withHeaders(['Accept' => 'text/html'])
+            ->withSession($this->session(2, 2, 1))
+            ->get('/orders?status=2');
+
+        $response->assertStatus(403);
+        $response->assertHeader('Content-Type', 'application/json; charset=UTF-8');
+        $response->assertJSONExact(['error' => 'forbidden']);
+        $response->assertDontSee('Access Denied');
     }
 
     public function testBranchUserStillReachesEveryOtherQueueThroughQueryString(): void
@@ -588,12 +614,805 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertSame('WPB26080002', $sequence->next($now, 'WPB'));
     }
 
+    public function testCreateAndEditUseOrderLayoutUploadContractAndConditionalValidationScripts(): void
+    {
+        $expectedOrderAssets = [
+            '/assets/css/style.css',
+            '/assets/js/browse/jquery.knob.js',
+            '/assets/js/browse/jquery.ui.widget.js',
+            '/assets/js/browse/jquery.iframe-transport.js',
+            '/assets/js/browse/jquery.fileupload.js',
+            '/assets/js/browse/script.js',
+        ];
+
+        foreach ([
+            'admin' => $this->session(1, 1, null),
+            'branch' => $this->session(2, 2, 1),
+        ] as $actor => $session) {
+            foreach (['/orders/new', '/orders/91001'] as $route) {
+                $response = $this->withSession($session)->get($route);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('<body class="skin-blue sidebar-mini">', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('id="addOrder"', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('id="upload"', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('id="drop"', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('name="upl"', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('name="detail_image[]"', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('new DataTransfer()', $body, $actor . ' ' . $route);
+                self::assertStringContainsString('target.files = queue.files', $body, $actor . ' ' . $route);
+                self::assertStringContainsString("on('click', '#upload li span'", $body, $actor . ' ' . $route);
+                self::assertSame(1, substr_count($body, 'class="content-wrapper"'), $actor . ' ' . $route);
+
+                self::assertSame(1, preg_match(
+                    '#name="submission_id" value="([a-f0-9]{32})"#',
+                    $body,
+                    $submission,
+                ));
+                self::assertStringContainsString('action="/order/do_upload_multi/' . $submission[1] . '"', $body);
+                self::assertStringContainsString('var xtimesite = "' . $submission[1] . '";', $body);
+                self::assertStringNotContainsString('/assets/js/addOrder.js', $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString('/assets/js/admin_addOrder.js', $body, $actor . ' ' . $route);
+
+                $offset = -1;
+                foreach ($expectedOrderAssets as $asset) {
+                    $next = strpos($body, $asset);
+                    self::assertNotFalse($next, $actor . ' ' . $route . ' missing ' . $asset);
+                    self::assertGreaterThan($offset, $next, $actor . ' ' . $route . ' asset order ' . $asset);
+                    $offset = $next;
+                }
+            }
+        }
+    }
+
+    public function testCreateAndEditUsePinnedCi3BackgroundFormAsset(): void
+    {
+        foreach ([$this->session(1, 1, null), $this->session(2, 2, 1)] as $session) {
+            foreach (['/orders/new', '/orders/91001'] as $route) {
+                $body = (string) $this->withSession($session)->get($route)->getBody();
+                self::assertStringContainsString('/assets/images/bg-form.png', $body, $route);
+            }
+        }
+
+        $asset = ROOTPATH . 'public/assets/images/bg-form.png';
+        self::assertFileExists($asset);
+        self::assertSame('65fd6f960ea58421a1ba10a8414332b05e9de97150c098578db73305048fa1c0', hash_file('sha256', $asset));
+    }
+
+    public function testUploadAdapterFollowsExactCallbacksAcrossOperationAndContextBoundaries(): void
+    {
+        $partial = view('partials/order_upload', [
+            'submissionId' => str_repeat('a', 32),
+            'targetId' => 'order-image',
+        ]);
+        self::assertSame(1, preg_match('#<script>(.*)</script>#s', $partial, $match));
+        $glue = file_get_contents(ROOTPATH . 'public/assets/js/browse/script.js');
+        self::assertIsString($glue);
+
+        $path = tempnam(sys_get_temp_dir(), 'tpl01-upload-exact-');
+        self::assertIsString($path);
+        $harness = <<<'JS'
+const handlers = {};
+const failures = [];
+const triggerOrder = [];
+const target = { files: [] };
+const uploadRoot = element('upload');
+const uploadList = element('ul', uploadRoot);
+const dropRoot = element('drop');
+const dropLink = element('a', dropRoot);
+const documentElement = element('document');
+let fileuploadOptions;
+let readerMode = 'deferred';
+let pendingReaders = [];
+let activeSubmission;
+const parsedFindCounts = [];
+const parsedInputs = [];
+const parsedRootKinds = [];
+
+function element(kind, parent) {
+    return {
+        kind,
+        parent: parent || null,
+        classes: new Set(kind === 'li' ? ['working'] : []),
+        values: new Map(),
+        children: {},
+        clickHandlers: [],
+        removed: false,
+        value: undefined,
+        changed: 0,
+        knobbed: 0
+    };
+}
+
+class Collection {
+    constructor(elements) {
+        this.length = 0;
+        Array.prototype.push.apply(this, elements || []);
+    }
+    get() { return Array.prototype.slice.call(this, 0, this.length); }
+    on(event, selectorOrHandler, handler) {
+        if (this[0] === uploadRoot) handlers[event] = handler || selectorOrHandler;
+        return this;
+    }
+    fileupload(options) { fileuploadOptions = options; return this; }
+    click(handler) { this.get().forEach((item) => { item.clickHandlers.push(handler); }); return this; }
+    parent() { return new Collection(this.get().map((item) => item.parent).filter(Boolean)); }
+    find(selector) {
+        const found = [];
+        function visit(item) {
+            Object.keys(item.children).forEach((key) => {
+                const child = item.children[key];
+                if (child.kind === selector) found.push(child);
+                visit(child);
+            });
+        }
+        this.get().forEach(visit);
+        return new Collection(found);
+    }
+    filter(selector) { return new Collection(this.get().filter((item) => item.kind === selector)); }
+    first() { return new Collection(this.length ? [this[0]] : []); }
+    appendTo(target) {
+        if (target.length) this.get().forEach((item) => { item.parent = target[0]; });
+        return this;
+    }
+    prependTo(target) {
+        if (this.length && target.length) {
+            this[0].parent = target[0];
+            target[0].children[this[0].kind] = this[0];
+        }
+        return this;
+    }
+    text(value) { this.get().forEach((item) => { item.text = value; }); return this; }
+    append(value) { this.get().forEach((item) => { item.appended = value; }); return this; }
+    knob() { this.get().forEach((item) => { item.knobbed += 1; }); return this; }
+    val(value) {
+        if (arguments.length === 0) return this.length ? this[0].value : undefined;
+        this.get().forEach((item) => { item.value = value; });
+        return this;
+    }
+    change() { this.get().forEach((item) => { item.changed += 1; }); return this; }
+    addClass(name) { this.get().forEach((item) => item.classes.add(name)); return this; }
+    removeClass(name) { this.get().forEach((item) => item.classes.delete(name)); return this; }
+    hasClass(name) { return this.get().some((item) => item.classes.has(name)); }
+    data(key, value) {
+        if (arguments.length === 2) {
+            this.get().forEach((item) => item.values.set(key, value));
+            return this;
+        }
+        return this.length ? this[0].values.get(key) : undefined;
+    }
+    closest(selector) {
+        if (selector !== 'li' || !this.length) return new Collection([]);
+        let item = this[0];
+        while (item && item.kind !== 'li') item = item.parent;
+        return new Collection(item ? [item] : []);
+    }
+    fadeOut(callback) { if (callback) callback(); return this; }
+    remove() {
+        this.get().forEach((item) => {
+            item.removed = true;
+            item.parent = null;
+        });
+        return this;
+    }
+}
+Collection.prototype.push = Array.prototype.push;
+Collection.prototype.splice = Array.prototype.splice;
+
+function previewCollection() {
+    const input = element('input');
+    const root = element('li');
+    root.children.p = element('p', root);
+    root.children.span = element('span', root);
+    const collection = new Collection([input, root]);
+    parsedFindCounts.push(collection.find('input').length);
+    parsedInputs.push(input);
+    parsedRootKinds.push(collection.get().map((item) => item.kind).join(','));
+    return collection;
+}
+
+function jquery(value) {
+    if (typeof value === 'function') { value(); return new Collection([]); }
+    if (value instanceof Collection) return value;
+    if (value === undefined || value === null) return new Collection([]);
+    if (value === '#upload') return new Collection([uploadRoot]);
+    if (value === '#upload ul') return new Collection([uploadList]);
+    if (value === '#drop') return new Collection([dropRoot]);
+    if (value === '#drop a') return new Collection([dropLink]);
+    if (value === global.document) return new Collection([documentElement]);
+    if (typeof value === 'string' && value.charAt(0) === '<') return previewCollection();
+    if (typeof value === 'string' && value.indexOf('input[name="') === 0) return new Collection([element('csrf')]);
+    if (typeof value === 'object') return new Collection([value]);
+    throw new Error('Unexpected jQuery value: ' + String(value));
+}
+jquery.inArray = (value, values) => values.indexOf(value);
+
+class FakeDataTransfer {
+    constructor() {
+        const files = [];
+        this.files = files;
+        this.items = { add(file) { files.push(file); } };
+    }
+}
+
+class FakeFileReader {
+    readAsDataURL(file) {
+        this.file = file;
+        if (readerMode === 'sync') this.flush();
+        else pendingReaders.push(this);
+    }
+    flush() { this.onload({ target: { result: 'data:image/png;base64,AA==' } }); }
+}
+
+global.DataTransfer = FakeDataTransfer;
+global.FileReader = FakeFileReader;
+global.document = { getElementById() { return target; } };
+global.jQuery = global.$ = jquery;
+global.window = { alert() {} };
+
+function check(condition, label) {
+    if (!condition) failures.push(label);
+}
+function safely(label, callback) {
+    try { callback(); } catch (error) { failures.push(label + ':' + error.name + ':' + error.message); }
+}
+function makeFile(name, marker) { return { name, marker, size: 1024 }; }
+function trigger(type, data) {
+    triggerOrder.push('event:' + type);
+    const handler = handlers['fileupload' + type];
+    if (handler) handler(null, data);
+    const callback = fileuploadOptions && fileuploadOptions[type];
+    if (callback) {
+        triggerOrder.push('callback:' + type);
+        return callback(null, data);
+    }
+}
+function addOperation(files, mode) {
+    readerMode = mode || 'deferred';
+    const data = { files };
+    data.abortCount = 0;
+    data.submit = function() {
+        const completion = Object.assign({}, data);
+        activeSubmission = { original: data, completion };
+        return { abort() { data.abortCount += 1; } };
+    };
+    activeSubmission = null;
+    trigger('add', data);
+    check(activeSubmission !== null, 'EXACT_ADD_DID_NOT_SUBMIT');
+    return activeSubmission;
+}
+function flushNextReader() {
+    const reader = pendingReaders.shift();
+    check(!!reader, 'MISSING_PENDING_READER');
+    if (reader) reader.flush();
+}
+function complete(operation, status) {
+    operation.completion.result = { status: status || 'success' };
+    trigger('done', operation.completion);
+}
+function fail(operation, textStatus) {
+    operation.completion.jqXHR = { responseJSON: null };
+    operation.completion.textStatus = textStatus || 'error';
+    trigger('fail', operation.completion);
+}
+function progress(operation, loaded, total) {
+    operation.completion.loaded = loaded;
+    operation.completion.total = total;
+    trigger('progress', operation.completion);
+}
+function contextOf(operation) { return operation.original.context; }
+function previewOf(operation) {
+    const context = contextOf(operation);
+    return context && context.get().find((item) => item.kind === 'li') || null;
+}
+function progressInputOf(operation) {
+    const context = contextOf(operation);
+    const inputs = context ? context.find('input') : new Collection([]);
+    return inputs.length ? inputs[0] : null;
+}
+function clickPreview(operation) {
+    const preview = previewOf(operation);
+    check(!!preview, 'MISSING_PREVIEW');
+    if (!preview) return { direct: [], delegated: 0 };
+
+    const span = preview.children.span;
+    const direct = [];
+    span.clickHandlers.slice().forEach((handler) => {
+        handler.call(span);
+        direct.push({ queue: target.files.length, liInDom: preview.parent !== null });
+    });
+
+    let node = span;
+    while (node && node !== uploadRoot) node = node.parent;
+    if (node === uploadRoot && handlers.click) {
+        handlers.click.call(span);
+        return { direct, delegated: 1 };
+    }
+    return { direct, delegated: 0 };
+}
+function expectQueue(label, expected) {
+    check(target.files.length === expected.length, label + '_COUNT=' + target.files.length);
+    expected.forEach((file, index) => check(target.files[index] === file, label + '_IDENTITY_' + index));
+}
+
+const earlyFile = makeFile('early.jpg', 'early');
+const early = addOperation([earlyFile], 'sync');
+check(triggerOrder[0] === 'event:add' && triggerOrder[1] === 'callback:add', 'ADD_ORDER=' + triggerOrder.slice(0, 2).join('>'));
+check(early.original !== early.completion, 'CLONE_NOT_DISTINCT');
+check(early.original.files[0] === early.completion.files[0], 'FILE_IDENTITY_NOT_SHARED');
+const sharedMarker = Object.keys(early.original).find((key) => {
+    const value = early.original[key];
+    return value && value === early.completion[key] && Array.isArray(value.files);
+});
+check(!!sharedMarker, 'OPERATION_MARKER_NOT_SHARED');
+check(early.original.context === early.completion.context, 'CONTEXT_BRIDGE_NOT_SHARED');
+check(parsedRootKinds[0] === 'input,li', 'EXACT_FRAGMENT_ROOTS=' + parsedRootKinds[0]);
+check(parsedFindCounts[0] === 0, 'EXACT_FRAGMENT_INPUT_WAS_NOT_TOP_LEVEL');
+check(early.original.context.find('input').length === 1, 'NORMALIZED_CONTEXT_INPUT_COUNT=' + early.original.context.find('input').length);
+check(progressInputOf(early) === parsedInputs[0], 'NORMALIZED_CONTEXT_REPLACED_INPUT');
+check(progressInputOf(early) && progressInputOf(early).knobbed === 1, 'KNOB_DID_NOT_REACH_REAL_INPUT');
+complete(early);
+expectQueue('EARLY_QUEUE', [earlyFile]);
+check(!previewOf(early).classes.has('working'), 'EARLY_PREVIEW_STILL_WORKING');
+const earlyClick = clickPreview(early);
+check(
+    earlyClick.direct.length === 2,
+    'NATIVE_CLICK_ORDER queue=' + target.files.length + ' delegated=' + earlyClick.delegated + ' liInDom=' + (previewOf(early).parent !== null)
+);
+check(earlyClick.direct[0] && earlyClick.direct[0].queue === 0, 'ADAPTER_DIRECT_DID_NOT_REMOVE_QUEUE_FIRST');
+check(earlyClick.direct[0] && earlyClick.direct[0].liInDom, 'ADAPTER_DIRECT_RAN_AFTER_DOM_REMOVAL');
+check(earlyClick.direct[1] && !earlyClick.direct[1].liInDom, 'EXACT_DIRECT_DID_NOT_REMOVE_PREVIEW');
+check(earlyClick.delegated === 0, 'DETACHED_PREVIEW_UNEXPECTEDLY_REACHED_DELEGATED_FALLBACK');
+expectQueue('EARLY_DELETE', []);
+
+const lateFile = makeFile('late.jpg', 'late');
+const late = addOperation([lateFile], 'deferred');
+complete(late);
+expectQueue('COMPLETION_BEFORE_CONTEXT_QUEUE', [lateFile]);
+flushNextReader();
+check(!previewOf(late).classes.has('working'), 'LATE_PREVIEW_STILL_WORKING');
+clickPreview(late);
+expectQueue('COMPLETION_BEFORE_CONTEXT_DELETE', []);
+
+const progressFile = makeFile('progress.jpg', 'progress');
+const progressing = addOperation([progressFile], 'deferred');
+safely('PROGRESS_BEFORE_CONTEXT_THROW', () => progress(progressing, 25, 100));
+flushNextReader();
+safely('PROGRESS_AFTER_CONTEXT_THROW', () => progress(progressing, 50, 100));
+const progressInput = progressInputOf(progressing);
+check(progressInput && progressInput.value === 50, 'PROGRESS_DID_NOT_REACH_PREVIEW');
+check(progressInput && progressInput.changed > 0, 'PROGRESS_DID_NOT_CHANGE_PREVIEW');
+
+const callbackFile = makeFile('callbacks.jpg', 'callbacks');
+const callbacks = addOperation([callbackFile], 'deferred');
+safely('FAIL_BEFORE_CONTEXT_THROW', () => fail(callbacks));
+expectQueue('CALLBACKS_BEFORE_CONTEXT_QUEUE', []);
+flushNextReader();
+const callbackPreview = previewOf(callbacks);
+check(!callbackPreview.classes.has('working'), 'FAIL_REPLAY_LEFT_PREVIEW_WORKING');
+check(callbackPreview.classes.has('error'), 'FAIL_REPLAY_DID_NOT_MARK_PREVIEW');
+clickPreview(callbacks);
+expectQueue('FAILED_PENDING_DELETE', []);
+
+const repeatedFile = makeFile('repeat.jpg', 'same-file-object');
+const repeatedFirst = addOperation([repeatedFile], 'sync');
+const repeatedSecond = addOperation([repeatedFile], 'sync');
+complete(repeatedFirst);
+complete(repeatedSecond);
+expectQueue('SAME_FILE_TWICE_QUEUE', [repeatedFile, repeatedFile]);
+check(
+    previewOf(repeatedFirst).values.get('orderQueueItem') !== previewOf(repeatedSecond).values.get('orderQueueItem'),
+    'SAME_FILE_OCCURRENCES_SHARE_GROUP'
+);
+clickPreview(repeatedFirst);
+expectQueue('SAME_FILE_FIRST_DELETE', [repeatedFile]);
+clickPreview(repeatedSecond);
+expectQueue('SAME_FILE_SECOND_DELETE', []);
+
+const multiFirst = makeFile('multi-a.jpg', 'multi-a');
+const multiSecond = makeFile('multi-b.jpg', 'multi-b');
+const multi = addOperation([multiFirst, multiSecond], 'sync');
+complete(multi);
+expectQueue('MULTI_FILE_QUEUE', [multiFirst, multiSecond]);
+clickPreview(multi);
+expectQueue('MULTI_FILE_GROUP_DELETE', []);
+
+const duplicateFirstFile = makeFile('duplicate.jpg', 'duplicate-first');
+const duplicateSecondFile = makeFile('duplicate.jpg', 'duplicate-second');
+const duplicateFirst = addOperation([duplicateFirstFile], 'sync');
+const duplicateSecond = addOperation([duplicateSecondFile], 'sync');
+complete(duplicateSecond);
+complete(duplicateFirst);
+expectQueue('INTERLEAVED_DUPLICATE_QUEUE', [duplicateSecondFile, duplicateFirstFile]);
+clickPreview(duplicateFirst);
+expectQueue('INTERLEAVED_FIRST_DELETE', [duplicateSecondFile]);
+clickPreview(duplicateSecond);
+expectQueue('INTERLEAVED_SECOND_DELETE', []);
+
+const pendingSurvivorFile = makeFile('pending-survivor.jpg', 'pending-survivor');
+const pendingSurvivor = addOperation([pendingSurvivorFile], 'sync');
+complete(pendingSurvivor);
+const pending = addOperation([makeFile('pending.jpg', 'pending')], 'sync');
+const pendingClick = clickPreview(pending);
+check(pending.original.abortCount === 1, 'PENDING_ABORT_COUNT=' + pending.original.abortCount);
+check(pendingClick.direct.length === 2, 'PENDING_DIRECT_HANDLER_COUNT=' + pendingClick.direct.length);
+expectQueue('PENDING_CANCEL_QUEUE', [pendingSurvivorFile]);
+clickPreview(pendingSurvivor);
+expectQueue('PENDING_SURVIVOR_DELETE', []);
+
+const aborted = addOperation([makeFile('abort.jpg', 'abort')], 'deferred');
+safely('ABORT_BEFORE_CONTEXT_THROW', () => fail(aborted, 'abort'));
+expectQueue('ABORT_QUEUE', []);
+flushNextReader();
+clickPreview(aborted);
+
+const rejected = addOperation([makeFile('rejected.jpg', 'rejected')], 'sync');
+complete(rejected, 'error');
+complete(rejected, 'success');
+expectQueue('REJECTED_THEN_SUCCESS_QUEUE', []);
+check(previewOf(rejected).classes.has('error'), 'REJECTED_PREVIEW_NOT_ERROR');
+check(previewOf(rejected).values.get('orderQueueItem') === undefined, 'REJECTED_GAINED_QUEUE_MARKER');
+clickPreview(rejected);
+
+const failedThenDone = addOperation([makeFile('failed-then-done.jpg', 'failed-then-done')], 'sync');
+fail(failedThenDone);
+complete(failedThenDone);
+expectQueue('FAILED_THEN_DONE_QUEUE', []);
+check(!previewOf(failedThenDone).classes.has('working'), 'FAILED_PREVIEW_STILL_WORKING');
+check(previewOf(failedThenDone).classes.has('error'), 'FAILED_PREVIEW_NOT_ERROR');
+
+const limitFiles = [0, 1, 2, 3, 4].map((index) => makeFile('limit-' + index + '.jpg', 'limit-' + index));
+const limit = addOperation(limitFiles, 'sync');
+complete(limit);
+expectQueue('LIMIT_BASE_QUEUE', limitFiles);
+const overLimit = addOperation([makeFile('over-limit.jpg', 'over-limit')], 'sync');
+complete(overLimit);
+clickPreview(limit);
+expectQueue('LIMIT_BASE_DELETE', []);
+complete(overLimit);
+expectQueue('OVER_LIMIT_REPEAT_QUEUE', []);
+check(previewOf(overLimit).classes.has('error'), 'OVER_LIMIT_PREVIEW_NOT_ERROR');
+check(previewOf(overLimit).values.get('orderQueueItem') === undefined, 'OVER_LIMIT_GAINED_QUEUE_MARKER');
+clickPreview(overLimit);
+
+const onceFile = makeFile('once.jpg', 'once');
+const once = addOperation([onceFile], 'sync');
+complete(once);
+complete(once);
+fail(once);
+expectQueue('REPEATED_COMPLETION_QUEUE', [onceFile]);
+check(!previewOf(once).classes.has('error'), 'SUCCESS_CHANGED_TO_ERROR');
+clickPreview(once);
+expectQueue('REPEATED_COMPLETION_DELETE', []);
+
+const missingFile = makeFile('missing.jpg', 'missing');
+const missing = addOperation([missingFile], 'deferred');
+safely('MISSING_CONTEXT_COMPLETION_THROW', () => complete(missing));
+expectQueue('MISSING_CONTEXT_QUEUE', [missingFile]);
+flushNextReader();
+clickPreview(missing);
+expectQueue('FINAL_QUEUE', []);
+
+if (failures.length) throw new Error(failures.join('\n'));
+JS;
+
+        [$setup, $assertions] = explode("\nconst earlyFile =", $harness, 2);
+        file_put_contents(
+            $path,
+            $setup . "\n" . $match[1] . "\n" . $glue . "\nconst earlyFile =" . $assertions,
+        );
+
+        try {
+            $process = proc_open(
+                ['/usr/bin/env', 'node', $path],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                ROOTPATH,
+            );
+            self::assertIsResource($process);
+            $output = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            $error = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+
+            self::assertSame(0, proc_close($process), trim($output . "\n" . $error));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testUploadAdapterDeletesTheFileBoundToTheClickedDuplicateNamePreview(): void
+    {
+        $partial = view('partials/order_upload', [
+            'submissionId' => str_repeat('a', 32),
+            'targetId' => 'order-image',
+        ]);
+        self::assertSame(1, preg_match('#<script>(.*)</script>#s', $partial, $match));
+
+        $path = tempnam(sys_get_temp_dir(), 'tpl01-upload-adapter-');
+        self::assertIsString($path);
+        $harness = <<<'JS'
+const handlers = {};
+const target = { files: [] };
+
+class FakeDataTransfer {
+    constructor() {
+        const files = [];
+        this.files = files;
+        this.items = { add(file) { files.push(file); } };
+    }
+}
+
+class ClickTarget {
+    constructor(context) {
+        this.context = context;
+        this.handlers = [];
+    }
+    click(handler) { this.handlers.push(handler); return this; }
+    dispatchClick() {
+        this.handlers.slice().forEach((handler) => handler.call(this));
+        if (handlers.click) handlers.click.call(this);
+    }
+}
+
+class Context {
+    constructor(fileName) {
+        this.fileName = fileName;
+        this.values = new Map();
+        this.span = new ClickTarget(this);
+        this.kind = 'li';
+        this.length = 1;
+        this[0] = this;
+    }
+    get() { return [this]; }
+    filter(selector) { return selector === 'li' ? this : new Bridge(); }
+    first() { return this; }
+    prependTo() { return this; }
+    addClass() { return this; }
+    removeClass() { return this; }
+    find(selector) { return selector === 'span' ? this.span : { val: () => this.fileName }; }
+    data(key, value) {
+        if (arguments.length === 2) {
+            this.values.set(key, value);
+            return this;
+        }
+        return this.values.get(key);
+    }
+}
+
+class Bridge {
+    constructor() { this.length = 0; }
+    get() { return Array.prototype.slice.call(this, 0, this.length); }
+    filter(selector) {
+        const result = new Bridge();
+        Array.prototype.push.apply(result, this.get().filter((item) => item.kind === selector));
+        return result;
+    }
+    first() {
+        const result = new Bridge();
+        if (this.length) result.push(this[0]);
+        return result;
+    }
+    prependTo() { return this; }
+    addClass(name) { if (this.length) this[0].addClass(name); return this; }
+    removeClass(name) { if (this.length) this[0].removeClass(name); return this; }
+    data(key, value) {
+        if (!this.length) return arguments.length === 2 ? this : undefined;
+        return arguments.length === 2 ? this[0].data(key, value) : this[0].data(key);
+    }
+}
+Bridge.prototype.push = Array.prototype.push;
+
+const upload = {
+    on(event, selectorOrHandler, handler) {
+        handlers[event] = handler || selectorOrHandler;
+        return this;
+    }
+};
+const csrf = { val() { return this; } };
+function jquery(value) {
+    if (value === undefined) return new Bridge();
+    if (value === '#upload') return upload;
+    if (value instanceof Context || value instanceof Bridge) return value;
+    if (typeof value === 'string' && value.startsWith('input[name="')) return csrf;
+    if (value && value.context) return { closest() { return value.context; } };
+    throw new Error('Unexpected jQuery value: ' + String(value));
+}
+
+global.DataTransfer = FakeDataTransfer;
+global.document = { getElementById() { return target; } };
+global.jQuery = jquery;
+JS;
+        $assertions = <<<'JS'
+function original(file) {
+    const data = { files: [file] };
+    if (handlers.fileuploadadd) handlers.fileuploadadd(null, data);
+    return data;
+}
+function completion(data, status = 'success') {
+    return Object.assign({}, data, { result: { status } });
+}
+function expectQueue(label, expected) {
+    if (target.files.length !== expected.length || expected.some((file, index) => target.files[index] !== file)) {
+        throw new Error(label + '=' + target.files.length);
+    }
+}
+
+const first = { name: 'camera.jpg', bytes: 'first' };
+const second = { name: 'camera.jpg', bytes: 'second' };
+const firstOriginal = original(first);
+const secondOriginal = original(second);
+const firstContext = firstOriginal.context = new Context(first.name);
+const secondContext = secondOriginal.context = new Context(second.name);
+handlers.fileuploaddone(null, completion(firstOriginal));
+handlers.fileuploaddone(null, completion(secondOriginal));
+expectQueue('EARLY_DUPLICATE_QUEUE', [first, second]);
+
+const pendingContext = new Context(first.name);
+pendingContext.span.dispatchClick();
+expectQueue('PENDING_CANCEL_QUEUE', [first, second]);
+secondContext.span.dispatchClick();
+expectQueue('CLICKED_SECOND_QUEUE', [first]);
+firstContext.span.dispatchClick();
+expectQueue('CLICKED_FIRST_QUEUE', []);
+
+const late = { name: 'camera.jpg', bytes: 'late' };
+const lateOriginal = original(late);
+const lateCompletion = completion(lateOriginal);
+if (lateCompletion === lateOriginal || lateCompletion.files[0] !== lateOriginal.files[0]) {
+    throw new Error('PLUGIN_SHALLOW_CLONE_SEMANTICS_MISSING');
+}
+handlers.fileuploaddone(null, lateCompletion);
+expectQueue('REAL_CLONE_LATE_COMPLETION_QUEUE', [late]);
+const lateContext = lateOriginal.context = new Context(late.name);
+lateContext.span.dispatchClick();
+expectQueue('REAL_CLONE_LATE_QUEUE', []);
+
+const interleavedFirst = { name: 'same.jpg', bytes: 'interleaved-first' };
+const interleavedSecond = { name: 'same.jpg', bytes: 'interleaved-second' };
+const interleavedFirstOriginal = original(interleavedFirst);
+const interleavedSecondOriginal = original(interleavedSecond);
+handlers.fileuploaddone(null, completion(interleavedSecondOriginal));
+handlers.fileuploaddone(null, completion(interleavedFirstOriginal));
+const interleavedFirstContext = interleavedFirstOriginal.context = new Context(interleavedFirst.name);
+const interleavedSecondContext = interleavedSecondOriginal.context = new Context(interleavedSecond.name);
+expectQueue('INTERLEAVED_DUPLICATE_ORDER', [interleavedSecond, interleavedFirst]);
+interleavedFirstContext.span.dispatchClick();
+expectQueue('INTERLEAVED_FIRST_DELETE_QUEUE', [interleavedSecond]);
+interleavedSecondContext.span.dispatchClick();
+expectQueue('INTERLEAVED_SECOND_DELETE_QUEUE', []);
+
+const failed = original({ name: 'failed.jpg' });
+handlers.fileuploadfail(null, completion(failed));
+expectQueue('FAILED_QUEUE', []);
+const aborted = original({ name: 'aborted.jpg' });
+handlers.fileuploadfail(null, Object.assign(completion(aborted), { textStatus: 'abort' }));
+expectQueue('ABORTED_QUEUE', []);
+const rejected = original({ name: 'rejected.jpg' });
+handlers.fileuploaddone(null, completion(rejected, 'error'));
+rejected.context = new Context('rejected.jpg');
+expectQueue('ERROR_RESULT_QUEUE', []);
+
+const orphan = { name: 'same.jpg', bytes: 'orphan' };
+const orphanOriginal = original(orphan);
+const orphanCompletion = completion(orphanOriginal);
+handlers.fileuploaddone(null, orphanCompletion);
+handlers.fileuploaddone(null, orphanCompletion);
+expectQueue('COMPLETION_ONCE_QUEUE', [orphan]);
+const other = { name: 'same.jpg', bytes: 'other' };
+const otherOriginal = original(other);
+const otherContext = otherOriginal.context = new Context(other.name);
+handlers.fileuploaddone(null, completion(otherOriginal));
+otherContext.span.dispatchClick();
+expectQueue('MISSING_CONTEXT_NO_CROSS_BIND_QUEUE', [orphan]);
+const orphanContext = orphanOriginal.context = new Context(orphan.name);
+orphanContext.span.dispatchClick();
+expectQueue('FINAL_QUEUE', []);
+JS;
+        file_put_contents($path, $harness . "\n" . $match[1] . "\n" . $assertions);
+
+        try {
+            $process = proc_open(
+                ['/usr/bin/env', 'node', $path],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                ROOTPATH,
+            );
+            self::assertIsResource($process);
+            $output = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            $error = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+
+            self::assertSame(0, proc_close($process), trim($output . "\n" . $error));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testEditRendersOnlyValidExistingImageNamesThroughTheSecureRoute(): void
+    {
+        $first = str_repeat('a', 32) . '.png';
+        $second = str_repeat('b', 32) . '.png';
+        $malformed = '"><script>alert(1)</script>.png';
+        $this->db->table('request_order')->where('request_id', 91001)->update([
+            'detailImage' => implode('|', [$first, 'legacy.jpg', '../escape.png', $malformed, $second]),
+        ]);
+
+        $response = $this->withSession($this->session(2, 2, 1))->get('/orders/91001');
+        $response->assertStatus(200);
+        $body = $response->getBody();
+        self::assertStringContainsString('src="/order-image/' . $first . '"', $body);
+        self::assertStringContainsString('src="/order-image/' . $second . '"', $body);
+        self::assertSame(2, substr_count($body, 'src="/order-image/'));
+        self::assertStringNotContainsString('legacy.jpg', $body);
+        self::assertStringNotContainsString('escape.png', $body);
+        self::assertStringNotContainsString('script&gt;', $body);
+        self::assertStringNotContainsString('alert(1)', $body);
+    }
+
+    public function testOrderLayoutRendersPageOwnedContentDirectlyBetweenSidebarAndFooter(): void
+    {
+        $body = view('layout_order', [
+            'pageTitle' => 'Order', 'title' => 'Order', 'content' => '<div id="order-page-probe"></div>',
+            'isLoggedIn' => true, 'name' => '', 'role_text' => '', 'last_login' => '', 'GroupID' => 1,
+            'BranchID' => null, 'BranchName' => '', 'subtitle' => '', 'actions' => '', 'menuItems' => [],
+            'showBranchAutocomplete' => false, 'branchOptions' => [], 'accessDeniedProfile' => false,
+        ]);
+
+        self::assertMatchesRegularExpression('#</aside>\s*<div id="order-page-probe"></div>\s*<footer class="main-footer">#', $body);
+        self::assertStringNotContainsString('<div class="content-wrapper">', $body);
+        self::assertStringNotContainsString('<section class="content-header">', $body);
+        self::assertStringNotContainsString('<section class="content">', $body);
+    }
+
+    public function testOrderAssetsDoNotLeakIntoIndependentAdminAndPrintCallers(): void
+    {
+        $admin = $this->session(1, 1, null);
+        foreach (['/ordersListing', '/TrackingListing', '/ReportTrackingListing', '/orders/91001/print'] as $route) {
+            $response = $this->withSession($admin)->get($route);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            self::assertStringNotContainsString('/assets/css/style.css', $body, $route);
+            self::assertStringNotContainsString('/assets/js/browse/', $body, $route);
+            self::assertStringNotContainsString('/assets/js/addOrder.js', $body, $route);
+            self::assertStringNotContainsString('/assets/js/admin_addOrder.js', $body, $route);
+        }
+    }
+
+    public function testLegacyValidationFieldNamesReachCreateAndEditPersistence(): void
+    {
+        $create = $this->validOrderPayload([
+            'submission_id' => str_repeat('d', 32), 'number_id' => '7301', 'customer_tel' => '7777777777',
+        ]);
+        foreach ([
+            'book_id' => 'bookshort', 'customer_name' => 'customerFullname', 'customer_tel' => 'customerTel',
+            'customer_email' => 'email', 'type_id' => 'detailTypeId', 'brand_id' => 'detailBrandId',
+        ] as $canonical => $legacy) {
+            $create[$legacy] = $create[$canonical];
+            unset($create[$canonical]);
+        }
+        $this->postOrder($create)->assertRedirect();
+        self::assertSame(1, $this->db->table('request_order')->where('customerTel', '7777777777')->countAllResults());
+
+        $edit = $this->editPayload(['customer_tel' => '8888888888']);
+        foreach ([
+            'customer_name' => 'customerFullname', 'customer_tel' => 'customerTel', 'customer_email' => 'email',
+            'type_id' => 'detailTypeId', 'brand_id' => 'detailBrandId',
+        ] as $canonical => $legacy) {
+            $edit[$legacy] = $edit[$canonical];
+            unset($edit[$canonical]);
+        }
+        $this->postEdit(91001, $edit)->assertRedirect();
+        self::assertSame('8888888888', (string) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('customerTel'));
+    }
+
     public function testNewOrderFormScopesCanonicalBooksAndDefinesLocalPreviewContract(): void
     {
         $admin = $this->withSession($this->session(1, 1, null))->get('/orders/new');
         $admin->assertStatus(200);
         $adminBody = $admin->getBody();
-        self::assertStringContainsString('name="book_id" required', $adminBody);
+        self::assertStringContainsString('name="bookshort" required', $adminBody);
         self::assertStringContainsString('value="1" data-book-detail="ABC" data-branch-id="1"', $adminBody);
         self::assertStringContainsString('value="3" data-book-detail="XYZ" data-branch-id="2"', $adminBody);
         self::assertStringContainsString('value="4" data-book-detail="ABC" data-branch-id="2"', $adminBody);
@@ -774,6 +1593,74 @@ final class OrderHttpTest extends CIUnitTestCase
             self::fail('Expected CSRF rejection.');
         } catch (SecurityException) {
             $this->assertCreateCounts(8, 0, 0);
+        }
+    }
+
+    public function testPreviewUploadRequiresAuthenticationAndCsrfBeforeValidation(): void
+    {
+        $png = $this->imageFixture('png');
+        try {
+            $this->setPreviewUpload($png, 'repair.png', 'image/png');
+            $this->withSession([])->post('/order/do_upload_multi/' . str_repeat('a', 32), [
+                'csrf_test_name' => service('security')->getHash(),
+            ])->assertStatus(401);
+
+            $this->setPreviewUpload($png, 'repair.png', 'image/png');
+            try {
+                $this->withSession($this->session(2, 2, 1))
+                    ->post('/order/do_upload_multi/' . str_repeat('a', 32), []);
+                self::fail('Expected CSRF rejection.');
+            } catch (SecurityException) {
+                self::assertSame([], $this->orderImagesOnDisk());
+            }
+        } finally {
+            @unlink($png);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testPreviewUploadValidatesWithoutPersistingOrExposingStoredFilename(): void
+    {
+        $png = $this->imageFixture('png');
+        $before = $this->orderImagesOnDisk();
+        try {
+            $this->setPreviewUpload($png, '../../repair.php.png', 'image/png');
+            $response = $this->withSession($this->session(2, 2, 1))->post(
+                '/order/do_upload_multi/' . str_repeat('b', 32),
+                ['csrf_test_name' => service('security')->getHash()],
+            );
+            $response->assertStatus(200);
+            $response->assertJSONFragment(['status' => 'success']);
+            $json = json_decode($response->getJSON(), true, 512, JSON_THROW_ON_ERROR);
+            self::assertArrayHasKey('csrf_hash', $json);
+            self::assertArrayNotHasKey('filename', $json);
+            self::assertArrayNotHasKey('path', $json);
+            self::assertSame($before, $this->orderImagesOnDisk());
+        } finally {
+            @unlink($png);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testPreviewUploadRejectsInvalidTokenAndInvalidImageWithoutPersistence(): void
+    {
+        $bad = tempnam(sys_get_temp_dir(), 'tpl01-bad-preview-');
+        self::assertIsString($bad);
+        file_put_contents($bad, '<?php echo "bad";');
+        try {
+            foreach (['not-a-token', str_repeat('c', 32)] as $token) {
+                $this->setPreviewUpload($bad, 'repair.png', 'image/png');
+                $response = $this->withSession($this->session(2, 2, 1))->post(
+                    '/order/do_upload_multi/' . $token,
+                    ['csrf_test_name' => service('security')->getHash()],
+                );
+                $response->assertStatus(422);
+                $response->assertJSONFragment(['status' => 'error']);
+                self::assertSame([], $this->orderImagesOnDisk());
+            }
+        } finally {
+            @unlink($bad);
+            service('superglobals')->setFilesArray([]);
         }
     }
 
@@ -997,16 +1884,16 @@ final class OrderHttpTest extends CIUnitTestCase
         }
     }
 
-    public function testNewOrderFormExposesCatalogueCheckboxesAndCi4FieldNames(): void
+    public function testNewOrderFormExposesCatalogueCheckboxesAndCi3FieldNames(): void
     {
         $body = $this->withSession($this->session(2, 2, 1))->get('/orders/new')->getBody();
-        // The controller wires the three catalogues into the form; names are the CI4 contract normalize() reads.
+        // The controller wires the three catalogues into the form; source names map in Order::orderInput().
         self::assertStringContainsString('name="condition[]"', $body);
         self::assertStringContainsString('name="estimateprice[]"', $body);
         self::assertStringContainsString('name="fixed[]"', $body);
         self::assertStringContainsString('CONDITION ONE', $body);
-        self::assertStringContainsString('name="detail_sku_name"', $body);
-        self::assertStringContainsString('name="waranty_type"', $body);
+        self::assertStringContainsString('name="detailSKUName"', $body);
+        self::assertStringContainsString('name="warantyType"', $body);
         self::assertStringContainsString('name="create_by_user"', $body);
         // T2: the repair-image input takes several files under the array name normalize() expects.
         self::assertStringContainsString('name="detail_image[]"', $body);
@@ -1150,9 +2037,14 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('<option value="7"', $body);
         // The per-row rating button stays on the same page as the bulk form.
         self::assertStringContainsString('class="rate-open"', $body);
-        // AC-6: the rating modal partial no longer carries an inline <style> block (its rules
-        // moved to admin.css), so a page that renders the modal has no <style in the document.
-        self::assertStringNotContainsString('<style', $body);
+        // AC-6: the shared CI3 header intentionally retains its `.error` style. Scope the
+        // regression to the modal and its script as they actually appear in the response.
+        self::assertSame(1, preg_match(
+            '#(<dialog id="rating-modal".*?</dialog>\s*<script>.*?</script>)#s',
+            $body,
+            $modalRegion,
+        ));
+        self::assertStringNotContainsString('<style', $modalRegion[1]);
     }
 
     public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
@@ -1284,8 +2176,8 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('CONDITION ONE', $body);
 
         // AC-2: pipe-separated ids 1 and 2 are checked, id 3 is not, and the "other" free text shows.
-        self::assertStringContainsString('value="1" disabled checked', $body);
-        self::assertStringContainsString('value="2" disabled checked', $body);
+        self::assertStringContainsString('id="condition[]" name="condition[]" value="1" disabled checked', $body);
+        self::assertStringContainsString('id="condition[]" name="condition[]" value="2" disabled checked', $body);
         self::assertStringContainsString('value="3" disabled>', $body);
         self::assertStringContainsString('EXTRA HANDLE CRACK', $body);
 
@@ -1296,9 +2188,10 @@ final class OrderHttpTest extends CIUnitTestCase
         // AC-1: the CI3 form never printed a status label, so the CI4 view must not either.
         self::assertStringNotContainsString('Status', $body);
 
-        // AC-3: 0000-00-00 purchase date blanks out; the valid request date renders dd/mm/YYYY (CE).
+        // CI3 leaves the third cell of the TRACK/ORDER/REQUEST row empty; its request date is
+        // computed but never output. Keep that observable legacy defect until a disposition exists.
         self::assertStringNotContainsString('00/00/0000', $body);
-        self::assertStringContainsString('10/08/2026', $body);
+        self::assertStringNotContainsString('10/08/2026', $body);
 
         // Block 15 reads detailNumberWaranty directly (not warantyType).
         $print->assertSee('มี WRT-123');
@@ -1307,6 +2200,11 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertStringContainsString('BAG &lt;SPORT&gt;', $body);
         self::assertStringNotContainsString('BAG <SPORT>', $body);
         self::assertStringContainsString('size: A4', $body);
+        self::assertStringContainsString('class="sheet padding-10mm"', $body);
+        self::assertStringContainsString('class="size-print"', $body);
+        self::assertStringContainsString('src="/assets/images/print-logo.jpg"', $body);
+        self::assertStringContainsString('function printpr()', $body);
+        self::assertStringContainsString('onclick="JavaScript:this.style.display=', $body);
         self::assertStringContainsString('window.print()', $body);
     }
 
@@ -1708,6 +2606,10 @@ final class OrderHttpTest extends CIUnitTestCase
         self::assertMatchesRegularExpression('/\A[a-f0-9]{32}\.png\z/', $existing);
         self::assertFileExists(WRITEPATH . 'uploads/orders/' . $existing);
         try {
+            $form = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $created['request_id']);
+            $form->assertStatus(200);
+            self::assertStringContainsString('src="/order-image/' . $existing . '"', $form->getBody());
+
             $this->postEdit((int) $created['request_id'], $this->editPayload(['customer_name' => 'IMG KEEP CUSTOMER']))
                 ->assertRedirectTo('/orders?status=1');
 
@@ -1794,6 +2696,43 @@ final class OrderHttpTest extends CIUnitTestCase
             @unlink(WRITEPATH . 'uploads/orders/' . $oldName);
             @unlink($png);
             @unlink($corrupt);
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testEditDatabaseFailureKeepsPriorAssociationAndFileAndRemovesOnlyNewFiles(): void
+    {
+        $created = $this->createOrderWithImage(str_repeat('6', 32));
+        $oldName = (string) $created['detailImage'];
+        $oldPath = WRITEPATH . 'uploads/orders/' . $oldName;
+        self::assertFileExists($oldPath);
+
+        $png = $this->imageFixture('png');
+        $this->setUploads([['tmp' => $png, 'name' => 'replacement.png', 'type' => 'image/png']]);
+        $before = $this->orderImagesOnDisk();
+        $trigger = $this->db->escapeIdentifiers($this->db->prefixTable('fail_order_edit'));
+        $orders = $this->db->escapeIdentifiers($this->db->prefixTable('request_order'));
+        $this->db->query("CREATE TRIGGER {$trigger} BEFORE UPDATE ON {$orders} BEGIN SELECT RAISE(FAIL, 'edit unavailable'); END");
+
+        try {
+            $this->postEdit(
+                (int) $created['request_id'],
+                $this->editPayload(['customer_name' => 'SHOULD NOT APPLY']),
+                false,
+            )->assertStatus(503);
+
+            $row = $this->db->table('request_order')->where('request_id', (int) $created['request_id'])->get()->getRowArray();
+            self::assertSame($oldName, (string) $row['detailImage']);
+            self::assertSame('SEED CUSTOMER', (string) $row['customerFullname']);
+            self::assertFileExists($oldPath);
+            $after = $this->orderImagesOnDisk();
+            sort($before);
+            sort($after);
+            self::assertSame($before, $after);
+        } finally {
+            $this->db->query("DROP TRIGGER IF EXISTS {$trigger}");
+            @unlink($oldPath);
+            @unlink($png);
             service('superglobals')->setFilesArray([]);
         }
     }
@@ -1935,6 +2874,17 @@ final class OrderHttpTest extends CIUnitTestCase
         return $path;
     }
 
+    private function setPreviewUpload(string $tmp, string $name, string $type): void
+    {
+        service('superglobals')->setFilesArray(['upl' => [
+            'name' => $name,
+            'type' => $type,
+            'tmp_name' => $tmp,
+            'error' => UPLOAD_ERR_OK,
+            'size' => is_file($tmp) ? (int) filesize($tmp) : 0,
+        ]]);
+    }
+
     /**
      * Register uploads in the multi-file $_FILES shape the detail_image[] form produces.
      *
@@ -2054,9 +3004,9 @@ final class OrderHttpTest extends CIUnitTestCase
         $body = $new->getBody();
         // CI3 Order::add() prefills date('d/m/Y') and keeps the field readonly.
         self::assertStringContainsString('value="' . date('d/m/Y') . '"', $body);
-        self::assertMatchesRegularExpression('#<input[^>]+name="request_date"[^>]+readonly#', $body);
+        self::assertMatchesRegularExpression('#<input[^>]+name="requestDate"[^>]+readonly#', $body);
         // branch short is derived from the branch, never typed.
-        self::assertMatchesRegularExpression('#<input[^>]+name="branch_short"[^>]+readonly#', $body);
+        self::assertMatchesRegularExpression('#<input[^>]+name="branchshort"[^>]+readonly#', $body);
         // The branch options carry the two data attributes the cascade reads.
         self::assertStringContainsString('data-branch-type="1"', $body);
         self::assertStringContainsString('data-branch-short="WPA"', $body);

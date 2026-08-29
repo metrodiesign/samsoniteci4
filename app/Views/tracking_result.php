@@ -1,26 +1,18 @@
 <?php
 
 /** @var string $language */
-/** @var string $trackId */
 /** @var list<array{status_id: int, status_name: string, status_name_th: string, occurred_at: string}> $timeline */
 /** @var string|null $backgroundImage */
-/** @var string|null $backgroundImageMobile */
 ?>
 <section id="rs-track">
     <?php if ($backgroundImage !== null): ?>
         <div class="banner-control">
-            <picture>
-                <?php if ($backgroundImageMobile !== null): ?>
-                    <source media="(max-width: 850px)" srcset="/background-image/<?= esc($backgroundImageMobile) ?>">
-                <?php endif ?>
-                <img class="rs-bg-size" src="/background-image/<?= esc($backgroundImage) ?>" alt="">
-            </picture>
+            <img class="rs-bg-size" src="/background-image/<?= esc($backgroundImage) ?>">
         </div>
     <?php endif ?>
 
     <div class="container">
         <div class="row">
-            <p data-tracking-id><?= esc($trackId) ?></p>
             <div class="con-pro-bar">
                 <?php if ($timeline !== []): ?>
                     <?php $last = count($timeline) - 1; ?>

@@ -4,23 +4,24 @@ namespace App\Controllers;
 
 final class Dashboard extends BaseController
 {
-    /** @var list<array{label: string, href: string}> */
+    /** @var list<array{label: string, href: string, icon: string}> */
     private const REPORTS_TILE = [
-        ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+        ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
     ];
 
-    /** @var array<int, list<array{label: string, href: string}>> */
+    /** @var array<int, list<array{label: string, href: string, icon: string}>> */
     private const TILES_BY_GROUP = [
         3 => [
-            ['label' => 'UPLOAD STATUS', 'href' => '/UploadexcelListing'],
-            ['label' => 'UPLOAD CMG DATA', 'href' => '/UploadneworderexcelListing'],
-            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+            ['label' => 'UPLOAD STATUS', 'href' => '/UploadexcelListing', 'icon' => 'ion-bag'],
+            ['label' => 'UPLOAD CMG DATA', 'href' => '/UploadneworderexcelListing', 'icon' => 'ion-stats-bars'],
+            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
         ],
         4 => [
-            ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing'],
-            ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing'],
-            ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing'],
-            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing'],
+            ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing', 'icon' => 'ion-bag'],
+            ['label' => '2. LOGISTICS', 'href' => '/sendorderListing', 'icon' => 'ion-stats-bars'],
+            ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing', 'icon' => 'ion-pie-graph'],
+            ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing', 'icon' => 'ion-pie-graph'],
+            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
         ],
     ];
 

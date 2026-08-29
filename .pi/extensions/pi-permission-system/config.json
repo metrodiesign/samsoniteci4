@@ -1,0 +1,103 @@
+{
+  "piInfrastructureReadPaths": [
+    "/Users/king_developer/.claude",
+    "/Users/king_developer/Desktop/Project/samsoniteci3",
+    "/Users/king_developer/Desktop/Project/spec-driven-development",
+    "/Users/king_developer/Desktop/Project/pol-core"
+  ],
+  "permission": {
+    "*": "allow",
+
+    "path": {
+      "*": "allow",
+      ".pi/settings.json": "deny",
+      ".pi/extensions/pi-permission-system/config.json": "deny",
+      "/Users/king_developer/Desktop/Project/samsoniteci4/.pi/settings.json": "deny",
+      "/Users/king_developer/Desktop/Project/samsoniteci4/.pi/extensions/pi-permission-system/config.json": "deny"
+    },
+
+    "external_directory": {
+      "*": "deny",
+
+      "/Users/king_developer/.claude": "allow",
+      "/Users/king_developer/.claude/*": "allow",
+
+      "/Users/king_developer/Desktop/Project/spec-driven-development": "allow",
+      "/Users/king_developer/Desktop/Project/spec-driven-development/*": "allow",
+
+      "/Users/king_developer/Desktop/Project/pol-core": "allow",
+      "/Users/king_developer/Desktop/Project/pol-core/*": "allow",
+
+      "/Users/king_developer/Desktop/Project/samsoniteci3": "allow",
+      "/Users/king_developer/Desktop/Project/samsoniteci3/*": "allow"
+    },
+
+    "read": {
+      "*": "allow"
+    },
+
+    "grep": {
+      "*": "allow"
+    },
+
+    "find": {
+      "*": "allow"
+    },
+
+    "ls": {
+      "*": "allow"
+    },
+
+    "write": {
+      "*": "allow",
+
+      "/Users/king_developer/.claude": "deny",
+      "/Users/king_developer/.claude/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/spec-driven-development": "deny",
+      "/Users/king_developer/Desktop/Project/spec-driven-development/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/pol-core": "deny",
+      "/Users/king_developer/Desktop/Project/pol-core/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/samsoniteci3": "deny",
+      "/Users/king_developer/Desktop/Project/samsoniteci3/*": "deny"
+    },
+
+    "edit": {
+      "*": "allow",
+
+      "/Users/king_developer/.claude": "deny",
+      "/Users/king_developer/.claude/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/spec-driven-development": "deny",
+      "/Users/king_developer/Desktop/Project/spec-driven-development/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/pol-core": "deny",
+      "/Users/king_developer/Desktop/Project/pol-core/*": "deny",
+
+      "/Users/king_developer/Desktop/Project/samsoniteci3": "deny",
+      "/Users/king_developer/Desktop/Project/samsoniteci3/*": "deny"
+    },
+
+    "bash": {
+      "*": "allow",
+
+      "*/Users/king_developer/.claude*": "deny",
+      "*~/.claude*": "deny",
+      "*$HOME/.claude*": "deny",
+
+      "*/Users/king_developer/Desktop/Project/spec-driven-development*": "deny",
+      "*~/Desktop/Project/spec-driven-development*": "deny",
+      "*$HOME/Desktop/Project/spec-driven-development*": "deny",
+
+      "*/Users/king_developer/Desktop/Project/pol-core*": "deny",
+      "*~/Desktop/Project/pol-core*": "deny",
+      "*$HOME/Desktop/Project/pol-core*": "deny",
+
+      "*/Users/king_developer/Desktop/Project/samsoniteci3*": "deny",
+      "*~/Desktop/Project/samsoniteci3*": "deny",
+      "*$HOME/Desktop/Project/samsoniteci3*": "deny"
+    }
+  }
+}

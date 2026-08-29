@@ -1,0 +1,6 @@
+TEMP_ROOT=/tmp/claude-501/task7-gate-rootcause-exact-copyvendor-4148
+INDEX=/tmp/claude-501/task7-gate-rootcause-exact-copyvendor-4148/index-dir/index
+PHPUNIT_STATUS=2
+REAL_INDEX_BEFORE=c6ce38a8953cb1dedf08e35446b3195347139425
+REAL_INDEX_AFTER=c6ce38a8953cb1dedf08e35446b3195347139425
+VENDOR_MODE=copied

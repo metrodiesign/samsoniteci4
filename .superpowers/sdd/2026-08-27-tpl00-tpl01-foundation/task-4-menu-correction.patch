@@ -1,0 +1,11 @@
+diff --git a/tests/ci4/MenuHttpTest.php b/tests/ci4/MenuHttpTest.php
+--- a/tests/ci4/MenuHttpTest.php
++++ b/tests/ci4/MenuHttpTest.php
+@@ -660,2 +660,2 @@
+-        self::assertStringContainsString('class="banner-cms"', $body);
+-        self::assertStringContainsString('<b>Tracking</b>', $body);
++        self::assertStringContainsString('login-banner', $body);
++        self::assertStringContainsString('>Tracking<', $body);
+@@ -663 +663 @@
+-        self::assertStringContainsString('forgotPassword', $body);
++        self::assertStringContainsString('forgot-password', $body);

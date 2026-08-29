@@ -1,0 +1,26 @@
+PHPUnit 11.5.56 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.7
+Configuration: /private/tmp/claude-501/task7-gate-incremental-fixed-63470/04-plus-error-404/tree/phpunit.xml.dist
+
+...............................................................  63 / 396 ( 15%)
+.............................................................F. 126 / 396 ( 31%)
+............................................................... 189 / 396 ( 47%)
+............................................................... 252 / 396 ( 63%)
+............................................................... 315 / 396 ( 79%)
+.....................
+reset_delivery sent=1 retry=0 idle=1 released=0 rate_pruned=0
+.......................................... 378 / 396 ( 95%)
+..................                                              396 / 396 (100%)
+
+Time: 01:54.771, Memory: 54.50 MB
+
+There was 1 failure:
+
+1) Tests\Ci4\MenuHttpTest::testSharedRuntimeAssetClosureExistsAndIsGitTracked
+Failed asserting that actual size 111 matches expected size 118.
+
+/private/tmp/claude-501/task7-gate-incremental-fixed-63470/04-plus-error-404/tree/tests/ci4/MenuHttpTest.php:292
+
+FAILURES!
+Tests: 396, Assertions: 7983, Failures: 1.

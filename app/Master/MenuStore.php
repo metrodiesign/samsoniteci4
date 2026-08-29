@@ -209,6 +209,44 @@ final class MenuStore
         return $meta;
     }
 
+    public function branchName(?int $branchId): string
+    {
+        if ($branchId === null || $branchId < 1 || ! $this->db->tableExists($this->db->prefixTable('branch'), false)) {
+            return '';
+        }
+        $fields = $this->db->getFieldNames($this->db->prefixTable('branch'));
+        if (! is_array($fields) || ! in_array('branch_name', $fields, true)) {
+            return '';
+        }
+
+        $name = $this->db->table('branch')
+            ->select('branch_name')
+            ->where('branch_id', $branchId)
+            ->get()
+            ->getRow('branch_name');
+
+        return is_string($name) ? $name : '';
+    }
+
+    /** @return list<array{id: int, name: string}> */
+    public function branches(): array
+    {
+        if (! $this->db->tableExists($this->db->prefixTable('branch'), false)) {
+            return [];
+        }
+        $fields = $this->db->getFieldNames($this->db->prefixTable('branch'));
+        if (! is_array($fields)
+            || ! in_array('branch_id', $fields, true)
+            || ! in_array('branch_name', $fields, true)) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $row): array => ['id' => (int) $row['branch_id'], 'name' => (string) $row['branch_name']],
+            $this->db->table('branch')->select('branch_id, branch_name')->get()->getResultArray(),
+        );
+    }
+
     /** @return list<array{id: int, name: string}> */
     public function menuGroups(): array
     {

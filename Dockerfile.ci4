@@ -5,7 +5,7 @@ FROM php:8.5.7-cli-bookworm@sha256:1ff2cdf2754bcac61128bfda455d418639c0f45a8b158
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libicu-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev; \
+    apt-get install -y --no-install-recommends libicu-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev nodejs; \
     docker-php-ext-configure gd --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" intl mbstring mysqli zip gd; \
     rm -rf /var/lib/apt/lists/*
@@ -20,6 +20,7 @@ RUN composer install --no-interaction --no-progress --prefer-dist
 COPY --chown=www-data:www-data app app
 COPY --chown=www-data:www-data public public
 COPY --chown=www-data:www-data tests/ci4 tests/ci4
+COPY --chown=www-data:www-data tests/wp00c/ci4-route-disposition.json tests/wp00c/ci4-route-disposition.json
 COPY --chown=www-data:www-data writable writable
 COPY --chown=www-data:www-data spark spark
 COPY --chown=www-data:www-data phpunit.xml.dist phpunit.xml.dist

@@ -2,7 +2,7 @@
 
 /** @var list<string> $fields */
 /** @var array<string, mixed>|null $row */
-$action = '/backgrounds' . ($row === null ? '' : '/' . (int) $row['id']);
+/** @var string $legacyAction */
 
 // [addText, editText] per field, verbatim from CI3 master/add_background.php และ edit_background.php
 // (คง typo/doubled space; _th 6 field ไม่มี UI ใน CI3 = invented ตามแบบ EN)
@@ -23,8 +23,9 @@ $backgroundLabels = [
 ];
 ?>
 <section aria-labelledby="page-title">
-    <form method="post" action="<?= esc($action) ?>" enctype="multipart/form-data">
+    <form role="form" method="post" action="<?= base_url($legacyAction) ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
+        <?php if ($row !== null): ?><input type="hidden" name="background_id" value="<?= (int) $row['id'] ?>"><?php endif ?>
         <label for="background-status">Status</label>
         <select id="background-status" name="status" required>
             <option value="1" <?= (int) ($row['status'] ?? 1) === 1 ? 'selected' : '' ?>>Publishing</option>

@@ -2,6 +2,7 @@
 
 namespace App\Filters;
 
+use App\Presentation\AccessDeniedResponder;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -14,9 +15,7 @@ final class BranchlessFilter implements FilterInterface
             return null;
         }
 
-        return service('response')
-            ->setStatusCode(403)
-            ->setJSON(['error' => 'forbidden']);
+        return (new AccessDeniedResponder())->respond($request);
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): ?ResponseInterface

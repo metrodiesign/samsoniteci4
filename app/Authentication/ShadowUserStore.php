@@ -164,6 +164,22 @@ final class ShadowUserStore
         return isset($row['id']) && (int) $row['id'] > 0 ? (int) $row['id'] : null;
     }
 
+    public function findActiveEmailById(int $userId): ?string
+    {
+        if ($userId < 1) {
+            return null;
+        }
+
+        $row = $this->db->table(self::TABLE)
+            ->select('email')
+            ->where('id', $userId)
+            ->where('is_active', 1)
+            ->get()
+            ->getRowArray();
+
+        return isset($row['email']) && is_string($row['email']) ? $row['email'] : null;
+    }
+
     public function verifyPassword(int $userId, string $password): bool
     {
         if ($userId < 1) {

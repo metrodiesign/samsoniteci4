@@ -30,6 +30,13 @@ final class Reports extends BaseController
         'in-progress' => ['In Progress Report', 'In Progress Report', ''],
     ];
 
+    /** @var array<string, string> */
+    private const MATRIX_ROUTES = [
+        'ratings' => 'user/report', 'jobs-by-day' => 'user/report_job_byday',
+        'pending' => 'user/report_job_pending', 'pending-total' => 'user/report_total_job_pending',
+        'in-progress-average' => 'user/report_in_progress_average', 'in-progress' => 'user/report_in_progress_job',
+    ];
+
     public function matrix(string $kind): string|ResponseInterface
     {
         if (! isset(self::HEADINGS[$kind])) {
@@ -60,6 +67,7 @@ final class Reports extends BaseController
             'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
             'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
             'heading' => $title, 'kind' => $kind, 'rows' => $rows,
+            'formAction' => self::MATRIX_ROUTES[$kind],
             'showBranchSelect' => service('session')->get('BranchID') === null,
             'startDate' => $start,
             'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
