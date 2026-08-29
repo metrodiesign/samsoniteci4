@@ -66,7 +66,7 @@ else
   DOCKER_CONFIG="$ci4_docker_config" docker run --rm "${ci4_mounts[@]}" "$ci4_image" \
     vendor/bin/phpunit --configuration phpunit.xml.dist >/dev/null
 fi
-printf '%s\n' "$routes" | grep -Eq 'GET.*health.*Health::index' \
+grep -Eq 'GET.*health.*Health::index' <<<"$routes" \
   || fail "CI4 explicit health route is missing"
 grep -Fq 'public bool $autoRoute = false;' app/Config/Routing.php \
   || fail "CI4 Auto Routing Legacy is enabled"
