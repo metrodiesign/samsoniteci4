@@ -252,13 +252,20 @@ def main() -> int:
         DATABASE_NAME = "samsonite_ci4"
         EXPECTED_TABLE_COUNT = 36
 
-    # ponytail: one local runtime exists; split lock per runtime only when parallel runtimes exist.
-    lock_fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    # Both targets mutate and restore the same synthetic tbl_users rows while logging in,
+    # even though their report tables and ports differ. Serialize them on one local lock.
+    lock_path = LOCK_PATH
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     lock_file = os.fdopen(lock_fd, "r+")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError as exc:
-        raise RuntimeError("another Report Tracking runner holds the local lock") from exc
+        holder = lock_file.read().strip() or "unknown pid"
+        raise RuntimeError(f"another Report Tracking runner ({TARGET}, pid {holder}) holds {lock_path}") from exc
+    lock_file.seek(0)
+    lock_file.truncate()
+    lock_file.write(str(os.getpid()))
+    lock_file.flush()
 
     pin = run(["git", "-C", str(CI3_ROOT), "rev-parse", "HEAD"])
     dirty = run(["git", "-C", str(CI3_ROOT), "status", "--porcelain"])
@@ -267,15 +274,25 @@ def main() -> int:
 
     initial_checksums = table_checksums()
     ci4_hashes: dict[str, str] = {}
+    initial_rate_rows: dict[str, tuple[str, str, str, str]] = {}
     if TARGET == "ci4":
         target_mutation_rows = db(
             "SELECT "
-            "(SELECT COUNT(*) FROM ci4_rate_limit_buckets) + "
             "(SELECT COUNT(*) FROM ci4_password_reset_tokens) + "
             "(SELECT COUNT(*) FROM ci4_delivery_intents);"
         )
         if target_mutation_rows != "0":
-            raise AssertionError("CI4 target mutation tables must be empty before comparator")
+            raise AssertionError("CI4 reset-token and delivery-intent tables must be empty before comparator")
+        initial_rate_rows = {
+            fields[0]: (fields[1], fields[2], fields[3], fields[4])
+            for line in db(
+                "SELECT bucket_key,request_count,window_id,"
+                "DATE_FORMAT(expires_at,'%Y-%m-%d %H:%i:%s'),"
+                "DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') "
+                "FROM ci4_rate_limit_buckets ORDER BY bucket_key;"
+            ).splitlines()
+            if len(fields := line.split("\t")) == 5
+        }
         ci4_hashes = dict(
             line.split("\t", 1)
             for line in db(
@@ -390,16 +407,24 @@ def main() -> int:
                 f"UPDATE ci4_users SET password_hash={db_quote(password_hash)} WHERE id={int(user_id)}"
                 for user_id, password_hash in ci4_hashes.items()
             )
-        db(
-            restore
-            + f";DELETE FROM tbl_last_login WHERE id>{last_login_max} AND userId IN (9001,9002,9003) "
-            + f"AND agentString={db_quote(USER_AGENT)};"
-            + (
-                ";DELETE FROM ci4_rate_limit_buckets;"
-                if TARGET == "ci4"
-                else ""
-            )
+        restore += (
+            f";DELETE FROM tbl_last_login WHERE id>{last_login_max} AND userId IN (9001,9002,9003) "
+            f"AND agentString={db_quote(USER_AGENT)};"
         )
+        if TARGET == "ci4":
+            current_rate_keys = set(db("SELECT bucket_key FROM ci4_rate_limit_buckets;").splitlines())
+            new_rate_keys = sorted(current_rate_keys - set(initial_rate_rows))
+            if new_rate_keys:
+                restore += ";DELETE FROM ci4_rate_limit_buckets WHERE bucket_key IN (" + ",".join(
+                    db_quote(key) for key in new_rate_keys
+                ) + ")"
+            for key, (count, window, expires_at, created_at) in initial_rate_rows.items():
+                restore += (
+                    ";REPLACE INTO ci4_rate_limit_buckets "
+                    "(bucket_key,request_count,window_id,expires_at,created_at) VALUES ("
+                    f"{db_quote(key)},{int(count)},{int(window)},{db_quote(expires_at)},{db_quote(created_at)})"
+                )
+        db(restore + ";")
         final_checksums = table_checksums()
         if initial_checksums != final_checksums:
             changed = sorted(table for table in initial_checksums if initial_checksums[table] != final_checksums[table])

@@ -10,6 +10,23 @@ final class OrderStore
     {
     }
 
+    public function staleNewOrderCount(int $branchId, \DateTimeImmutable $today): int
+    {
+        if ($branchId < 1) {
+            return 0;
+        }
+        $fields = $this->db->getFieldNames($this->db->prefixTable('request_order'));
+        if (! is_array($fields) || ! in_array('requestDate', $fields, true)) {
+            return 0;
+        }
+
+        return $this->db->table('request_order')
+            ->where('branchID', $branchId)
+            ->where('action_status', 1)
+            ->where('requestDate <', $today->modify('-2 days')->format('Y-m-d 00:00:00'))
+            ->countAllResults();
+    }
+
     /** @return list<array<string, mixed>> */
     public function listing(int $status, ?int $branchId, string $search, int $page, string $sdate = '', string $edate = ''): array
     {

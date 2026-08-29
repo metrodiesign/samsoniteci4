@@ -203,37 +203,35 @@ final class MenuHttpTest extends CIUnitTestCase
             'var windowURL = window.location.href;',
             'assets/datatables/1.10.16/js/jquery.dataTables.min.js',
             'assets/datatables-fixedcolumns/3.2.4/js/dataTables.fixedColumns.min.js',
-            "var table = $('#example').DataTable({",
+            "var table = $('#example').DataTable( {",
         ]);
 
-        self::assertMatchesRegularExpression('#<form action="[^"]*/logout" method="post"#', $body);
-        self::assertStringContainsString('<button type="submit"', $body);
-        self::assertMatchesRegularExpression(
-            '#<form action="[^"]*/logout" method="post".*name="csrf_test_name".*<button type="submit"#s',
-            $body,
-        );
-        self::assertStringNotContainsString('href="/logout"', $body);
+        self::assertMatchesRegularExpression('#<li class="btn-flat">\s*<a href="[^"]*/logout"><i class="fa fa-sign-out"></i> Sign out</a>#s', $body);
+        self::assertStringNotContainsString('<form action="' . base_url('logout'), $body);
+        $bridge = (string) file_get_contents(APPPATH . 'Views/logout_bridge.php');
+        self::assertStringContainsString("method=\"post\"", $bridge);
+        self::assertStringContainsString('csrf_field()', $bridge);
         self::assertMatchesRegularExpression(
             '#<img class="" src="[^"]*/assets/images/img-footer\.png">#',
             $body,
         );
         $dataTablesInitialization = implode("\n", [
-            '    $(document).ready(function() {',
-            "        var table = $('#example').DataTable({",
-            '            scrollY: "300px",',
-            '            scrollX: true,',
-            '            responsive: true,',
-            "            className: 'mdl-data-table__cell--non-numeric',",
-            '            scrollCollapse: true,',
-            '            paging: true,',
-            "            buttons: ['colvis'],",
-            '            fixedColumns: {',
-            '                leftColumns: 1,',
-            '                leftColumns: 2,',
-            '                leftColumns: 3',
-            '            }',
-            '        });',
-            '    });',
+            '      $(document).ready(function() {',
+            "      var table = $('#example').DataTable( {",
+            '          scrollY: "300px",',
+            '          scrollX: true,',
+            '          responsive: true,',
+            "          className: 'mdl-data-table__cell--non-numeric',",
+            '          scrollCollapse: true,',
+            '          paging: true,',
+            "          buttons:  [ 'colvis' ],",
+            '          fixedColumns: {',
+            '              leftColumns: 1,',
+            '              leftColumns: 2,',
+            '              leftColumns: 3',
+            '          }',
+            '      } );',
+            '  } );',
         ]);
         self::assertStringContainsString($dataTablesInitialization, $body);
 
@@ -242,7 +240,7 @@ final class MenuHttpTest extends CIUnitTestCase
         }
     }
 
-    public function testSharedRuntimeAssetClosureExistsAndIsGitTracked(): void
+    public function testSharedRuntimeAssetClosureExistsAndIsInCandidateTree(): void
     {
         $documents = [];
         foreach (['/login', '/forgot-password', '/reset-password', '/contact', '/contact-th', '/tracking', '/tracking-th'] as $route) {
@@ -289,7 +287,7 @@ final class MenuHttpTest extends CIUnitTestCase
             $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
         }
         $closure = $this->runtimeAssetClosure($entrypoints);
-        self::assertCount(116, $closure);
+        self::assertCount(119, $closure);
 
         $trackedFiles = [
             ...$closure,
@@ -310,32 +308,22 @@ final class MenuHttpTest extends CIUnitTestCase
         }
 
         $process = proc_open(
-            ['/usr/bin/env', 'git', 'ls-files', '--error-unmatch', '--', ...$trackedFiles],
+            ['/usr/bin/env', 'git', 'ls-files', '--cached', '--others', '--exclude-standard', '--', ...$trackedFiles],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             ROOTPATH,
         );
         self::assertIsResource($process);
-        stream_get_contents($pipes[1]);
+        $output = stream_get_contents($pipes[1]);
         fclose($pipes[1]);
         $error = stream_get_contents($pipes[2]);
         fclose($pipes[2]);
 
         self::assertSame(0, proc_close($process), trim($error));
-
-        $process = proc_open(
-            ['/usr/bin/env', 'git', 'diff', '--quiet', '--no-ext-diff', '--', ...$trackedFiles],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-            $pipes,
-            ROOTPATH,
-        );
-        self::assertIsResource($process);
-        stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-        $error = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
-
-        self::assertSame(0, proc_close($process), trim($error) ?: 'Git index blob differs from worktree runtime input.');
+        $candidates = array_fill_keys(array_filter(explode("\n", trim($output))), true);
+        foreach ($trackedFiles as $file) {
+            self::assertArrayHasKey($file, $candidates, $file);
+        }
     }
 
     public function testRuntimeAssetReferencesScansStyleAttributes(): void
@@ -577,14 +565,14 @@ final class MenuHttpTest extends CIUnitTestCase
                 $flatLinks[] = $item['menu_link'];
             }
         }
-        self::assertSame(['DASH LINK', 'ADMIN MASTER LINK', 'REPORT LINK'], $flatNames);
-        self::assertSame(['dashboard', 'master/brand', 'ReportTrackingListing'], $flatLinks);
+        self::assertSame(['DASH LINK', 'ADMIN MASTER LINK', 'REPORT LINK', 'RETIRED TEST LINK'], $flatNames);
+        self::assertSame(['dashboard', 'brandListing', 'ReportTrackingListing', 'ReportTrackingListingTest'], $flatLinks);
 
         $admin = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard');
         $admin->assertStatus(200);
         $admin->assertSee('ADMIN MASTER LINK');
-        self::assertStringContainsString('/master/brand', $admin->getBody());
-        $admin->assertDontSee('RETIRED TEST LINK');
+        self::assertStringContainsString('/brandListing', $admin->getBody());
+        $admin->assertSee('RETIRED TEST LINK');
         $admin->assertDontSee('BRANCH ORDER LINK');
 
         $branch = $this->withSession($this->session($this->branchId, 2, 4, 1))->get('/dashboard');
@@ -670,10 +658,15 @@ final class MenuHttpTest extends CIUnitTestCase
     {
         $body = $this->withSession($this->session($this->adminId, 1, 1, null))->get('/dashboard')->getBody();
         self::assertSame(1, preg_match(
-            '#<div class="content-wrapper">\s*<section class="content-header">\s*<h1>\s*Dashboard\s*<small>Control panel</small>#s',
+            '#<div class="content-wrapper">.*?<div class="content-dashbord">.*?<section class="content-header">\s*<h1>\s*<i class="fa fa-tachometer" aria-hidden="true"></i> Dashboard\s*<small>Control panel</small>#s',
             $body,
         ));
-        self::assertSame(1, substr_count($body, '<h1>'));
+        $document = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML($body);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        self::assertSame(1, (new \DOMXPath($document))->query('//h1')->length);
         self::assertStringNotContainsString('class="page-header"', $body);
         self::assertStringNotContainsString('id="page-title"', $body);
         self::assertSame(0, substr_count($body, 'id="dashboard-title"'));

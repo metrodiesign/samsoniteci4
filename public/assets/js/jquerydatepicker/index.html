@@ -1,0 +1,61 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+
+		<link rel="stylesheet" media="all" type="text/css" href="jquery-ui.css" />
+		<link rel="stylesheet" media="all" type="text/css" href="jquery-ui-timepicker-addon.css" />
+
+		<script type="text/javascript" src="jquery-1.10.2.min.js"></script>
+		<script type="text/javascript" src="jquery-ui.min.js"></script>
+
+		<script type="text/javascript" src="jquery-ui-timepicker-addon.js"></script>
+		<script type="text/javascript" src="jquery-ui-sliderAccess.js"></script>
+
+
+
+	</head>
+	<body>
+
+	<div style="padding-left:200px;padding-top:200px">
+
+<div id="startDate">
+<script type="text/javascript">
+
+$(function(){
+	$("#dateInput").datepicker({
+		dateFormat: 'dd-M-yy',
+		numberOfMonths: 2,
+	});
+});
+
+</script>
+<script type="text/javascript">
+$(function() {
+	var d = new Date();
+	var y=d.getFullYear()+543;
+	var toDay =  y + '-' + (d.getMonth() + 1) + '-' + d.getDate();//d.getDate() + '/' + (d.getMonth() + 1) + '/' + y;
+	$( "#datepicker").datepicker({
+		changeMonth: true,
+		changeYear: true,
+		dateFormat: 'yy-mm-dd',
+		isBuddhist: true,
+		defaultDate: toDay,
+		dayNames: ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'],
+		dayNamesMin: ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'],
+		monthNames: ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'],
+		monthNamesShort: ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'],
+		showOn: "both",
+		buttonImage: "../images/icon_cal.png",
+	//	minDate: "+0d,+12m,+542y",
+		//maxDate: "0d,+0m,+543y",
+		maxDate: "+543y,+0m,0d",
+		buttonImageOnly: true
+	});
+});
+
+</script>
+<input type="text" name="datepicker" id="datepicker" value="" /> 
+
+</div>
+	</body>
+</html>

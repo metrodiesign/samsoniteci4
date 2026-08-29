@@ -1,0 +1,31 @@
+section#rating {
+  margin: 0 auto; padding: 0px;
+  width: 100%;
+
+  .banner-control {
+    border-bottom: 2px solid $main-blue;
+
+    .rs-bg-size{
+      width: 100%;
+    }
+  }
+
+  .star-rating {
+    margin: 20px auto; padding: 10px;
+    text-align: center;
+    width: 100%;
+
+    .fa {
+      font-family: 'FontAwesome';
+      font-weight: lighter;
+      font-size: 3em;
+      cursor: pointer;
+    }
+
+    .size {
+      padding: 0 5px 20px 5px;
+    }
+  }
+
+  .star-rating .fa-star{ color: orange; }
+}

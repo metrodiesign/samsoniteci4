@@ -2,34 +2,31 @@
 
 namespace App\Controllers;
 
+use App\Orders\OrderStore;
+use App\Presentation\LegacyViewRenderer;
+
 final class Dashboard extends BaseController
 {
-    /** @var list<array{label: string, href: string, icon: string}> */
-    private const REPORTS_TILE = [
-        ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
-    ];
-
-    /** @var array<int, list<array{label: string, href: string, icon: string}>> */
-    private const TILES_BY_GROUP = [
-        3 => [
-            ['label' => 'UPLOAD STATUS', 'href' => '/UploadexcelListing', 'icon' => 'ion-bag'],
-            ['label' => 'UPLOAD CMG DATA', 'href' => '/UploadneworderexcelListing', 'icon' => 'ion-stats-bars'],
-            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
-        ],
-        4 => [
-            ['label' => '1. NEW REQUEST REPAIR', 'href' => '/ordersListing', 'icon' => 'ion-bag'],
-            ['label' => '2. LOGISTICS', 'href' => '/sendorderListing', 'icon' => 'ion-stats-bars'],
-            ['label' => '3. DELIVER TO CUSTOMER', 'href' => '/TrackingreturnListing', 'icon' => 'ion-pie-graph'],
-            ['label' => '4. COMPLETE FEEDBACK', 'href' => '/TrackingcompleteListing', 'icon' => 'ion-pie-graph'],
-            ['label' => 'REPORTS', 'href' => '/ReportTrackingListing', 'icon' => 'ion-bag'],
-        ],
-    ];
-
     public function index(): string
     {
-        $groupId = service('session')->get('GroupID');
-        $tiles = is_int($groupId) ? (self::TILES_BY_GROUP[$groupId] ?? self::REPORTS_TILE) : self::REPORTS_TILE;
+        $session = service('session');
+        $group = $session->get('GroupID');
+        $groupId = is_int($group) ? $group : (is_string($group) && ctype_digit($group) ? (int) $group : 0);
+        $branch = $session->get('BranchID');
+        $branchId = is_int($branch) ? $branch : (is_string($branch) && ctype_digit($branch) ? (int) $branch : null);
 
-        return $this->layout('Dashboard', view('dashboard', ['tiles' => $tiles]), ['subtitle' => 'Control panel']);
+        $staleNewOrderCount = 0;
+        if ($groupId === 4 && $branchId !== null && $branchId > 0) {
+            $staleNewOrderCount = (new OrderStore(db_connect()))->staleNewOrderCount(
+                $branchId,
+                new \DateTimeImmutable('today', new \DateTimeZone('Asia/Bangkok')),
+            );
+        }
+
+        return $this->layout('Tracking : Dashboard', (new LegacyViewRenderer())->render('dashboard', [
+            'GroupID' => $groupId,
+            'day_job_newover' => $staleNewOrderCount,
+            'branch_type_image' => '',
+        ]), ['contentOwnsWrapper' => true]);
     }
 }

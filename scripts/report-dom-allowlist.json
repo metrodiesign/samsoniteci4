@@ -1,0 +1,99 @@
+[
+  {
+    "page": "report",
+    "selector": "//*[@href]",
+    "attribute": "href",
+    "pattern": "#http://127\\.0\\.0\\.1:1840[45]/#",
+    "replacement": "/",
+    "reason": "same-run systems listen on distinct loopback ports",
+    "decision_id": "DOM-REPORT-PORT-HREF-001"
+  },
+  {
+    "page": "report",
+    "selector": "//*[@src]",
+    "attribute": "src",
+    "pattern": "#http://127\\.0\\.0\\.1:1840[45]/#",
+    "replacement": "/",
+    "reason": "same-run systems listen on distinct loopback ports",
+    "decision_id": "DOM-REPORT-PORT-SRC-001"
+  },
+  {
+    "page": "report",
+    "selector": "//*[@action]",
+    "attribute": "action",
+    "pattern": "#http://127\\.0\\.0\\.1:1840[45]/#",
+    "replacement": "/",
+    "reason": "same-run systems listen on distinct loopback ports",
+    "decision_id": "DOM-REPORT-PORT-ACTION-001"
+  },
+  {
+    "page": "report",
+    "selector": "//script[contains(text(),'18404') or contains(text(),'18405')]",
+    "attribute": "#text",
+    "pattern": "#http://127\\.0\\.0\\.1:1840[45]/#",
+    "replacement": "/",
+    "reason": "inline CI3 baseURL and menu data use each runtime port",
+    "decision_id": "DOM-REPORT-PORT-SCRIPT-001"
+  },
+  {
+    "page": "report",
+    "selector": "//*[@style and contains(@style,'1840')]",
+    "attribute": "style",
+    "pattern": "#http://127\\.0\\.0\\.1:1840[45]/#",
+    "replacement": "/",
+    "reason": "inline background style uses each runtime loopback port",
+    "decision_id": "DOM-REPORT-PORT-STYLE-001"
+  },
+  {
+    "page": "report",
+    "selector": "//link[contains(@href,'jquery.dataTables.min.css')]",
+    "attribute": "href",
+    "pattern": "#(?://cdn\\.datatables\\.net/1\\.10\\.16|/assets/datatables/1\\.10\\.16)#",
+    "replacement": "/assets/datatables/1.10.16",
+    "reason": "approved local mirror of the identical CI3 DataTables dependency",
+    "decision_id": "DOM-REPORT-DATATABLES-CSS-001"
+  },
+  {
+    "page": "report",
+    "selector": "//link[contains(@href,'fixedColumns.dataTables.min.css')]",
+    "attribute": "href",
+    "pattern": "#(?://cdn\\.datatables\\.net/fixedcolumns/3\\.2\\.4|/assets/datatables-fixedcolumns/3\\.2\\.4)#",
+    "replacement": "/assets/datatables-fixedcolumns/3.2.4",
+    "reason": "approved local mirror of the identical CI3 FixedColumns dependency",
+    "decision_id": "DOM-REPORT-FIXED-CSS-001"
+  },
+  {
+    "page": "report",
+    "selector": "//script[contains(@src,'jquery.dataTables.min.js')]",
+    "attribute": "src",
+    "pattern": "#(?://cdn\\.datatables\\.net/1\\.10\\.16|/assets/datatables/1\\.10\\.16)#",
+    "replacement": "/assets/datatables/1.10.16",
+    "reason": "approved local mirror of the identical CI3 DataTables dependency",
+    "decision_id": "DOM-REPORT-DATATABLES-JS-001"
+  },
+  {
+    "page": "report",
+    "selector": "//script[contains(@src,'dataTables.fixedColumns.min.js')]",
+    "attribute": "src",
+    "pattern": "#(?://cdn\\.datatables\\.net/fixedcolumns/3\\.2\\.4|/assets/datatables-fixedcolumns/3\\.2\\.4)#",
+    "replacement": "/assets/datatables-fixedcolumns/3.2.4",
+    "reason": "approved local mirror of the identical CI3 FixedColumns dependency",
+    "decision_id": "DOM-REPORT-FIXED-JS-001"
+  },
+  {
+    "page": "report",
+    "selector": "//*[@id='examples_wrapper']//*[@style]",
+    "attribute": "style",
+    "pattern": "#width: [0-9]+px#",
+    "replacement": "width: __RUNTIME_MEASURED__",
+    "reason": "DataTables and FixedColumns write subpixel-rounded widths after layout; authored structure and screenshots are checked separately",
+    "decision_id": "DOM-REPORT-DATATABLES-WIDTH-001"
+  },
+  {
+    "page": "report",
+    "selector": "//input[@name='csrf_test_name']",
+    "attribute": "#remove",
+    "reason": "CI4-only CSRF field is hidden security glue and has no visual output",
+    "decision_id": "DOM-REPORT-CSRF-001"
+  }
+]

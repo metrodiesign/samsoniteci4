@@ -1,0 +1,47 @@
+$main-font-topic: 'db_helvethaica_x63_medext';
+$main-font: 'db_helvethaica_x53_ext';
+
+$main-blue: #004195;
+$main-grey: #7b7b7b;
+$main-black: #484848;
+
+/* main title font */
+.topic-txt-hm {
+  @include max-screen(400px) { font: bold 2.5em $main-font; }
+  font: bold 3em $main-font; color: $main-blue;
+}
+
+/* main title font lighter*/
+.topic-txt-hm-li {
+  @include max-screen(400px) { font: normal 2.5em $main-font; }
+  font: normal 3em $main-font; color: $main-blue;
+}
+
+/* main sub title font*/
+.topic-txt-sm {
+  font: normal 1.7em $main-font; color: $main-grey; text-transform: uppercase;
+}
+
+/* main button */
+.main-btn {
+  margin: 10px auto 20px auto; padding: 10px;
+  font: normal 1.5em $main-font; color: #FFFFFF;
+  text-align: center;
+  max-width: 150px; width: 100%;
+  background: $main-blue;
+  border: none;
+}
+
+.main-btn-sm {
+  @include max-screen(603px) {
+    margin: 0 5px;
+    max-width: 125px;
+    font: normal 1.25em $main-font;
+  }
+  margin: 10px 15px 20px 15px; padding: 10px;
+  font: normal 1.5em $main-font; color: #FFFFFF;
+  text-align: center;
+  max-width: 170px; width: 100%;
+  background: $main-blue;
+  border: none;
+}

@@ -1,0 +1,150 @@
+@media only screen and (max-width: 1280px) {
+    /* footer register page */
+    .bg-registered-footer {
+      height: 310px;
+    }
+    .result {
+      font-size: 6.5em;
+    }
+    .result-box {
+      margin-top: 55%;
+    }
+    .buttons .button {
+      min-width: 60%;
+    }
+    .letsgo-submit,
+    .button.is-large {
+      font-size: 2.5rem;
+    }
+    .register-box .title {
+      font-size: 4rem;
+    }
+    .input, .select {
+      font-size: 2rem;
+    }
+    .field {
+      margin-bottom: 1.2rem !important;
+  }
+  .help {
+      font-size: 1.75rem;
+      margin-top: 0.25rem;
+  }
+  .header-bg-register {
+      background-image: url(../images/header-register-tablet.png);
+  }
+
+  /* footer test page */
+  .header-bg {
+    background-image: url(../images/header-taplet-test.png);
+    height: 500px;
+  }
+  .header-bg p {
+      font-size: 3em;
+      margin: 10% 5% 0;
+  }
+  .tester-box {
+    margin-top: -15%;
+  }
+  .test-box label {
+      font-size: 1.8em;
+      line-height: 1;
+  }
+  .test-box h2 {
+      margin-bottom: 5%;
+  }
+}
+@media only screen and (max-width: 800px) {
+  .tester-box {
+      /* margin-top: -30%; */
+  }
+}
+@media only screen and (max-width: 480px) {
+  .image {
+    padding: 20px 0;
+  }
+  .header-bg-register {
+
+  }
+  .register-box .title {
+      font-size: 2rem;
+  }
+  .input, .select {
+      font-size: 1rem;
+  }
+  .help {
+      font-size: 0.75rem;
+  }
+  .letsgo-submit, .button.is-large {
+      font-size: 1.5rem;
+  }
+  .result {
+      font-size: 3.5em;
+  }
+  .bg-registered-footer {
+      height: 130px;
+  }
+
+  .header-bg {
+      background-image: url(../images/header-test.png);
+      height: 200px;
+  }
+  .header-bg p {
+      font-size: 2em;
+      margin: 10% 5% 0;
+  }
+  .tester-box {
+      /* margin-top: -90%; */
+  }
+  .test-box h2 {
+      font-size: 1.5em;
+      margin-bottom: 5px;
+  }
+  .test-box label {
+      font-size: 1.4em;
+      line-height: 15px;
+  }
+  ul {
+      width: 100%;
+      line-height: 1;
+  }
+  .footer {
+    padding: 1rem 1.5rem 0rem !important;
+  }
+  .footer strong {
+    font-size: 1.2em;
+  }
+  .icon-s {
+      width: 22%;
+      margin: 0px 5px;
+  }
+  .column {
+    padding: 0.25rem 0.75rem;
+  }
+}
+@media only screen and (max-width: 360px) {
+  .tester-box {
+      /* margin-top: -100%; */
+  }
+  .footer strong {
+      font-size: 1em;
+      line-height: 1.8;
+  }
+}
+@media only screen and (max-width: 320px) {
+  .tester-box {
+      /* margin-top: -120%; */
+  }
+  .shape-bg h2 {
+    font-size: 2.5em;
+  }
+  .footer strong {
+      font-size: 1em;
+  }
+  .footer strong {
+      font-size: 1em;
+  }
+  .test-box h2 {
+      font-size: 1.2em;
+      margin-bottom: 5px;
+  }
+}

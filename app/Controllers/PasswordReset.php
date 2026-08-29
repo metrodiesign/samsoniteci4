@@ -9,6 +9,7 @@ use App\Authentication\ResetAuditLog;
 use App\Authentication\ResetRequestWorkflow;
 use App\Authentication\ResetTokenStore;
 use App\Authentication\ShadowUserStore;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 use DateTimeImmutable;
@@ -324,19 +325,25 @@ final class PasswordReset extends BaseController
 
     private function forgotDocument(?string $message = null, string $messageClass = 'alert-success'): string
     {
-        return view('forgot_password', [
-            'message'      => $message,
-            'messageClass' => $messageClass,
-        ]);
+        if ($message !== null) {
+            service('session')->setFlashdata(
+                $messageClass === 'alert-success' ? 'send' : 'error',
+                $message,
+            );
+        }
+
+        return (new LegacyViewRenderer())->render('forgotPassword');
     }
 
     private function resetDocument(string $token, ?string $message = null, ?string $expectedEmail = null): string
     {
         if ($message === self::RESET_SERVICE_UNAVAILABLE_MESSAGE) {
-            return view('reset_password', [
-                'email'   => '',
-                'token'   => '',
-                'message' => $message,
+            service('session')->setFlashdata('error', $message);
+
+            return (new LegacyViewRenderer())->render('newPassword', [
+                'email' => '',
+                'activation_code' => '',
+                'password' => '',
             ]);
         }
 
@@ -366,10 +373,14 @@ final class PasswordReset extends BaseController
             $message = self::INVALID_RESET_MESSAGE;
         }
 
-        return view('reset_password', [
-            'email'   => $email,
-            'token'   => $token,
-            'message' => $message,
+        if ($message !== null) {
+            service('session')->setFlashdata('error', $message);
+        }
+
+        return (new LegacyViewRenderer())->render('newPassword', [
+            'email' => esc($email),
+            'activation_code' => esc($token, 'attr'),
+            'password' => $token === '' ? '' : bin2hex(random_bytes(8)) . 'Aa1!',
         ]);
     }
 

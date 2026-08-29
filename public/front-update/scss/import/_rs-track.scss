@@ -1,0 +1,84 @@
+section#rs-track {
+  margin: 0 auto; padding: 0px;
+  width: 100%;
+
+  .banner-control {
+    border-bottom: 2px solid $main-blue;
+
+    .rs-bg-size{
+      width: 100%;
+    }
+  }
+
+  .con-pro-bar {
+    margin: 0 auto; padding: 0px;
+    text-align: center;
+    position: relative;
+
+    .con-step-pass {
+
+      .contain-process {
+        display: inline-block;
+
+        .circle-awe {
+          background: $main-blue;
+          @include border-radius(50%);
+          border: 2px solid #CCCCCC;
+          width: 35px; height: 35px;
+          display: inline-block;
+          text-align: left;
+          vertical-align: middle;
+          z-index: 9;
+        }
+
+        .bg-success{
+          border: 2px solid #e3f9db;
+          background: #3ad101;
+
+          .ico-size {
+            padding: 7px 6px;
+            font-size: 1.3em;
+            font-weight: lighter;
+            color: #FFFFFF;
+          }
+        }
+        .bg-unpass{ border: 2px solid #e3f9db; background: $main-grey; }
+
+        .line-normal {
+          margin: -10px auto -30px auto;
+          width: 2px;
+          height: 70px;
+          background: $main-grey;
+          transform: scale(1) !important;
+          z-index: 1;
+        }
+
+        .line-progress { background: #004195; }
+
+        .circle-awe-animate {
+          animation-name: example;
+          animation-duration: 1s;
+          animation-iteration-count: infinite;
+          animation-timing-function: ease-in;
+
+          @keyframes example {
+            0%   { transform: scale(0.9); }
+            50%  { transform: scale(1.1); }
+            100% { transform: scale(0.9); }
+          }
+        }
+      }
+
+      .txt-normal {
+        padding: 20px;
+        font: normal 1.75em $main-font;
+        display: inline-block;
+        color: $main-grey;
+        text-align: left;
+        width: 200px;
+      }
+
+      .txt-progress { color: $main-blue; }
+    }
+  }
+}

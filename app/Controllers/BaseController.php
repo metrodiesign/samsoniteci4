@@ -46,7 +46,7 @@ abstract class BaseController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $page reserved slots for later work: 'subtitle', 'actions'.
+     * @param array<string, mixed> $page reserved slots for later work: 'subtitle', 'actions', 'contentOwnsWrapper'.
      *   Both 'subtitle' and 'actions' are trusted HTML (same contract as $content): layout.php
      *   echoes them raw without esc(), so any caller-supplied value MUST already be escaped by
      *   the caller. Never pass unescaped DB or request data into these slots.
@@ -63,8 +63,9 @@ abstract class BaseController extends Controller
         $data['subtitle'] = (string) ($page['subtitle'] ?? '');
         $data['actions'] = (string) ($page['actions'] ?? '');
         $data['accessDeniedProfile'] = false;
+        $data['contentOwnsWrapper'] = ($page['contentOwnsWrapper'] ?? false) === true;
 
-        return view($profile === 'order' ? 'layout_order' : 'layout', $data);
+        return view($profile === 'order' ? 'layout_order_ci3' : 'layout_ci3', $data);
     }
 
     /**

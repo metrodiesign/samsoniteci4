@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Contact\ContactSubmissionWorkflow;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -101,22 +102,26 @@ final class Contact extends BaseController
             return $this->renderInvalid($language, $fields, $submissionId, $errors);
         }
 
+        service('session')->setFlashdata('success', 'Message received');
+
         return redirect()->to($language === 'th' ? '/contact-th?submitted=1' : '/contact?submitted=1');
     }
 
     private function render(string $language): string
     {
+        $submissionId = bin2hex(random_bytes(16));
+        if ($this->request->getGet('submitted') === '1') {
+            service('session')->setFlashdata('success', $language === 'th' ? 'รับข้อความแล้ว' : 'Message received');
+        }
+        $content = (new LegacyViewRenderer())->render($language . '/contact', [], [
+            'submission_id' => $submissionId,
+        ]);
+
         return view('layout_public', [
             'title'                => 'Samsonite',
             'language'             => $language,
             'legacyContactProfile' => true,
-            'content'              => view('contact', [
-                'language'     => $language,
-                'submissionId' => bin2hex(random_bytes(16)),
-                'submitted'    => $this->request->getGet('submitted') === '1',
-                'values'       => [],
-                'errors'       => [],
-            ]),
+            'content'              => $content,
         ]);
     }
 
@@ -126,17 +131,25 @@ final class Contact extends BaseController
      */
     private function renderInvalid(string $language, array $fields, string $submissionId, array $errors): ResponseInterface
     {
+        $messages = [];
+        foreach (array_keys($errors) as $field) {
+            $messages[$field] = match ([$language, $field]) {
+                ['th', 'email'] => 'กรุณากรอกอีเมล',
+                ['en', 'email'] => 'Please enter a valid email address',
+                ['th', 'fullname'] => 'กรุณากรอกชื่อ-สกุล',
+                ['th', 'phone'] => 'กรุณากรอกเบอร์โทรศัพท์',
+                ['th', 'detail'] => 'กรุณากรอกรายละเอียด',
+                default => 'Please enter a valid ' . $field,
+            };
+        }
+        $content = (new LegacyViewRenderer(null, '', $messages, $fields))->render($language . '/contact', [], [
+            'submission_id' => $submissionId,
+        ]);
         $html = view('layout_public', [
             'title'                => 'Samsonite',
             'language'             => $language,
             'legacyContactProfile' => true,
-            'content'              => view('contact', [
-                'language'     => $language,
-                'submissionId' => $submissionId,
-                'submitted'    => false,
-                'values'       => $fields,
-                'errors'       => $errors,
-            ]),
+            'content'              => $content,
         ]);
 
         return $this->response->setStatusCode(422)->setBody($html);

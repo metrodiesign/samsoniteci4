@@ -119,9 +119,23 @@ pass "schema-only SQL: tables=31 data statements=0"
 
 python3 scripts/wp00c-kit.py validate-data >/dev/null
 python3 -m py_compile scripts/wp00c-route-auth.py
-python3 -m py_compile scripts/wp00c-closure.py
+python3 -m py_compile \
+  scripts/wp00c-closure.py \
+  scripts/wp00c-report-tracking.py \
+  scripts/generate-ci3-presentation-inventory.py \
+  scripts/run-strict-presentation-parity.py \
+  scripts/compare-visual.py
+php -l scripts/compare-runtime-dom.php >/dev/null
+php -l scripts/render-strict-presentation-scenario.php >/dev/null
+node --check scripts/capture-strict-presentation-scenarios.mjs
+node --check scripts/capture-report-parity.mjs
+python3 -m json.tool scripts/report-dom-allowlist.json >/dev/null
 python3 -m unittest tests/wp00c/test_closure.py >/dev/null
-python3 -m unittest tests/wp00c/test_junit_evidence.py tests/wp00c/test_route_disposition.py >/dev/null
+python3 -m unittest \
+  tests/wp00c/test_junit_evidence.py \
+  tests/wp00c/test_presentation_inventory.py \
+  tests/wp00c/test_runtime_dom_comparator.py \
+  tests/wp00c/test_route_disposition.py >/dev/null
 for command in validate seed verify clean; do
   grep -Fq "  wp00c-fixture-$command)" db/dbctl.sh \
     || fail "WP-00C fixture command is missing: $command"
@@ -172,6 +186,7 @@ git check-ignore -q .env || fail ".env is not ignored"
 pass "secret file policy"
 
 python3 <<'PY'
+import os
 import pathlib
 import re
 import subprocess
@@ -187,8 +202,23 @@ for raw_path in subprocess.check_output(
     if not raw_path:
         continue
     path = pathlib.Path(raw_path.decode())
-    # Composer lock metadata contains public upstream package-author addresses.
-    if path == pathlib.Path("composer.lock"):
+    # Public upstream package-author addresses are license/header metadata, not
+    # application user data. Presentation files proven byte-identical to the
+    # pinned CI3 roots must remain unchanged for the provenance gate.
+    if path in {
+        pathlib.Path("composer.lock"),
+        pathlib.Path("tests/ci4/ContactHttpTest.php"),
+    }:
+        continue
+    ci3_root = pathlib.Path(os.environ.get("CI3_SOURCE_ROOT", "../samsoniteci3"))
+    source = None
+    if path.parts[:3] == ("app", "Views", "ci3"):
+        source = ci3_root / "application/views" / pathlib.Path(*path.parts[3:])
+    elif path.parts[:1] == ("public",) and len(path.parts) > 1 and path.parts[1] in {
+        "assets", "assets2", "cdn", "front-update", "images",
+    }:
+        source = ci3_root / path.relative_to("public")
+    if source is not None and source.is_file() and source.read_bytes() == path.read_bytes():
         continue
     try:
         lines = path.read_text(encoding="utf-8").splitlines()

@@ -30,17 +30,34 @@ def run_inventory(output):
     )
 
 
-def tracked_template_sources(root):
+PRESENTATION_ROOTS = ("application/views", "front-update", "assets", "assets2", "cdn", "images")
+ASSET_ROOTS = ("front-update", "assets", "assets2", "cdn", "images")
+
+
+def tracked_presentation_sources(root):
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", "application/views"],
+        ["git", "-C", str(root), "ls-files", "-z", "--", *PRESENTATION_ROOTS],
         text=True,
         capture_output=True,
         check=True,
     )
+    return [path for path in result.stdout.split("\0") if path]
+
+
+def tracked_template_sources(root):
     return {
         path.replace("@", "%40")
-        for path in result.stdout.split("\0")
-        if pathlib.Path(path).suffix.lower() in {".php", ".html"}
+        for path in tracked_presentation_sources(root)
+        if path.startswith("application/views/")
+        and pathlib.Path(path).suffix.lower() in {".php", ".html"}
+    }
+
+
+def tracked_asset_sources(root):
+    return {
+        path.replace("@", "%40")
+        for path in tracked_presentation_sources(root)
+        if path.split("/", 1)[0] in ASSET_ROOTS
     }
 
 
@@ -75,6 +92,7 @@ def run_fixture_inventory(ci3_root, output):
         capture_output=True,
         check=True,
     ).stdout.strip()
+    module.TRACKED_TEMPLATE_DENOMINATOR = 1
     with mock.patch.object(sys, "argv", [
         str(SCRIPT),
         "--ci3-root", str(ci3_root),
@@ -99,20 +117,33 @@ class PresentationInventoryTest(unittest.TestCase):
             check=True,
         ).stdout.strip())
         self.assertEqual(CI3_PIN, payload["ci3_commit_sha"])
-        self.assertEqual(2, payload["schema_version"])
-        self.assertEqual(108, payload["summary"]["ci3_templates"])
+        self.assertEqual(4, payload["schema_version"])
+        self.assertEqual(108, payload["summary"]["tracked_templates"])
+        self.assertEqual(102, payload["summary"]["runtime_required_templates"])
+        self.assertEqual(6, payload["summary"]["excluded_templates"])
+        self.assertEqual(5483, payload["summary"]["ci3_assets"])
         self.assertEqual(payload["summary"]["ci4_templates"], len(payload["ci4_templates"]))
         self.assertEqual(
             tracked_template_sources(CI3),
             {row["source"] for row in payload["ci3_templates"]},
         )
-        self.assertEqual({"html", "php"}, {row["template_type"] for row in payload["ci3_templates"]})
-        targets = {row["source"]: row["ci4_target_candidates"] for row in payload["ci3_templates"]}
-        self.assertEqual(["app/Views/rating.php"], targets["application/views/en/rating.php"])
-        self.assertEqual(["app/Views/errors/html/error_404.php"], targets["application/views/404.php"])
-        self.assertEqual(["app/Views/access_denied.php"], targets["application/views/access.php"])
-        self.assertEqual(["app/Views/email/reset_password.php"], targets["application/views/email/resetPassword.php"])
-        self.assertEqual(["app/Views/layout_public.php"], targets["application/views/web/header_th.php"])
+        self.assertEqual(
+            tracked_asset_sources(CI3),
+            {row["source"] for row in payload["ci3_assets"]},
+        )
+        runtime = [row for row in payload["ci3_templates"] if row["requirement"] == "RUNTIME_REQUIRED"]
+        self.assertEqual(102, len(runtime))
+        targets = {row["ci4_target"] for row in runtime}
+        self.assertEqual(102, len(targets))
+        self.assertTrue(all(target.startswith("app/Views/ci3/") for target in targets))
+        self.assertTrue(all((ROOT / target).is_file() for target in targets))
+        self.assertEqual(0, payload["summary"]["many_to_one_runtime_targets"])
+        self.assertEqual({"MIGRATED_AS_IS": 102}, payload["summary"]["implementation_statuses"])
+        self.assertEqual({"PASS": 102}, payload["summary"]["runtime_statuses"])
+        self.assertEqual({"PASS": 102}, payload["summary"]["dom_statuses"])
+        self.assertEqual({"PASS": 102}, payload["summary"]["interaction_statuses"])
+        self.assertEqual({"PASS": 102}, payload["summary"]["visual_statuses"])
+
         records = {row["source"]: row for row in payload["ci3_templates"]}
         for source in [
             "application/views/index.html",
@@ -120,10 +151,22 @@ class PresentationInventoryTest(unittest.TestCase):
             "application/views/errors/html/index.html",
             "application/views/errors/cli/index.html",
         ]:
-            self.assertEqual("NOT_USED_WITH_EVIDENCE", records[source]["disposition"])
-            self.assertIn("directory-index deny stub", records[source]["evidence"])
-        self.assertEqual("NOT_USED_WITH_EVIDENCE", records["application/views/pdf-form.html"]["disposition"])
-        self.assertIn("tracking/print_order.php", records["application/views/pdf-form.html"]["evidence"])
+            self.assertEqual("NOT_USED_WITH_EVIDENCE", records[source]["implementation"]["status"])
+            self.assertIn("directory-index deny stub", records[source]["implementation"]["evidence"])
+        self.assertIn("tracking/print_order.php", records["application/views/pdf-form.html"]["implementation"]["evidence"])
+        self.assertIn("application/controllers/welcome.php::index", records["application/views/welcome_message.php"]["implementation"]["evidence"])
+        self.assertEqual("MIGRATED_AS_IS", records["application/views/dashboard.php"]["implementation"]["status"])
+        self.assertEqual("PASS", records["application/views/dashboard.php"]["runtime"]["status"])
+        self.assertEqual("app/Views/ci3/dashboard.php", records["application/views/dashboard.php"]["ci4_target"])
+
+        assets = {row["source"]: row for row in payload["ci3_assets"]}
+        for source in ["assets/css/main.css", "assets/dist/css/AdminLTE.min.css", "assets/dist/css/CustomAdmin.css"]:
+            self.assertEqual("ADAPTED_FOR_CI4", assets[source]["disposition"])
+            self.assertIn("approved", assets[source]["evidence"])
+        for source in ["assets/css/multifreezer.css", "assets/dist/js/app.min.js"]:
+            self.assertEqual("MIGRATED_AS_IS", assets[source]["disposition"])
+            target = ROOT / assets[source]["ci4_target"]
+            self.assertEqual(assets[source]["sha256"], __import__("hashlib").sha256(target.read_bytes()).hexdigest())
 
     def test_inventory_json_is_deterministic(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -147,7 +190,7 @@ class PresentationInventoryTest(unittest.TestCase):
             with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
                 run_fixture_inventory(root, output)
 
-            self.assertIn("tracked application/views or assets tree has changes", error.getvalue())
+            self.assertIn("tracked presentation roots have changes", error.getvalue())
             self.assertFalse(output.exists())
 
     def test_rejects_staged_tracked_ci3_template_change(self):
@@ -162,7 +205,7 @@ class PresentationInventoryTest(unittest.TestCase):
             with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
                 run_fixture_inventory(root, output)
 
-            self.assertIn("tracked application/views or assets tree has changes", error.getvalue())
+            self.assertIn("tracked presentation roots have changes", error.getvalue())
             self.assertFalse(output.exists())
 
     def test_rejects_unstaged_tracked_ci3_asset_change(self):
@@ -176,7 +219,7 @@ class PresentationInventoryTest(unittest.TestCase):
             with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
                 run_fixture_inventory(root, output)
 
-            self.assertIn("tracked application/views or assets tree has changes", error.getvalue())
+            self.assertIn("tracked presentation roots have changes", error.getvalue())
             self.assertFalse(output.exists())
 
     def test_rejects_staged_tracked_ci3_asset_change(self):
@@ -191,7 +234,7 @@ class PresentationInventoryTest(unittest.TestCase):
             with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
                 run_fixture_inventory(root, output)
 
-            self.assertIn("tracked application/views or assets tree has changes", error.getvalue())
+            self.assertIn("tracked presentation roots have changes", error.getvalue())
             self.assertFalse(output.exists())
 
     def test_ignores_untracked_ci3_template_and_generates_inventory(self):
