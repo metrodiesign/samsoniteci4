@@ -5,6 +5,8 @@ namespace Tests\Ci4;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
+use DOMDocument;
+use DOMXPath;
 use PHPUnit\Framework\AssertionFailedError;
 
 final class PublicTrackingHttpTest extends CIUnitTestCase
@@ -170,6 +172,19 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('<dialog', $englishHtml);
         $english->assertSee('popup_en.png');
         $english->assertDontSee('popup_th.png');
+        $this->assertTrackingFormDom($englishHtml, base_url('track/trackstatus'), 'popup_en.png', 'EN');
+        $this->assertInOrder($englishHtml, [
+            'TRACK &amp; TRACE',
+            'Track Your Tracking Number',
+            'placeholder="Your Tracking ID"',
+            'HOW TO CHECK',
+            'value="CHECK NOW"',
+            'CONTACT US',
+            'SHOPPING',
+            'assets/images/popup_en.png',
+            "$('#myModal').modal('show')",
+            'assets/js/addtrack.js',
+        ]);
 
         $thai = $this->get('/tracking-th');
         $thai->assertStatus(200);
@@ -179,6 +194,36 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         $thai->assertSee('ระบุรหัสติดตามของคุณ');
         $thai->assertSee('popup_th.png');
         $thai->assertDontSee('popup_en.png');
+        $this->assertTrackingFormDom($thaiHtml, base_url('track_th/trackstatus'), 'popup_th.png', 'TH');
+        $this->assertInOrder(html_entity_decode($thaiHtml, ENT_QUOTES, 'UTF-8'), [
+            'TRACK & TRACE',
+            'Track Your Tracking Number',
+            'ระบุรหัสติดตามของคุณ',
+            'วิธีตรวจสอบสถานะ',
+            'value="ติดตาม"',
+            'CONTACT US',
+            'SHOPPING',
+            'assets/images/popup_th.png',
+            "$('#myModal').modal('show')",
+            'assets/js/addtrack.js',
+        ]);
+
+        foreach ([$englishHtml, $thaiHtml] as $html) {
+            self::assertStringContainsString('<section id="header">', $html);
+            self::assertStringContainsString('<section id="footer">', $html);
+            $this->assertInOrder($html, [
+                'assets/js/jquery-3.2.1.min.js',
+                'assets/bootstrap/js/bootstrap.min.js',
+                'assets/bootstrap/css/bootstrap.css',
+                'assets/css/main.css',
+                'assets/fontawesome/css/font-awesome.css',
+                'assets/fonts/stylesheet.css',
+                'assets/dist/js/app.min.js',
+                'assets/js/jquery.validate.js',
+                'assets/js/validation.js',
+                'assets/js/addtrack.js',
+            ]);
+        }
     }
 
     public function testTrackingFormBackgroundCascadeKeepsStaticMobileFallbackForEveryPublishedCombination(): void
@@ -217,10 +262,12 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('<source', $english);
         self::assertStringNotContainsString('data-tracking-id', $english);
         self::assertStringNotContainsString('WP00C-TRACK-005</p>', $english);
+        $this->assertTrackingKnownResultDom($english, 4, 'EN known result');
 
         $thai = $this->get('/tracking-th?tracking_id=WP00C-TRACK-005');
         $thai->assertSee('สถานะทดสอบ 5 08/08/2569');
         $thai->assertDontSee('SYNTHETIC RETURN 08/08/2569');
+        $this->assertTrackingKnownResultDom((string) $thai->getBody(), 4, 'TH known result');
     }
 
     public function testResultBannerUsesOnlyPublishedBackgroundStoreOutput(): void
@@ -520,6 +567,64 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
 
         $this->assertStringContainsString('circle-awe bg-unpass', $html);
         $this->assertStringContainsString('ไม่มีสินค้า', $html);
+        $xpath = $this->domXPath($html);
+        $step = '//section[@id="rs-track"]/div[@class="container"]/div[@class="row"]/div[@class="con-pro-bar"]/div[@class="con-step-pass"]';
+        $this->assertXPathCount(1, $xpath, $step, 'empty direct step');
+        $this->assertXPathCount(1, $xpath, $step . '/div[contains(concat(" ", normalize-space(@class), " "), " bg-unpass ")]/div[@class="line-normal"]', 'empty circle line hierarchy');
+        $this->assertXPathCount(1, $xpath, $step . '/div[@class="txt-normal"]', 'empty direct placeholder');
+    }
+
+    /** @param list<string> $needles */
+    private function assertInOrder(string $html, array $needles): void
+    {
+        $last = -1;
+        foreach ($needles as $needle) {
+            $position = strpos($html, $needle, $last + 1);
+            self::assertNotFalse($position, $needle);
+            self::assertGreaterThan($last, $position, $needle);
+            $last = $position;
+        }
+    }
+
+    private function assertTrackingFormDom(string $html, string $action, string $popup, string $case): void
+    {
+        $xpath = $this->domXPath($html);
+        $center = '//form[@id="addtrack" and @action="' . $action . '"]/section[@id="track"]/div[@class="container"]/div[@class="row"]/div[@class="con-center-track"]';
+        $modal = $center . '/div[@id="myModal" and contains(concat(" ", normalize-space(@class), " "), " modal ")]';
+        $content = $modal . '/div[@class="modal-dialog"]/div[@class="modal-content"]';
+
+        $this->assertXPathCount(1, $xpath, $center . '/input[@name="searchText" and @id="searchText"]', $case . ' search input hierarchy');
+        $this->assertXPathCount(1, $xpath, $content . '/div[@class="modal-header"]', $case . ' modal header hierarchy');
+        $this->assertXPathCount(1, $xpath, $content . '/div[@class="modal-body"]//img[contains(@src, "' . $popup . '")]', $case . ' modal popup hierarchy');
+        $this->assertXPathCount(1, $xpath, $content . '/div[@class="modal-footer"]', $case . ' modal footer hierarchy');
+    }
+
+    private function assertTrackingKnownResultDom(string $html, int $steps, string $case): void
+    {
+        $xpath = $this->domXPath($html);
+        $bar = '//section[@id="rs-track"]/div[@class="container"]/div[@class="row"]/div[@class="con-pro-bar"]';
+        $step = $bar . '/div[@class="con-step-pass"]';
+
+        $this->assertXPathCount($steps, $xpath, $step, $case . ' direct steps');
+        $this->assertXPathCount($steps, $xpath, $step . '/div[@class="contain-process"]', $case . ' process hierarchy');
+        $this->assertXPathCount($steps, $xpath, $step . '/div[@class="txt-normal"]', $case . ' label hierarchy');
+        $this->assertXPathCount($steps, $xpath, $step . '/div[@class="contain-process"]/div[contains(concat(" ", normalize-space(@class), " "), " circle-awe ")]', $case . ' circle hierarchy');
+        $this->assertXPathCount($steps - 1, $xpath, $step . '/div[@class="contain-process"]/div[@class="line-normal line-progress"]', $case . ' line hierarchy');
+    }
+
+    private function domXPath(string $html): DOMXPath
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->loadHTML($html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING));
+
+        return new DOMXPath($document);
+    }
+
+    private function assertXPathCount(int $expected, DOMXPath $xpath, string $expression, string $case): void
+    {
+        $nodes = $xpath->query($expression);
+        self::assertNotFalse($nodes, $case);
+        self::assertSame($expected, $nodes->length, $case);
     }
 
     private function createTables(): void
