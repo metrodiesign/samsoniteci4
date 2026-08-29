@@ -102,7 +102,11 @@ def run_fixture_inventory(ci3_root, output):
         module.main()
 
 
+CI3_AVAILABLE = (CI3 / ".git").exists()
+
+
 class PresentationInventoryTest(unittest.TestCase):
+    @unittest.skipUnless(CI3_AVAILABLE, "CI3 checkout unavailable")
     def test_inventory_matches_pinned_tracked_ci3_templates(self):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / "inventory.json"
@@ -168,6 +172,7 @@ class PresentationInventoryTest(unittest.TestCase):
             target = ROOT / assets[source]["ci4_target"]
             self.assertEqual(assets[source]["sha256"], __import__("hashlib").sha256(target.read_bytes()).hexdigest())
 
+    @unittest.skipUnless(CI3_AVAILABLE, "CI3 checkout unavailable")
     def test_inventory_json_is_deterministic(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
