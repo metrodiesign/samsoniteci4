@@ -238,7 +238,16 @@ final class ReportMatrix
         $grouped = $this->db->table('request_order')
             ->select('action_status, COUNT(*) AS total', false)
             ->whereIn('action_status', [1, 2, 3, 4, 5]);
-        $this->scope($grouped, 'requestDate', 'branchID', $start, $end, $branchId);
+        // CI3 passes a bare Y-m-d end value to BETWEEN, so its inclusive upper bound is midnight.
+        $this->scope(
+            $grouped,
+            'requestDate',
+            'branchID',
+            $start,
+            $end,
+            $branchId,
+            endAtMidnight: true,
+        );
         $counts = [];
         foreach ($grouped->groupBy('action_status')->get()->getResultArray() as $row) {
             $counts[(int) $row['action_status']] = (int) $row['total'];
@@ -334,7 +343,16 @@ final class ReportMatrix
             ->join('branch branches', 'branches.branch_id = orders.branchID', 'left')
             ->where('orders.date_complete', null)
             ->orderBy('orders.requestDate', 'ASC')->orderBy('orders.request_id', 'ASC');
-        $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
+        // CI3 passes a bare Y-m-d end value to BETWEEN, so its inclusive upper bound is midnight.
+        $this->scope(
+            $query,
+            'orders.requestDate',
+            'orders.branchID',
+            $start,
+            $end,
+            $branchId,
+            endAtMidnight: true,
+        );
         $statusIds = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
         if ($statusIds !== []) {
             $query->whereIn('orders.action_status', $statusIds);

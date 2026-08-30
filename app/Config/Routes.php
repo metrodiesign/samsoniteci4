@@ -185,8 +185,18 @@ $routes->match(
     ['filter' => ['web-auth:legacy-redirect', 'csrf']],
 );
 $routes->match(['GET', 'POST'], 'user/report_total_job_pending', 'Reports::matrix/pending-total', $reportMatrixFilters);
-$routes->match(['GET', 'POST'], 'user/report_in_progress_average', 'Reports::matrix/in-progress-average', $reportMatrixFilters);
-$routes->match(['GET', 'POST'], 'user/report_in_progress_job', 'Reports::matrix/in-progress', $reportMatrixFilters);
+$routes->match(
+    ['GET', 'POST'],
+    'user/report_in_progress_average',
+    'Reports::matrix/in-progress-average',
+    ['filter' => ['web-auth:legacy-redirect', 'csrf']],
+);
+$routes->match(
+    ['GET', 'POST'],
+    'user/report_in_progress_job',
+    'Reports::matrix/in-progress',
+    ['filter' => ['web-auth:legacy-redirect', 'csrf']],
+);
 $routes->match(['GET', 'POST'], 'reportsummary', 'Reports::summary', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'reportsummary/(:num)', 'Reports::summary/$1', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'reportsummary/(:num)/(:num)', 'Reports::summary/$1/$2', $reportMatrixFilters);
@@ -194,7 +204,7 @@ $routes->get('reports/(:segment)/export', 'Reports::export/$1', ['filter' => 'we
 $routes->get('user/excel_ratings', 'Reports::legacyExport/ratings', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_ratings/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/ratings/$1/$2/$3', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_ratings/(:segment)/(:segment)', 'Reports::legacyExport/ratings/$1/$2', ['filter' => 'web-auth:redirect']);
-$routes->get('user/excel_in_progress_job', 'Reports::legacyExport/in-progress', ['filter' => 'web-auth:redirect']);
+$routes->get('user/excel_in_progress_job', 'Reports::legacyExport/in-progress', ['filter' => 'web-auth:legacy-redirect']);
 $routes->get('user/excel_in_progress_job/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/in-progress/$1/$2/$3', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report', 'Reports::legacyExport/tracking', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/tracking/$1/$2/$3/$4/$5', ['filter' => 'web-auth:redirect']);
