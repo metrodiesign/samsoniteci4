@@ -28,30 +28,34 @@ final class OrderStore
     }
 
     /** @return list<array<string, mixed>> */
-    public function listing(int $status, ?int $branchId, string $search, int $page, string $sdate = '', string $edate = ''): array
+    public function listing(int $status, ?int $branchId, string $search, int $offset, string $sdate = '', string $edate = '', bool $legacyCompletedContract = false): array
     {
         $query = $this->db->table('request_order')
             ->select('request_order.request_id, request_order.requestDate, request_order.trackID, request_order.orderID, request_order.orderIDShow, request_order.customerFullname, request_order.customerTel, request_order.customerEmail, request_order.branchID, request_order.action_status, request_order.date_complete, statusaction.status_name')
             ->join('statusaction', 'statusaction.status_id = request_order.action_status', 'left')
             ->join('branch', 'branch.branch_id = request_order.branchID', 'left')
             ->where('request_order.action_status', $status)
-            ->orderBy('request_order.request_id', 'DESC')
-            ->limit(50, ($page - 1) * 50);
+            ->orderBy($legacyCompletedContract ? 'request_order.requestDate' : 'request_order.request_id', 'DESC')
+            ->limit(50, $offset);
         if ($branchId !== null) {
             $query->where('request_order.branchID', $branchId);
         }
         // CI3's queue-1 listing filters on a from/to pair; the other queues expose only
         // the from field. A lone `sdate` therefore keeps its original one-day window.
-        $from = $this->parseDate($sdate);
-        $to = $this->parseDate($edate);
-        if ($from !== null) {
-            $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+        if ($legacyCompletedContract && $sdate !== '') {
+            $query->like('request_order.requestDate', $this->legacyDateNeedle($sdate));
+        } else {
+            $from = $this->parseDate($sdate);
+            $to = $this->parseDate($edate);
+            if ($from !== null) {
+                $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+            }
+            $upper = $to ?? ($edate === '' ? $from : null);
+            if ($upper !== null) {
+                $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
+            }
         }
-        $upper = $to ?? ($edate === '' ? $from : null);
-        if ($upper !== null) {
-            $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
-        }
-        if ($search !== '') {
+        if ($legacyCompletedContract ? ! empty($search) : $search !== '') {
             $query->groupStart()
                 ->like('request_order.trackID', $search)
                 ->orLike('request_order.orderID', $search)
@@ -65,7 +69,7 @@ final class OrderStore
         return $query->get()->getResultArray();
     }
 
-    public function listingCount(int $status, ?int $branchId, string $search, string $sdate = '', string $edate = ''): int
+    public function listingCount(int $status, ?int $branchId, string $search, string $sdate = '', string $edate = '', bool $legacyCompletedContract = false): int
     {
         $query = $this->db->table('request_order')
             ->join('statusaction', 'statusaction.status_id = request_order.action_status', 'left')
@@ -74,16 +78,20 @@ final class OrderStore
         if ($branchId !== null) {
             $query->where('request_order.branchID', $branchId);
         }
-        $from = $this->parseDate($sdate);
-        $to = $this->parseDate($edate);
-        if ($from !== null) {
-            $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+        if ($legacyCompletedContract && $sdate !== '') {
+            $query->like('request_order.requestDate', $this->legacyDateNeedle($sdate));
+        } else {
+            $from = $this->parseDate($sdate);
+            $to = $this->parseDate($edate);
+            if ($from !== null) {
+                $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+            }
+            $upper = $to ?? ($edate === '' ? $from : null);
+            if ($upper !== null) {
+                $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
+            }
         }
-        $upper = $to ?? ($edate === '' ? $from : null);
-        if ($upper !== null) {
-            $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
-        }
-        if ($search !== '') {
+        if ($legacyCompletedContract ? ! empty($search) : $search !== '') {
             $query->groupStart()
                 ->like('request_order.trackID', $search)
                 ->orLike('request_order.orderID', $search)
@@ -125,6 +133,11 @@ final class OrderStore
         }
 
         return $map;
+    }
+
+    private function legacyDateNeedle(string $value): string
+    {
+        return substr($value, 6, 4) . '-' . substr($value, 3, 2) . '-' . substr($value, 0, 2);
     }
 
     /** Parse dd/mm/yyyy (CE); null when empty or malformed. */

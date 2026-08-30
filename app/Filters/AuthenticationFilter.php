@@ -33,10 +33,15 @@ final class AuthenticationFilter implements FilterInterface
             return null;
         }
 
-        if (is_array($arguments) && in_array('redirect', $arguments, true)) {
+        $redirectArguments = is_array($arguments) ? $arguments : [];
+        if (array_intersect(['redirect', 'legacy-redirect'], $redirectArguments) !== []) {
             $session->destroy();
+            $response = redirect()->to('/login');
+            if (in_array('legacy-redirect', $redirectArguments, true)) {
+                $response->setStatusCode($request->getMethod() === 'GET' ? 307 : 303);
+            }
 
-            return redirect()->to('/login');
+            return $response;
         }
 
         return service('response')
