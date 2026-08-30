@@ -177,7 +177,14 @@ function runtimeRules(DOMDocument $left, DOMDocument $right, string $page, array
         ];
     }
     $csrfSelector = '//input[@name="csrf_test_name"]';
-    $hasExternalCsrf = array_any($external, static fn (array $rule): bool => str_contains((string) ($rule['selector'] ?? ''), 'csrf_test_name') && ($rule['attribute'] ?? '') === '#remove');
+    $hasExternalCsrf = false;
+    foreach ($external as $rule) {
+        if (str_contains((string) ($rule['selector'] ?? ''), 'csrf_test_name')
+            && ($rule['attribute'] ?? '') === '#remove') {
+            $hasExternalCsrf = true;
+            break;
+        }
+    }
     $leftCsrf = $leftXPath->query($csrfSelector);
     $rightCsrf = $rightXPath->query($csrfSelector);
     if (! $hasExternalCsrf && (($leftCsrf !== false && $leftCsrf->length > 0) || ($rightCsrf !== false && $rightCsrf->length > 0))) {
