@@ -158,8 +158,10 @@ final class Users extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
         $owner = $this->store()->findAccessible($this->role(), $this->branch(), $id) ?? [];
+        $total = $this->store()->historyCount($this->role(), $this->branch(), $id, $search);
+        $pagination = $this->legacyHistoryPagination($id, $page, $total);
 
-        $content = (new LegacyViewRenderer())->render('loginHistory', [
+        $content = (new LegacyViewRenderer(null, $pagination))->render('loginHistory', [
             'userRecords' => LegacyViewRenderer::escapedRecords($rows),
             'userInfo' => new \App\Presentation\LegacyRecord([
                 'name' => esc((string) ($owner['name'] ?? '')),
@@ -174,6 +176,15 @@ final class Users extends BaseController
     public function ownHistory(): string
     {
         return $this->history((string) $this->actorId());
+    }
+
+    public function legacyHistory(string $rawId, string $rawOffset): string
+    {
+        if (preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $rawOffset) !== 1) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $this->history($rawId, (string) (intdiv((int) $rawOffset, 5) + 1));
     }
 
     public function legacyBranches(string $rawType): ResponseInterface
@@ -244,6 +255,31 @@ final class Users extends BaseController
         return $rows === null
             ? $this->response->setStatusCode(404)->setJSON(['error' => 'branch_not_found'])
             : $this->response->setJSON(['books' => $rows]);
+    }
+
+    private function legacyHistoryPagination(int $userId, int $page, int $total): string
+    {
+        $pages = (int) ceil($total / 5);
+        if ($pages <= 1) {
+            return '';
+        }
+        $base = base_url('login-history/' . $userId . '/');
+        $links = '<nav><ul class="pagination">';
+        if ($page > 1) {
+            $links .= '<li class="arrow"><a href="' . $base . (($page - 2) * 5) . '">Previous</a></li>';
+        }
+        for ($number = 1; $number <= $pages; $number++) {
+            if ($number === $page) {
+                $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
+            } else {
+                $links .= '<li><a href="' . $base . (($number - 1) * 5) . '">' . $number . '</a></li>';
+            }
+        }
+        if ($page < $pages) {
+            $links .= '<li class="arrow"><a href="' . $base . ($page * 5) . '">Next</a></li>';
+        }
+
+        return $links . '</ul></nav>';
     }
 
     private function renderList(string $search): string

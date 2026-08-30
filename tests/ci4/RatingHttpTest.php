@@ -33,8 +33,8 @@ final class RatingHttpTest extends CIUnitTestCase
         $result = $this->get('/rating/WP00C-RATE-005');
 
         $result->assertStatus(200);
-        $result->assertSee('Service rating');
-        $result->assertSee('WP00C-RATE-005');
+        self::assertStringContainsString('Service rating', (string) $result->getBody());
+        self::assertStringContainsString('WP00C-RATE-005', (string) $result->getBody());
         for ($question = 1; $question <= 8; $question++) {
             self::assertStringContainsString('name="rating_' . $question . '"', $result->getBody());
         }
@@ -106,7 +106,7 @@ final class RatingHttpTest extends CIUnitTestCase
         $result = $this->get('/rating/WP00C-RATE-007');
 
         $result->assertStatus(200);
-        $result->assertSee('WP00C-RATE-007');
+        self::assertStringContainsString('WP00C-RATE-007', (string) $result->getBody());
         for ($question = 1; $question <= 8; $question++) {
             self::assertStringContainsString('name="rating_' . $question . '"', $result->getBody());
         }

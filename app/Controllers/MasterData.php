@@ -63,10 +63,14 @@ final class MasterData extends BaseController
             ? $this->request->getPost('searchText')
             : $this->request->getGet('search');
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
-        $page = $rawPage === null ? 1 : $this->positiveInteger($rawPage);
-        if ($page === null) {
+        $offset = $rawPage === null
+            ? 0
+            : (preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $rawPage) === 1 ? (int) $rawPage : null);
+        if ($offset === null) {
             throw PageNotFoundException::forPageNotFound();
         }
+        // CI3 pagination links carry a row offset in segment 2 (0, 50, 100, ...).
+        $page = intdiv($offset, 50) + 1;
 
         return $this->renderList($type, $definition, $search, $page);
     }
@@ -261,7 +265,8 @@ final class MasterData extends BaseController
             'fixed' => 'fixedRecords', 'provider' => 'providerRecords',
         ];
         $template = $type === 'book' ? 'master/books' : 'master/' . $type;
-        $content = (new LegacyViewRenderer())->render($template, [
+        $pagination = $this->legacyPagination($type, $page, $store->count($type, $search));
+        $content = (new LegacyViewRenderer(null, $pagination))->render($template, [
             $recordVariables[$type] => $records,
             'searchText' => esc($search),
             'BranchID' => service('session')->get('BranchID'),
@@ -321,6 +326,32 @@ final class MasterData extends BaseController
             $content,
             ['contentOwnsWrapper' => true],
         );
+    }
+
+    private function legacyPagination(string $type, int $page, int $total): string
+    {
+        $pages = (int) ceil($total / 50);
+        if ($pages <= 1) {
+            return '';
+        }
+        // Reproduce the paginator bases configured by the pinned CI3 controllers,
+        // including Book::bookListing's historical userListing alias.
+        $base = match ($type) {
+            'branch', 'branchtype', 'statustype', 'producttype' => 'branchListing',
+            'book' => 'userListing',
+            default => self::LEGACY_LISTINGS[$type],
+        };
+        $links = '<nav><ul class="pagination">';
+        for ($number = 1; $number <= $pages; $number++) {
+            if ($number === $page) {
+                $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
+                continue;
+            }
+            $offset = ($number - 1) * 50;
+            $links .= '<li><a href="' . base_url($base . '/' . $offset) . '">' . $number . '</a></li>';
+        }
+
+        return $links . '</ul></nav>';
     }
 
     private function positiveInteger(mixed $value): ?int

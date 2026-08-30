@@ -141,7 +141,9 @@ final class Reports extends BaseController
                     $variables[$total] = 0;
                 }
             }
-            $content = (new LegacyViewRenderer())->render($templates[$kind], $variables);
+            $content = (new LegacyViewRenderer(oldValues: [
+                'branch_id' => (string) ($branchId ?? 0),
+            ]))->render($templates[$kind], $variables);
             $html = $this->layout('Tracking : Dashboard', $content, ['contentOwnsWrapper' => true]);
         }
 
@@ -243,7 +245,7 @@ final class Reports extends BaseController
 
     private function buildExport(
         string $type,
-        bool $legacyRatings = false,
+        bool $legacyExport = false,
         ?string $routeBranchId = null,
         ?string $routeStartDate = null,
         ?string $routeEndDate = null,
@@ -281,6 +283,17 @@ final class Reports extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
         }
 
+        if (! $legacyExport) {
+            return $this->response
+                ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=UTF-8')
+                ->setHeader('Content-Disposition', 'attachment; filename="' . $type . '-report.xls"')
+                ->setHeader('X-Content-Type-Options', 'nosniff')
+                ->setBody(view('reports/export', [
+                    'rows' => $rows,
+                    'title' => self::HEADINGS[$type][0] ?? ucfirst($type),
+                ]));
+        }
+
         $template = [
             'ratings' => 'excel_report_rating',
             'in-progress' => 'excel_in_progress_job',
@@ -305,7 +318,7 @@ final class Reports extends BaseController
             'BranchID' => service('session')->get('BranchID'),
         ]);
 
-        if ($type === 'ratings' && $legacyRatings) {
+        if ($type === 'ratings') {
             $filename = 'Rating_Report_' . time() . '.xls';
 
             return $this->response
@@ -328,7 +341,7 @@ final class Reports extends BaseController
         if ($type === 'ratings' && count($segments) === 3) {
             return $this->buildExport(
                 $type,
-                legacyRatings: true,
+                legacyExport: true,
                 routeBranchId: $segments[0],
                 routeStartDate: $segments[1],
                 routeEndDate: $segments[2],
@@ -339,7 +352,7 @@ final class Reports extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return $this->buildExport($type, $type === 'ratings');
+        return $this->buildExport($type, legacyExport: true);
     }
 
     /** @param array<string, array<string, mixed>> $rows @return array<string, array<string, mixed>> */

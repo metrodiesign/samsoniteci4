@@ -42,6 +42,30 @@ final class MasterDataStore
         return $query->get()->getResultArray();
     }
 
+    public function count(string $type, string $search = ''): int
+    {
+        $definition = MasterCatalog::definition($type);
+        if ($definition === null) {
+            return 0;
+        }
+        $query = $this->db->table($definition['table']);
+        if ($search !== '') {
+            $columns = $definition['searchColumns'] ?? [$definition['label']];
+            if (isset($definition['searchJoins'])) {
+                foreach ($definition['searchJoins'] as $join) {
+                    $query->join($join['table'], $join['on'], 'left');
+                }
+            }
+            $query->groupStart();
+            foreach ($columns as $index => $column) {
+                $index === 0 ? $query->like($column, $search) : $query->orLike($column, $search);
+            }
+            $query->groupEnd();
+        }
+
+        return $query->countAllResults();
+    }
+
     /** @return list<array<string, mixed>> */
     public function options(string $type): array
     {

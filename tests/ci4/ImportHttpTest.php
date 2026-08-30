@@ -74,8 +74,14 @@ final class ImportHttpTest extends CIUnitTestCase
         foreach ($files as $kind => $path) {
             $response = $this->preview($kind, $path);
             $response->assertStatus(200);
-            $response->assertSee('Accepted: 1');
-            $response->assertSee($kind === 'status' ? 'Rejected: 1' : 'Rejected: 0');
+            $body = (string) $response->getBody();
+            // CI3 preview views expose the imported row count and File List table, not native summary cards.
+            self::assertStringContainsString('<h3 class="box-title">File List</h3>', $body);
+            self::assertStringContainsString('id="count_ex" name="count_ex" value="' . ($kind === 'status' ? '2' : '1') . '"', $body);
+            $batch = $this->db->table('ci4_import_batches')->where('kind', $kind)->get()->getRowArray();
+            self::assertNotNull($batch);
+            self::assertSame(1, (int) $batch['accepted_count']);
+            self::assertSame($kind === 'status' ? 1 : 0, (int) $batch['rejected_count']);
         }
         self::assertSame(3, $this->db->table('ci4_import_batches')->where('owner_user_id', 1)->countAllResults());
         self::assertSame(4, $this->db->table('ci4_import_rows')->countAllResults());
@@ -226,7 +232,7 @@ final class ImportHttpTest extends CIUnitTestCase
             $form->assertStatus(200);
             // t5 AC-6: the upload form carries a reset button and the CI3 "Upload" submit text.
             self::assertStringContainsString('type="reset"', $form->getBody());
-            self::assertStringContainsString('>Upload</button>', $form->getBody());
+            self::assertStringContainsString('type="submit" name="Submit" class="btn btn-primary" value="Upload"', $form->getBody());
             self::assertStringContainsString('action="http://example.invalid/' . $action . '"', $form->getBody());
         }
         $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
@@ -326,8 +332,13 @@ final class ImportHttpTest extends CIUnitTestCase
         foreach ($files as $kind => $path) {
             $response = $this->previewAs($kind, $path, 1, 1, $kind . '.xls');
             $response->assertStatus(200);
-            $response->assertSee('Accepted: 1');
-            $response->assertSee($kind === 'status' ? 'Rejected: 1' : 'Rejected: 0');
+            $body = (string) $response->getBody();
+            self::assertStringContainsString('<h3 class="box-title">File List</h3>', $body);
+            self::assertStringContainsString('id="count_ex" name="count_ex" value="' . ($kind === 'status' ? '2' : '1') . '"', $body);
+            $batch = $this->db->table('ci4_import_batches')->where('kind', $kind)->get()->getRowArray();
+            self::assertNotNull($batch);
+            self::assertSame(1, (int) $batch['accepted_count']);
+            self::assertSame($kind === 'status' ? 1 : 0, (int) $batch['rejected_count']);
         }
         foreach (array_keys($files) as $kind) {
             $batch = (string) $this->db->table('ci4_import_batches')->where('kind', $kind)->get()->getRow('batch_id');

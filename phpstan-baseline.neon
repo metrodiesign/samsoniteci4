@@ -67,12 +67,6 @@ parameters:
 			path: tests/ci4/BusinessParityHttpTest.php
 
 		-
-			message: '#^Call to an undefined method CodeIgniter\\Test\\TestResponse\:\:assertSeeInOrder\(\)\.$#'
-			identifier: method.notFound
-			count: 2
-			path: tests/ci4/PublicTrackingHttpTest.php
-
-		-
 			message: '#^Method Tests\\Ci4\\ReportHttpTest\:\:session\(\) should return array\<string, bool\|int\|null\> but returns array\<string, int\|string\|true\|null\>\.$#'
 			identifier: return.type
 			count: 1

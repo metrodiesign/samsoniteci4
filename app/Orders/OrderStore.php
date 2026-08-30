@@ -65,6 +65,38 @@ final class OrderStore
         return $query->get()->getResultArray();
     }
 
+    public function listingCount(int $status, ?int $branchId, string $search, string $sdate = '', string $edate = ''): int
+    {
+        $query = $this->db->table('request_order')
+            ->join('statusaction', 'statusaction.status_id = request_order.action_status', 'left')
+            ->join('branch', 'branch.branch_id = request_order.branchID', 'left')
+            ->where('request_order.action_status', $status);
+        if ($branchId !== null) {
+            $query->where('request_order.branchID', $branchId);
+        }
+        $from = $this->parseDate($sdate);
+        $to = $this->parseDate($edate);
+        if ($from !== null) {
+            $query->where('request_order.requestDate >=', $from->format('Y-m-d 00:00:00'));
+        }
+        $upper = $to ?? ($edate === '' ? $from : null);
+        if ($upper !== null) {
+            $query->where('request_order.requestDate <', $upper->modify('+1 day')->format('Y-m-d 00:00:00'));
+        }
+        if ($search !== '') {
+            $query->groupStart()
+                ->like('request_order.trackID', $search)
+                ->orLike('request_order.orderID', $search)
+                ->orLike('request_order.customerFullname', $search)
+                ->orLike('request_order.detailSKUName', $search)
+                ->orLike('branch.branch_name', $search)
+                ->orLike('statusaction.status_name', $search)
+                ->groupEnd();
+        }
+
+        return $query->countAllResults();
+    }
+
     /**
      * Latest tracking_status.description_th per (orderID, customerTel) pair in one query.
      *

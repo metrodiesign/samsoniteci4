@@ -70,16 +70,22 @@ final class Order extends BaseController
         ],
     ];
 
-    public function listing(?string $fixedStatus = null): string|ResponseInterface
+    public function listing(?string $fixedStatus = null, ?string $legacyOffset = null): string|ResponseInterface
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
-        $rawPage = $this->request->getGet('page');
+        $rawPage = $legacyOffset === null ? $this->request->getGet('page') : null;
         $isPost = $this->request->getMethod() === 'POST';
         $rawSearch = $isPost ? $this->request->getPost('searchText') : $this->request->getGet('search');
         $rawSdate = $isPost ? $this->request->getPost('sdate') : $this->request->getGet('sdate');
         $rawEdate = $isPost ? $this->request->getPost('edate') : $this->request->getGet('edate');
         $status = is_string($rawStatus) && preg_match('/\A[1-8]\z/D', $rawStatus) === 1 ? (int) $rawStatus : null;
-        $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+        if ($legacyOffset !== null) {
+            $page = preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $legacyOffset) === 1
+                ? intdiv((int) $legacyOffset, 50) + 1
+                : 0;
+        } else {
+            $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+        }
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
         $sdate = is_string($rawSdate) ? $rawSdate : '';
         $edate = is_string($rawEdate) ? $rawEdate : '';
@@ -134,7 +140,17 @@ final class Order extends BaseController
             ->orderBy('provider_id', 'ASC')
             ->get()
             ->getResultArray();
-        $content = (new LegacyViewRenderer(statusUpdates: $statusUpdates))->render($template, [
+        $paginationBase = match ($status) {
+            1 => $path === 'sendorderlisting' ? 'sendorderListing' : 'ordersListing',
+            2 => 'TrackingListing', 3 => 'TrackingcloseListing', 4 => 'TrackingreturnListing',
+            5 => 'TrackingcompleteListing', 7 => 'TrackingCompletedListing',
+        };
+        $pagination = $this->legacyListingPagination(
+            $paginationBase,
+            $page,
+            $store->listingCount($status, $branchId, $search, $sdate, $edate),
+        );
+        $content = (new LegacyViewRenderer(pagination: $pagination, statusUpdates: $statusUpdates))->render($template, [
             'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
             'Status' => LegacyViewRenderer::escapedRecords($statuses),
             'Providers' => LegacyViewRenderer::escapedRecords($providers),
@@ -147,6 +163,24 @@ final class Order extends BaseController
             : 'Tracking : Listing';
 
         return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
+    }
+
+    private function legacyListingPagination(string $base, int $page, int $total): string
+    {
+        $pages = (int) ceil($total / 50);
+        if ($pages <= 1) {
+            return '';
+        }
+        $links = '<nav><ul class="pagination">';
+        for ($number = 1; $number <= $pages; $number++) {
+            if ($number === $page) {
+                $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
+            } else {
+                $links .= '<li><a href="' . base_url($base . '/' . (($number - 1) * 50)) . '">' . $number . '</a></li>';
+            }
+        }
+
+        return $links . '</ul></nav>';
     }
 
     public function newOrder(): string
