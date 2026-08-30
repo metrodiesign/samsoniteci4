@@ -879,6 +879,20 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString("Line Number: 2002</p>\t</div>", $response->getBody());
     }
 
+    public function testInProgressGarbageStatusDatabaseErrorEscapesReflectedInput(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
+            'start_date' => '01/08/2026', 'end_date' => '30/08/2026',
+            'status_id' => '<script>alert(1)</script>',
+        ]);
+
+        $response->assertStatus(500);
+        $body = (string) $response->getBody();
+        self::assertStringNotContainsString('<script>alert(1)</script>', $body);
+        self::assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $body);
+    }
+
     public function testLegacyInProgressExportAppliesCi3CamelCaseFiltersAndTrustedBranch(): void
     {
         $this->db->table('request_order')->truncate();

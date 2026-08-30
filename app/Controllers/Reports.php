@@ -487,15 +487,18 @@ final class Reports extends BaseController
         ?int $branchId,
     ): ResponseInterface {
         // Deliberately reproduce CI3's leaked SQL error page for this approved route-specific seam.
+        // The reflected value is HTML-escaped (esc()) so it stays byte-identical to CI3 for the
+        // legitimate garbage-status inputs the parity tests cover, without opening reflected XSS.
         $startDate = substr($startDate, 6, 4) . '-' . substr($startDate, 3, 2) . '-' . substr($startDate, 0, 2);
         $endDate = substr($endDate, 6, 4) . '-' . substr($endDate, 3, 2) . '-' . substr($endDate, 0, 2);
+        $safeStatusId = esc($statusId, 'html');
         $branch = $branchId === null ? '' : " and branchID = '{$branchId}'";
         $query = "SELECT *, DATEDIFF('" . date('Y-m-d') . "', requestDate) AS Total, statusaction.status_name_th FROM request_order\n"
             . "        inner join statusaction on request_order.action_status = statusaction.status_id\n"
-            . "        WHERE requestDate BETWEEN '{$startDate}' and '{$endDate}'{$branch} and action_status IN ({$statusId})"
+            . "        WHERE requestDate BETWEEN '{$startDate}' and '{$endDate}'{$branch} and action_status IN ({$safeStatusId})"
             . ' and date_complete IS NULL group by request_id order by requestDate asc';
         $message = '<p>Error Number: 1054</p>'
-            . "<p>Unknown column '{$statusId}' in 'WHERE'</p>"
+            . "<p>Unknown column '{$safeStatusId}' in 'WHERE'</p>"
             . '<p>' . $query . '</p>'
             . '<p>Filename: models/Request_order_model.php</p><p>Line Number: 2002</p>';
         $source = (string) file_get_contents(APPPATH . 'Views/ci3/errors/html/error_db.php');
