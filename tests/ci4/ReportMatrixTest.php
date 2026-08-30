@@ -372,18 +372,18 @@ final class ReportMatrixTest extends CIUnitTestCase
         );
     }
 
-    public function testJobsByDayPlacesDiff31InThirtyOneToFortyFiveWithAndWithoutBranch(): void
+    public function testJobsByDayReplicatesCi3Diff31GapOnlyWhenBranchScoped(): void
     {
-        // diff 31 (UNW uses date_repair): normalized bucket is > 30, so it lands in 31-45 in both scopes.
+        // CI3 uses > 30 without a branch but > 31 with a branch, so diff 31 disappears only
+        // from the branch-scoped result.
         $this->insertJobOrder(1, 1, 1, 'UNW', '2026-08-01 00:00:00', null, '2026-09-01 00:00:00');
 
         $withoutBranch = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', null);
         $withBranch = (new ReportMatrix($this->db))->matrix('jobs-by-day', '01/08/2026', '31/08/2026', 1);
 
-        // brand1 x type1 is the first data row in both cases; diff 31 must sit in 31-45, not 8-30.
         self::assertSame(1, $withoutBranch[0]['31-45']);
         self::assertSame(0, $withoutBranch[0]['8-30']);
-        self::assertSame(1, $withBranch[0]['31-45']);
+        self::assertSame(0, $withBranch[0]['31-45']);
         self::assertSame(0, $withBranch[0]['8-30']);
     }
 

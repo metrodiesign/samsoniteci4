@@ -180,6 +180,19 @@ final class ReportHttpTest extends CIUnitTestCase
         }
     }
 
+    public function testJobsByDayRedirectsAnonymousRequestsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/user/report_job_byday');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/user/report_job_byday', [
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
     public function testRatingReportUsesItsDedicatedByteIdenticalCi3Target(): void
     {
         $target = APPPATH . 'Views/ci3/report.php';
@@ -631,32 +644,95 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('Request Date', $export->getBody());
     }
 
-    public function testJobsByDayRouteRendersGridWithScopedBucketColumns(): void
+    public function testJobsByDayReplicatesCi3Diff31BranchGap(): void
     {
-        // Base fixture is all waranty_cmg 'IN' (excluded); add one completed UNW job in branch 1,
-        // brand 1 x type 1, diff 31 days (date_repair -> date_complete) -> the 31-45 column.
+        // CI3 counts diff 31 in 31-45 for ALL branches, but its branch-scoped query uses > 31
+        // and therefore drops the same job from every bucket.
         $job = $this->order(300, 1, 1, 1, 1);
-        $job['trackID'] = 'WP06A-BYDAY';
-        $job['requestDate'] = '2026-08-10 10:00:00';
+        $job['trackID'] = 'WP06A-BYDAY-DIFF31';
+        $job['requestDate'] = '2026-08-10 00:00:00';
         $job['waranty_cmg'] = 'UNW';
         $job['date_repair'] = '2026-08-01 00:00:00';
         $job['date_repair_waranty'] = null;
         $job['date_complete'] = '2026-09-01 00:00:00';
         $this->db->table('request_order')->insert($job);
 
-        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
-            'csrf_test_name' => service('security')->getHash(),
+        $allBranches = $this->withSession($this->session(1, 1, null))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
         ]);
-        $response->assertStatus(200);
-        self::assertMatchesRegularExpression('/<th class="text-center">\s*31-45\s*<\/th>/s', (string) $response->getBody());
+        $allBranches->assertStatus(200);
         self::assertMatchesRegularExpression(
             '/<td>\s*BRAND A\s*<\/td>\s*<td>\s*TYPE A\s*<\/td>'
                 . '\s*<td>\s*0\s*<\/td>\s*<td>\s*0\s*<\/td>\s*<td>\s*0\s*<\/td>'
-                . '\s*<td>\s*1\s*<\/td>/s',
+                . '\s*<td>\s*1\s*<\/td>\s*<td>\s*0\s*<\/td>/s',
+            (string) $allBranches->getBody(),
+        );
+
+        $branch = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $branch->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/<td>\s*BRAND A\s*<\/td>\s*<td>\s*TYPE A\s*<\/td>'
+                . '(?:\s*<td>\s*0\s*<\/td>){5}/s',
+            (string) $branch->getBody(),
+        );
+    }
+
+    public function testJobsByDayReplicatesCi3EndDateMidnightCutoff(): void
+    {
+        foreach ([301 => '2026-08-31 00:00:00', 302 => '2026-08-31 12:00:00'] as $id => $requestDate) {
+            $job = $this->order($id, 1, 1, 1, 1);
+            $job['trackID'] = 'WP06A-BYDAY-END-' . $id;
+            $job['requestDate'] = $requestDate;
+            $job['waranty_cmg'] = 'UNW';
+            $job['date_repair'] = '2026-08-01 00:00:00';
+            $job['date_repair_waranty'] = null;
+            $job['date_complete'] = '2026-08-02 00:00:00';
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '31/08/2026', 'end_date' => '31/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/<td>\s*BRAND A\s*<\/td>\s*<td>\s*TYPE A\s*<\/td>'
+                . '\s*<td>\s*0\s*<\/td>\s*<td>\s*1\s*<\/td>'
+                . '(?:\s*<td>\s*0\s*<\/td>){3}/s',
             (string) $response->getBody(),
         );
-        $response->assertDontSee('WP00C-REPORT-005');
+    }
+
+    public function testJobsByDayRejectsLeadingWarrantyWhitespaceLikeCi3(): void
+    {
+        foreach ([303 => 'OUT', 304 => ' OUT'] as $id => $warranty) {
+            $job = $this->order($id, 1, 1, 1, 1);
+            $job['trackID'] = 'WP06A-BYDAY-WARRANTY-' . $id;
+            $job['requestDate'] = '2026-08-15 00:00:00';
+            $job['waranty_cmg'] = $warranty;
+            $job['date_repair'] = '2026-01-01 00:00:00';
+            $job['date_repair_waranty'] = '2026-08-01 00:00:00';
+            $job['date_complete'] = '2026-08-03 00:00:00';
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_byday', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '15/08/2026', 'end_date' => '15/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/<td>\s*BRAND A\s*<\/td>\s*<td>\s*TYPE A\s*<\/td>'
+                . '\s*<td>\s*0\s*<\/td>\s*<td>\s*1\s*<\/td>'
+                . '(?:\s*<td>\s*0\s*<\/td>){3}/s',
+            (string) $response->getBody(),
+        );
     }
 
     public function testTrackingCmgColumnShownOnlyForCentralActor(): void

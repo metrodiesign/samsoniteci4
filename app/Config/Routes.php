@@ -172,7 +172,12 @@ $routes->post('logout', 'Login::logout', ['filter' => 'csrf']);
 $routes->get('dashboard', 'Dashboard::index', ['filter' => 'web-auth:redirect']);
 $reportMatrixFilters = ['filter' => ['web-auth:redirect', 'csrf']];
 $routes->match(['GET', 'POST'], 'user/report', 'Reports::matrix/ratings', $reportMatrixFilters);
-$routes->match(['GET', 'POST'], 'user/report_job_byday', 'Reports::matrix/jobs-by-day', $reportMatrixFilters);
+$routes->match(
+    ['GET', 'POST'],
+    'user/report_job_byday',
+    'Reports::matrix/jobs-by-day',
+    ['filter' => ['web-auth:legacy-redirect', 'csrf']],
+);
 $routes->match(['GET', 'POST'], 'user/report_job_pending', 'Reports::matrix/pending', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'user/report_total_job_pending', 'Reports::matrix/pending-total', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'user/report_in_progress_average', 'Reports::matrix/in-progress-average', $reportMatrixFilters);
