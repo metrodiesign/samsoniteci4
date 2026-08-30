@@ -357,19 +357,21 @@ final class ReportMatrix
     /** @return list<array<array-key, int|string>> */
     private function jobsByDay(?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): array
     {
+        // CI3's case-insensitive PAD SPACE collation ignores case and trailing spaces, but not leading spaces.
         $query = $this->db->table('request_order')
             ->select('detailBrandId, detailTypeId, waranty_cmg, date_repair, date_repair_waranty, date_complete')
             ->where('date_complete IS NOT NULL', null, false)
-            ->where("UPPER(TRIM(waranty_cmg)) IN ('OUT', 'UNW', '')", null, false);
-        $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId);
+            ->where("UPPER(RTRIM(waranty_cmg)) IN ('OUT', 'UNW', '')", null, false);
+        // CI3 passes a bare Y-m-d end value to BETWEEN, so its inclusive upper bound is midnight.
+        $this->scope($query, 'requestDate', 'branchID', $start, $end, $branchId, endAtMidnight: true);
 
         $tallies = [];
         foreach ($query->get()->getResultArray() as $record) {
-            $diff = match (strtoupper(trim((string) $record['waranty_cmg']))) {
+            $diff = match (strtoupper(rtrim((string) $record['waranty_cmg'], ' '))) {
                 'OUT'   => $this->dateDiff($record['date_complete'], $record['date_repair_waranty']),
                 default => $this->dateDiff($record['date_complete'], $record['date_repair']),
             };
-            $column = $this->jobsByDayColumn($diff);
+            $column = $this->jobsByDayColumn($diff, $branchId !== null);
             if ($column === null) {
                 continue;
             }
@@ -415,14 +417,15 @@ final class ReportMatrix
         return $rows;
     }
 
-    private function jobsByDayColumn(?int $diff): ?string
+    private function jobsByDayColumn(?int $diff, bool $branchScoped): ?string
     {
+        // Preserve CI3's asymmetric lower bound: > 30 globally, but > 31 when a branch is selected.
         return match (true) {
             $diff === null => null,
             $diff === 0 => '0',
             $diff > 0 && $diff < 8 => '1-7',
             $diff > 7 && $diff < 31 => '8-30',
-            $diff > 30 && $diff < 46 => '31-45',
+            $diff > ($branchScoped ? 31 : 30) && $diff < 46 => '31-45',
             $diff > 45 => '> 45',
             default => null,
         };
@@ -563,13 +566,22 @@ final class ReportMatrix
         return (int) $value;
     }
 
-    private function scope($query, string $dateColumn, string $branchColumn, ?DateTimeImmutable $start, ?DateTimeImmutable $end, ?int $branchId): void
-    {
+    private function scope(
+        $query,
+        string $dateColumn,
+        string $branchColumn,
+        ?DateTimeImmutable $start,
+        ?DateTimeImmutable $end,
+        ?int $branchId,
+        bool $endAtMidnight = false,
+    ): void {
         if ($start !== null) {
             $query->where($dateColumn . ' >=', $start->format('Y-m-d 00:00:00'));
         }
         if ($end !== null) {
-            $query->where($dateColumn . ' <', $end->modify('+1 day')->format('Y-m-d 00:00:00'));
+            $operator = $endAtMidnight ? ' <=' : ' <';
+            $boundary = $endAtMidnight ? $end : $end->modify('+1 day');
+            $query->where($dateColumn . $operator, $boundary->format('Y-m-d 00:00:00'));
         }
         if ($branchId !== null) {
             $query->where($branchColumn, $branchId);
