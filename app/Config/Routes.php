@@ -178,7 +178,12 @@ $routes->match(
     'Reports::matrix/jobs-by-day',
     ['filter' => ['web-auth:legacy-redirect', 'csrf']],
 );
-$routes->match(['GET', 'POST'], 'user/report_job_pending', 'Reports::matrix/pending', $reportMatrixFilters);
+$routes->match(
+    ['GET', 'POST'],
+    'user/report_job_pending',
+    'Reports::matrix/pending',
+    ['filter' => ['web-auth:legacy-redirect', 'csrf']],
+);
 $routes->match(['GET', 'POST'], 'user/report_total_job_pending', 'Reports::matrix/pending-total', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'user/report_in_progress_average', 'Reports::matrix/in-progress-average', $reportMatrixFilters);
 $routes->match(['GET', 'POST'], 'user/report_in_progress_job', 'Reports::matrix/in-progress', $reportMatrixFilters);

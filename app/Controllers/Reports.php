@@ -36,10 +36,12 @@ final class Reports extends BaseController
         if (! isset(self::HEADINGS[$kind])) {
             throw PageNotFoundException::forPageNotFound();
         }
-        $requestedBranch = $this->input('branch_id');
-        $branchId = $this->branchScope();
-        $start = $this->input('start_date');
-        $end = $this->input('end_date');
+        $requestedBranch = $this->reportInput($kind, 'branch_id');
+        $branchId = $kind === 'pending'
+            ? $this->pendingBranchScope($requestedBranch)
+            : $this->branchScope();
+        $start = $this->reportInput($kind, 'start_date');
+        $end = $this->reportInput($kind, 'end_date');
         [$start, $end] = $this->defaultRange($start, $end);
         $statusId = $kind === 'in-progress' ? $this->normalizeStatusIds($this->input('status_id')) : '';
         $error = null;
@@ -51,7 +53,8 @@ final class Reports extends BaseController
                 : $matrix->matrix($kind, $start, $end, $branchId, $statusId);
         } catch (InvalidArgumentException $exception) {
             $rows = [];
-            $error = $exception->getMessage();
+            // CI3 renders an empty pending report with HTTP 200 when its date input is malformed.
+            $error = $kind === 'pending' ? null : $exception->getMessage();
         }
         $role = (int) service('session')->get('role');
         [$title, $caption, $sectionTitle] = self::HEADINGS[$kind];
@@ -433,6 +436,34 @@ final class Reports extends BaseController
             ->select('status_id, status_name, status_name_th')
             ->where('status_id >=', 1)->where('status_id <=', 5)
             ->orderBy('status_id', 'ASC')->get()->getResultArray();
+    }
+
+    private function reportInput(string $kind, string $name): mixed
+    {
+        // CI3's pending action reads input->post() even when the route is requested with GET.
+        if ($kind === 'pending' && strtoupper($this->request->getMethod()) !== 'POST') {
+            return null;
+        }
+
+        return $this->input($name);
+    }
+
+    private function pendingBranchScope(mixed $requested): ?int
+    {
+        // CI3 trusts this route's posted branch for every role and falls back only when it is empty.
+        $sessionBranch = service('session')->get('BranchID');
+        $sessionBranch = $sessionBranch === null ? null : (int) $sessionBranch;
+        if ($requested === null || $requested === '') {
+            return $sessionBranch;
+        }
+        if ($requested === '0') {
+            return null;
+        }
+        if (! is_string($requested) || preg_match('/\A[1-9][0-9]*\z/D', $requested) !== 1) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return (int) $requested;
     }
 
     private function branchScope(?string $routeBranchId = null): ?int

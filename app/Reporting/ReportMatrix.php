@@ -282,7 +282,16 @@ final class ReportMatrix
             ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'inner')
             ->where('orders.date_complete', null)
             ->orderBy('orders.date_repair', 'ASC')->orderBy('orders.request_id', 'ASC');
-        $this->scope($query, 'orders.date_repair', 'orders.branchID', $start, $end, $branchId);
+        // CI3 passes a bare Y-m-d end value to BETWEEN, so its inclusive upper bound is midnight.
+        $this->scope(
+            $query,
+            'orders.date_repair',
+            'orders.branchID',
+            $start,
+            $end,
+            $branchId,
+            endAtMidnight: true,
+        );
 
         $today = new DateTimeImmutable('today');
         $rows = [];

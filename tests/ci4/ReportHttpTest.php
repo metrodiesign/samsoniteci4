@@ -193,6 +193,19 @@ final class ReportHttpTest extends CIUnitTestCase
         $post->assertRedirectTo('/login');
     }
 
+    public function testPendingRedirectsAnonymousRequestsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/user/report_job_pending');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/user/report_job_pending', [
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
     public function testRatingReportUsesItsDedicatedByteIdenticalCi3Target(): void
     {
         $target = APPPATH . 'Views/ci3/report.php';
@@ -301,12 +314,13 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('status=5', $inProgress->getBody());
     }
 
-    public function testBranchUserCannotRequestAnotherBranchInMatrixOrExport(): void
+    public function testBranchUserCannotRequestAnotherBranchInProtectedMatrixOrExport(): void
     {
+        // report_job_pending is deliberately excluded: CI3 trusts its posted branch_id,
+        // which is locked by testPendingHonoursTamperedBranchLikeCi3().
         foreach ([
-            '/user/report', '/user/report_job_byday', '/user/report_job_pending',
-            '/user/report_total_job_pending', '/user/report_in_progress_average',
-            '/user/report_in_progress_job',
+            '/user/report', '/user/report_job_byday', '/user/report_total_job_pending',
+            '/user/report_in_progress_average', '/user/report_in_progress_job',
         ] as $route) {
             try {
                 $this->withSession($this->session(2, 2, 1))->post($route, [
@@ -733,6 +747,91 @@ final class ReportHttpTest extends CIUnitTestCase
                 . '(?:\s*<td>\s*0\s*<\/td>){3}/s',
             (string) $response->getBody(),
         );
+    }
+
+    public function testPendingIgnoresGetFiltersAndUsesCi3DefaultRange(): void
+    {
+        $today = new \DateTimeImmutable('today');
+        $job = $this->order(307, 1, 2, 1, 1);
+        $job['trackID'] = 'WP06A-PENDING-GET-IGNORED';
+        $job['date_repair'] = $today->modify('-5 days')->format('Y-m-d 00:00:00');
+        $job['date_complete'] = null;
+        $this->db->table('request_order')->insert($job);
+
+        $query = http_build_query([
+            'branch_id' => '2',
+            'start_date' => $today->modify('-2 months')->format('d/m/Y'),
+            'end_date' => $today->modify('-2 months')->format('d/m/Y'),
+        ]);
+        $response = $this->withSession($this->session(1, 1, null))
+            ->get('/user/report_job_pending?' . $query);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-PENDING-GET-IGNORED');
+        self::assertMatchesRegularExpression(
+            '/name="start_date" value="' . preg_quote($today->modify('-1 month')->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+        self::assertMatchesRegularExpression(
+            '/name="end_date" value="' . preg_quote($today->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testPendingReturnsEmptyReportForMalformedDatesLikeCi3(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/user/report_job_pending', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
+            'start_date' => 'not-a-date', 'end_date' => 'not-a-date',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/<td>\s*TOTAL\s*<\/td>\s*<td>\s*0\s*<\/td>/s',
+            (string) $response->getBody(),
+        );
+        $response->assertDontSee('WP00C-REPORT-001');
+    }
+
+    public function testPendingHonoursTamperedBranchLikeCi3(): void
+    {
+        $job = $this->order(308, 2, 2, 1, 1);
+        $job['trackID'] = 'WP06A-PENDING-CROSS-BRANCH';
+        $job['date_repair'] = '2026-08-15 00:00:00';
+        $job['date_complete'] = null;
+        $this->db->table('request_order')->insert($job);
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_pending', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+            'start_date' => '15/08/2026', 'end_date' => '15/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-PENDING-CROSS-BRANCH');
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*type="hidden")(?=[^>]*name="branch_id")(?=[^>]*value="1")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testPendingReplicatesCi3EndDateMidnightCutoff(): void
+    {
+        foreach ([305 => '2026-08-31 00:00:00', 306 => '2026-08-31 12:00:00'] as $id => $repairDate) {
+            $job = $this->order($id, 1, 2, 1, 1);
+            $job['trackID'] = 'WP06A-PENDING-END-' . $id;
+            $job['date_repair'] = $repairDate;
+            $job['date_complete'] = null;
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_job_pending', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '31/08/2026', 'end_date' => '31/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-PENDING-END-305');
+        $response->assertDontSee('WP06A-PENDING-END-306');
     }
 
     public function testTrackingCmgColumnShownOnlyForCentralActor(): void
