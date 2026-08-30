@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Master\MenuStore;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -98,11 +99,12 @@ final class Menu extends BaseController
     private function renderList(string $search): string
     {
         $store = new MenuStore(db_connect());
-        $actions = $this->actionLink('/menu/new', 'Add New');
+        $content = (new LegacyViewRenderer())->render('master/menus', [
+            'menuRecords' => LegacyViewRenderer::escapedRecords($store->all($search)),
+            'searchText' => esc($search),
+        ]);
 
-        return $this->layout('Menu Management', view('menu_list', [
-            'rows' => $store->all($search), 'search' => $search, 'caption' => 'Menu List',
-        ]), ['actions' => $actions, 'subtitle' => 'Add, Edit, Delete']);
+        return $this->layout('Tracking : Menu Listing', $content, ['contentOwnsWrapper' => true]);
     }
 
     /** @param array<string, mixed>|null $row */
@@ -110,10 +112,26 @@ final class Menu extends BaseController
     {
         $store = new MenuStore(db_connect());
 
-        return $this->layout('Menu Management', view('menu_form', [
-            'row' => $row, 'menuGroups' => $store->menuGroups(), 'caption' => 'Enter Menu Details',
-            'legacyAction' => $row === null ? 'addMenu' : 'editMenu',
-        ]), ['subtitle' => 'Add / Edit Menu']);
+        $groups = LegacyViewRenderer::escapedRecords(array_map(
+            static fn (array $group): array => [
+                'group_type_id' => $group['id'], 'group_type_name' => $group['name'],
+            ],
+            $store->menuGroups(),
+        ));
+        $variables = ['nemugroups' => $groups];
+        if ($row !== null) {
+            $variables['MenuInfo'] = LegacyViewRenderer::escapedRecords([$row]);
+        }
+        $content = (new LegacyViewRenderer())->render(
+            $row === null ? 'master/add_menus' : 'master/ecit_menus',
+            $variables,
+        );
+
+        return $this->layout(
+            $row === null ? 'Menu group : Add New User' : 'CodeInsect : Edit User',
+            $content,
+            ['contentOwnsWrapper' => true],
+        );
     }
 
     private function searchTerm(string $legacyField = 'search'): string

@@ -128,7 +128,7 @@ final class TrackingReport
             ->getResultArray();
 
         foreach ($rows as &$row) {
-            $row['TotalDay']    = $this->totalDays($row['requestDate'], $row['date_complete'], true);
+            $row['TotalDay']    = $this->totalDays($row['requestDate'], $row['date_complete'], false);
             $row['CMGTotalDay'] = match ((string) ($row['waranty_cmg'] ?? '')) {
                 'OUT'   => $this->totalDays($row['date_repair_waranty'], $row['date_complete'], false),
                 'UNW', '' => $this->totalDays($row['date_repair'], $row['date_complete'], false),

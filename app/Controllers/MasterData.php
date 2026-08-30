@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Master\MasterCatalog;
 use App\Master\MasterDataStore;
 use App\Master\BranchTypeImageStore;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -19,18 +20,18 @@ final class MasterData extends BaseController
         'provider' => 'providerListing',
     ];
 
-    /** @var array<string, array{create: string, update: string}> */
-    private const LEGACY_FORMS = [
-        'branch' => ['create' => 'addNewBranch', 'update' => 'editBranch'],
-        'branchtype' => ['create' => 'addNewBranchtype', 'update' => 'editBranchtype'],
-        'statustype' => ['create' => 'addNewStatustype', 'update' => 'editStatustype'],
-        'producttype' => ['create' => 'addNewProducttype', 'update' => 'editProducttype'],
-        'book' => ['create' => 'addNewBook', 'update' => 'editBook'],
-        'brand' => ['create' => 'addNewBrand', 'update' => 'editBrand'],
-        'condition' => ['create' => 'addNewCondition', 'update' => 'editCondition'],
-        'estimateprice' => ['create' => 'addNewEstimateprice', 'update' => 'editEstimateprice'],
-        'fixed' => ['create' => 'addNewFixed', 'update' => 'editFixed'],
-        'provider' => ['create' => 'addNewProvider', 'update' => 'editProvider'],
+    /** @var array<string, array{list: string, add: string, edit: string}> */
+    private const LEGACY_PAGE_TITLES = [
+        'branch' => ['list' => 'Tracking : branch Listing', 'add' => 'Tracking : Add New User', 'edit' => 'Tracking : Edit Branch'],
+        'branchtype' => ['list' => 'Tracking : branch Listing', 'add' => 'Tracking : Add New User', 'edit' => 'Tracking : Edit Branch'],
+        'statustype' => ['list' => 'Tracking : branch Listing', 'add' => 'Tracking : Add New status', 'edit' => 'Tracking : Edit Status'],
+        'producttype' => ['list' => 'Tracking : branch Listing', 'add' => 'Tracking : Add New User', 'edit' => 'Tracking : Edit Branch'],
+        'book' => ['list' => 'Tracking : Book Listing', 'add' => 'Tracking : Add New User', 'edit' => 'CodeInsect : Edit Book'],
+        'brand' => ['list' => 'Tracking : Brand Listing', 'add' => 'Tracking : Add New Brand', 'edit' => 'Tracking : Edit Brand'],
+        'condition' => ['list' => 'Tracking : condition Listing', 'add' => 'Tracking : Add New Condition', 'edit' => 'Tracking : Edit condition'],
+        'estimateprice' => ['list' => 'Tracking : estimateprice Listing', 'add' => 'Tracking : Add New estimateprice', 'edit' => 'Tracking : Edit estimateprice'],
+        'fixed' => ['list' => 'Tracking : fixed Listing', 'add' => 'Tracking : Add New fixed', 'edit' => 'Tracking : Edit fixed'],
+        'provider' => ['list' => 'Tracking : provider Listing', 'add' => 'Tracking : Add New provider', 'edit' => 'Tracking : Edit provider'],
     ];
 
     /** @var array<string, string> */
@@ -82,11 +83,7 @@ final class MasterData extends BaseController
         $definition = $this->authorizedDefinition($type);
         $id         = $this->positiveInteger($rawId);
         $row        = $id === null ? null : (new MasterDataStore(db_connect()))->find($type, $id);
-        if ($row === null) {
-            throw PageNotFoundException::forPageNotFound();
-        }
-
-        return $this->renderForm($type, $definition, $row);
+        return $this->renderForm($type, $definition, $row ?? []);
     }
 
     public function legacyEditMissing(string $type): RedirectResponse
@@ -243,7 +240,7 @@ final class MasterData extends BaseController
                 $branchTypes[(string) $option['value']] = (string) $option['label'];
             }
             foreach ($rows as &$row) {
-                $row['branch_type'] = $branchTypes[(string) ($row['branch_type'] ?? '')] ?? '';
+                $row['branch_type_details'] = $branchTypes[(string) ($row['branch_type'] ?? '')] ?? '';
             }
             unset($row);
         } elseif ($type === 'book') {
@@ -252,22 +249,25 @@ final class MasterData extends BaseController
                 $branches[(string) $option['value']] = (string) $option['label'];
             }
             foreach ($rows as &$row) {
-                $row['branch_id'] = $branches[(string) ($row['branch_id'] ?? '')] ?? '';
-                $row['status'] = (int) ($row['status'] ?? 0) === 1 ? 'Publishing' : 'Unpublish';
+                $row['branch_name'] = $branches[(string) ($row['branch_id'] ?? '')] ?? '';
             }
             unset($row);
         }
-        $actions = $this->actionLink('/master/' . rawurlencode($type) . '/new', 'Add New');
-        $heading = MasterCatalog::heading($type, false);
+        $records = LegacyViewRenderer::escapedRecords($rows);
+        $recordVariables = [
+            'branch' => 'branchRecords', 'branchtype' => 'branchRecords', 'statustype' => 'statusRecords',
+            'producttype' => 'productstypeRecords', 'book' => 'bookRecords', 'brand' => 'brandRecords',
+            'condition' => 'conditionRecords', 'estimateprice' => 'estimatepriceRecords',
+            'fixed' => 'fixedRecords', 'provider' => 'providerRecords',
+        ];
+        $template = $type === 'book' ? 'master/books' : 'master/' . $type;
+        $content = (new LegacyViewRenderer())->render($template, [
+            $recordVariables[$type] => $records,
+            'searchText' => esc($search),
+            'BranchID' => service('session')->get('BranchID'),
+        ]);
 
-        return $this->layout($heading['title'], view('master_list', [
-            'definition' => $definition,
-            'rows'       => $rows,
-            'search'     => $search,
-            'type'       => $type,
-            'page'       => $page,
-            'caption'    => $heading['caption'],
-        ]), ['actions' => $actions, 'subtitle' => $heading['subtitle']]);
+        return $this->layout(self::LEGACY_PAGE_TITLES[$type]['list'], $content, ['contentOwnsWrapper' => true]);
     }
 
     /**
@@ -284,16 +284,43 @@ final class MasterData extends BaseController
             }
         }
 
-        $heading = MasterCatalog::heading($type, true);
+        $templateType = $type === 'book' ? 'book' : $type;
+        $template = 'master/' . ($row === null ? 'add_' : 'edit_') . $templateType;
+        $variables = [];
+        if (isset($fkOptions['branch_type'])) {
+            $variables['branchtypes'] = LegacyViewRenderer::escapedRecords(array_map(
+                static fn (array $option): array => [
+                    'branch_type_id' => $option['value'], 'branch_type_details' => $option['label'],
+                ],
+                $fkOptions['branch_type'],
+            ));
+        }
+        if (isset($fkOptions['branch_id'])) {
+            $variables['branch_list'] = LegacyViewRenderer::escapedRecords(array_map(
+                static fn (array $option): array => [
+                    'branch_id' => $option['value'], 'branch_name' => $option['label'],
+                ],
+                $fkOptions['branch_id'],
+            ));
+        }
+        if ($row !== null) {
+            $infoVariables = [
+                'branch' => 'BranchInfo', 'branchtype' => 'BranchInfo', 'statustype' => 'SatusInfo',
+                'producttype' => 'TypeInfo', 'book' => 'bookInfo', 'brand' => 'BrandInfo',
+                'condition' => 'ConditionInfo', 'estimateprice' => 'EstimatepriceInfo',
+                'fixed' => 'FixedInfo', 'provider' => 'ProviderInfo',
+            ];
+            $variables[$infoVariables[$type]] = $row === []
+                ? []
+                : LegacyViewRenderer::escapedRecords([$row]);
+        }
+        $content = (new LegacyViewRenderer())->render($template, $variables);
 
-        return $this->layout($heading['title'], view('master_form', [
-            'definition' => $definition,
-            'row'        => $row,
-            'type'       => $type,
-            'fkOptions'  => $fkOptions,
-            'caption'    => $heading['caption'],
-            'legacyAction' => self::LEGACY_FORMS[$type][$row === null ? 'create' : 'update'],
-        ]), ['subtitle' => $heading['subtitle']]);
+        return $this->layout(
+            self::LEGACY_PAGE_TITLES[$type][$row === null ? 'add' : 'edit'],
+            $content,
+            ['contentOwnsWrapper' => true],
+        );
     }
 
     private function positiveInteger(mixed $value): ?int

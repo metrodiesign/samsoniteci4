@@ -5,6 +5,14 @@ use CodeIgniter\Router\RouteCollection;
 /** @var RouteCollection $routes */
 $routes->get('/', 'Tracking::form');
 $routes->get('health', 'Health::index');
+$routes->get('condition/pageNotFound', 'ParityErrors::legacyPageNotFound', ['filter' => 'web-auth']);
+if (defined('ENVIRONMENT') && ENVIRONMENT === 'parity' && getenv('PARITY_SESSION_BOOTSTRAP') === 'enabled') {
+    $routes->get('__parity/session/admin', 'ParitySession::admin');
+    $routes->get('__parity/session/branch', 'ParitySession::branch');
+}
+if (defined('ENVIRONMENT') && ENVIRONMENT === 'parity' && getenv('PARITY_ERROR_TRIGGER') === 'enabled') {
+    $routes->get('__parity/error/(:segment)', 'ParityErrors::trigger/$1');
+}
 $routes->get('track', 'Tracking::form');
 $routes->get('track_th', 'Tracking::formThai');
 $routes->post('track/trackstatus', 'Tracking::legacyEnglish');
@@ -92,7 +100,7 @@ $routes->get('editBackgroundOld', 'Background::legacyEditMissing', ['filter' => 
 $routes->get('editBackgroundOld/(:num)', 'Background::legacyEdit/$1', ['filter' => 'web-auth']);
 $routes->post('editBackground', 'Background::legacyUpdate', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('userListing', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'userListing', 'Users::listing', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->post('users', 'Users::create', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->get('users/email-exists', 'Users::emailExists', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('users/new', 'Users::add', ['filter' => ['web-auth', 'authorized:write']]);
@@ -101,9 +109,13 @@ $routes->post('users/(:num)', 'Users::update/$1', ['filter' => ['web-auth', 'aut
 $routes->post('users/(:num)/delete', 'Users::delete/$1', ['filter' => ['web-auth', 'authorized:delete', 'csrf']]);
 $routes->get('users/(:num)/history', 'Users::history/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('users/(:num)/history/(:num)', 'Users::history/$1/$2', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('login-history', 'Users::ownHistory', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'login-history', 'Users::ownHistory', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('api/branches', 'Users::branches', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('api/books', 'Users::books', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->get('user/get_list_branch/(:num)', 'Users::legacyBranches/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->get('user/get_list_book/(:num)', 'Users::legacyBooks/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->get('user/get_list_branchshort/(:num)', 'Users::legacyBranchShort/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->get('user/get_list_bookshort/(:num)', 'Users::legacyBookShort/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('change-password', 'Users::passwordForm', ['filter' => 'web-auth']);
 $routes->post('change-password', 'Users::changePassword', ['filter' => ['web-auth', 'csrf']]);
 $routes->get('loadChangePass', 'Users::legacyPasswordForm', ['filter' => 'web-auth']);
@@ -138,13 +150,13 @@ $routes->post('ExcelPriceConfirm', 'Imports::legacyConfirm/price', ['filter' => 
 $routes->get('UploadneworderexcelListing', 'Imports::listing/new-order', ['filter' => ['web-auth', 'authorized:write']]);
 $routes->post('ExcelNewOrderDataAdd', 'Imports::preview/new-order', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
 $routes->post('ExcelNewOrderConfirm', 'Imports::legacyConfirm/new-order', ['filter' => ['web-auth', 'authorized:write', 'csrf']]);
-$routes->get('ordersListing', 'Order::listing/1', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('sendorderListing', 'Order::listing/1', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('TrackingListing', 'Order::listing/2', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
-$routes->get('TrackingcloseListing', 'Order::listing/3', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
-$routes->get('TrackingreturnListing', 'Order::listing/4', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('TrackingcompleteListing', 'Order::listing/5', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->get('TrackingCompletedListing', 'Order::listing/7', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'ordersListing', 'Order::listing/1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'sendorderListing', 'Order::listing/1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'TrackingListing', 'Order::listing/2', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
+$routes->match(['GET', 'POST'], 'TrackingcloseListing', 'Order::listing/3', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
+$routes->match(['GET', 'POST'], 'TrackingreturnListing', 'Order::listing/4', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'TrackingcompleteListing', 'Order::listing/5', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'TrackingCompletedListing', 'Order::listing/7', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->get('login', 'Login::index');
 $routes->post('loginMe', 'Login::authenticate', ['filter' => 'csrf']);
 $routes->get('logout', 'Login::logoutBridge', ['filter' => 'web-auth']);
@@ -163,10 +175,14 @@ $routes->match(['GET', 'POST'], 'reportsummary/(:num)/(:num)', 'Reports::summary
 $routes->get('reports/(:segment)/export', 'Reports::export/$1', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_ratings', 'Reports::legacyExport/ratings', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_ratings/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/ratings/$1/$2/$3', ['filter' => 'web-auth:redirect']);
+$routes->get('user/excel_ratings/(:segment)/(:segment)', 'Reports::legacyExport/ratings/$1/$2', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_in_progress_job', 'Reports::legacyExport/in-progress', ['filter' => 'web-auth:redirect']);
 $routes->get('user/excel_in_progress_job/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/in-progress/$1/$2/$3', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report', 'Reports::legacyExport/tracking', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/tracking/$1/$2/$3/$4/$5', ['filter' => 'web-auth:redirect']);
+$routes->get('order/excel_report', 'Reports::legacyExport/tracking', ['filter' => 'web-auth:redirect']);
+$routes->get('order/excel_report/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/tracking/$1/$2/$3/$4/$5', ['filter' => 'web-auth:redirect']);
+$routes->get('order/excel_report/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/tracking/$1/$2/$3/$4', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report_sum', 'Reports::legacyExport/summary', ['filter' => 'web-auth:redirect']);
 $routes->get('Order/excel_report_sum/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)/(:segment)', 'Reports::legacyExport/summary/$1/$2/$3/$4/$5/$6/$7', ['filter' => 'web-auth:redirect']);
 

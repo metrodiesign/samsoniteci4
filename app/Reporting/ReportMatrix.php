@@ -66,6 +66,104 @@ final class ReportMatrix
         return array_values($groups);
     }
 
+    /**
+     * Build the row-oriented ratings export used by CI3's excel_report_rating.php.
+     *
+     * @return array<string, array<string, mixed>> keyed by tracking ID
+     */
+    public function ratingExport(mixed $startDate, mixed $endDate, ?int $branchId): array
+    {
+        [$start, $end] = $this->dates($startDate, $endDate);
+        $query = $this->db->table('rating')
+            ->select('rating_id, add_id, rating, order_id, branchID, cdate');
+        $this->scope($query, 'cdate', 'branchID', $start, $end, $branchId);
+
+        $ratings = [];
+        $trackIds = [];
+        foreach ($query->orderBy('rating_id', 'DESC')->get()->getResultArray() as $row) {
+            $trackId = is_scalar($row['order_id'] ?? null) ? (string) $row['order_id'] : '';
+            if ($trackId === '') {
+                continue;
+            }
+            if (! isset($ratings[$trackId])) {
+                $trackIds[] = $trackId;
+                $ratings[$trackId] = [
+                    'trackId' => $trackId,
+                    'branchId' => (int) ($row['branchID'] ?? 0),
+                    'ratingScore' => [],
+                    'ratingComment' => '',
+                    'orderId' => '',
+                    'branchName' => '',
+                    'fullName' => '',
+                    'telephone' => '',
+                    'email' => '',
+                    'requestAt' => '',
+                    'repairAt' => '',
+                    'completeAt' => '',
+                    'totalDay' => '',
+                    'CMGTotalDay' => '',
+                ];
+            }
+            $question = (int) ($row['add_id'] ?? 0);
+            if ($question >= 1 && $question <= 8) {
+                $ratings[$trackId]['ratingScore'][$question] = (int) ($row['rating'] ?? 0);
+            }
+        }
+        if ($trackIds === []) {
+            return [];
+        }
+
+        foreach ($this->db->table('rating_comment')
+            ->select('id, track_id, comment')
+            ->whereIn('track_id', $trackIds)
+            ->orderBy('id', 'DESC')->get()->getResultArray() as $comment) {
+            $trackId = is_scalar($comment['track_id'] ?? null) ? (string) $comment['track_id'] : '';
+            if (isset($ratings[$trackId])) {
+                $ratings[$trackId]['ratingComment'] = is_scalar($comment['comment'] ?? null)
+                    ? (string) $comment['comment']
+                    : '';
+            }
+        }
+
+        $orders = $this->db->table('request_order orders')
+            ->select('orders.trackID, orders.orderID, orders.customerFullname, orders.customerTel, '
+                . 'orders.customerEmail, orders.requestDate, orders.date_repair, orders.date_repair_waranty, '
+                . 'orders.date_complete, orders.waranty_cmg, branches.branch_name')
+            ->join('branch branches', 'branches.branch_id = orders.branchID', 'left')
+            ->whereIn('orders.trackID', $trackIds)
+            ->where('orders.action_status', 7)
+            ->orderBy('orders.requestDate', 'ASC')->get()->getResultArray();
+        foreach ($orders as $order) {
+            $trackId = is_scalar($order['trackID'] ?? null) ? (string) $order['trackID'] : '';
+            if (! isset($ratings[$trackId])) {
+                continue;
+            }
+            $complete = self::exportDate($order['date_complete'] ?? null);
+            $request = self::exportDate($order['requestDate'] ?? null);
+            $repairColumn = (string) ($order['waranty_cmg'] ?? '') === 'OUT'
+                ? ($order['date_repair_waranty'] ?? null)
+                : ($order['date_repair'] ?? null);
+            $cmgDays = in_array((string) ($order['waranty_cmg'] ?? ''), ['OUT', 'UNW', ''], true)
+                ? self::exportDateDiff($complete, self::exportDate($repairColumn))
+                : 0;
+            $ratings[$trackId] = [
+                ...$ratings[$trackId],
+                'orderId' => is_scalar($order['orderID'] ?? null) ? (string) $order['orderID'] : '',
+                'branchName' => is_scalar($order['branch_name'] ?? null) ? (string) $order['branch_name'] : '',
+                'fullName' => trim(str_replace('  ', ' ', is_scalar($order['customerFullname'] ?? null) ? (string) $order['customerFullname'] : '')),
+                'telephone' => is_scalar($order['customerTel'] ?? null) ? (string) $order['customerTel'] : '',
+                'email' => is_scalar($order['customerEmail'] ?? null) ? (string) $order['customerEmail'] : '',
+                'requestAt' => self::exportDisplayDate($request),
+                'repairAt' => self::exportDisplayDate(self::exportDate($order['date_repair'] ?? null)),
+                'completeAt' => self::exportDisplayDate($complete),
+                'totalDay' => self::exportDateDiff($complete, $request),
+                'CMGTotalDay' => $cmgDays,
+            ];
+        }
+
+        return $ratings;
+    }
+
     /** @return list<array<string, int|string|null>> */
     public function matrix(string $kind, mixed $startDate, mixed $endDate, ?int $branchId, mixed $rawStatusIds = null): array
     {
@@ -395,6 +493,32 @@ final class ReportMatrix
         }
 
         return $query->get()->getResultArray();
+    }
+
+    private static function exportDate(mixed $value): ?DateTimeImmutable
+    {
+        if (! is_scalar($value) || (string) $value === '') {
+            return null;
+        }
+        try {
+            return new DateTimeImmutable((string) $value);
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    private static function exportDisplayDate(?DateTimeImmutable $date): string
+    {
+        return $date?->format('d/m/Y') ?? '';
+    }
+
+    private static function exportDateDiff(?DateTimeImmutable $end, ?DateTimeImmutable $start): int|string
+    {
+        if ($end === null || $start === null) {
+            return '';
+        }
+
+        return (int) $start->setTime(0, 0)->diff($end->setTime(0, 0))->format('%r%a');
     }
 
     /** @return array{?DateTimeImmutable, ?DateTimeImmutable} */

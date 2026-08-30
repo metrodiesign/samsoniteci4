@@ -18,7 +18,7 @@ final class ImportWorkflow
     {
     }
 
-    /** @return array{batch_id: string, accepted: int, rejected: int, rows: list<array{row: int, accepted: bool, error: string|null}>} */
+    /** @return array{batch_id: string, accepted: int, rejected: int, rows: list<array{row: int, accepted: bool, error: string|null, data: array<string, mixed>}>} */
     public function preview(string $kind, int $ownerId, ?int $ownerBranch, string $path, string $extension): array
     {
         if (! in_array($kind, ['status', 'price', 'new-order'], true) || $ownerId < 1 || $ownerBranch === null) {
@@ -41,7 +41,11 @@ final class ImportWorkflow
             [$valid, $error, $normalized] = $this->validateRow($kind, $ownerBranch, $payload);
             $accepted += $valid ? 1 : 0;
             $rowNumber = $offset + 2;
-            $preview[] = ['row' => $rowNumber, 'accepted' => $valid, 'error' => $error];
+            $preview[] = [
+                'row' => $rowNumber, 'accepted' => $valid, 'error' => $error,
+                'data' => [...$payload, '_track_id' => $normalized['track_id'] ?? '',
+                    '_action_status' => $normalized['original_action_status'] ?? 0],
+            ];
             $stored[] = [
                 'batch_id' => $batchId, 'row_number' => $rowNumber, 'accepted' => $valid ? 1 : 0,
                 'error_code' => $error,

@@ -31,18 +31,12 @@ final class Reports extends BaseController
         'in-progress' => ['In Progress Report', 'In Progress Report', ''],
     ];
 
-    /** @var array<string, string> */
-    private const MATRIX_ROUTES = [
-        'ratings' => 'user/report', 'jobs-by-day' => 'user/report_job_byday',
-        'pending' => 'user/report_job_pending', 'pending-total' => 'user/report_total_job_pending',
-        'in-progress-average' => 'user/report_in_progress_average', 'in-progress' => 'user/report_in_progress_job',
-    ];
-
     public function matrix(string $kind): string|ResponseInterface
     {
         if (! isset(self::HEADINGS[$kind])) {
             throw PageNotFoundException::forPageNotFound();
         }
+        $requestedBranch = $this->input('branch_id');
         $branchId = $this->branchScope();
         $start = $this->input('start_date');
         $end = $this->input('end_date');
@@ -67,22 +61,88 @@ final class Reports extends BaseController
                 (new ReportMatrix($db))->ratingComments($start, $end, $branchId),
                 $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
                 $branchId,
+                $requestedBranch === '0' ? 0 : $branchId,
                 $start,
                 $end,
             );
         } else {
-            $html = $this->layout($title, view('reports/matrix', [
-                'caption' => $caption,
-                'sectionTitle' => $sectionTitle,
-                'ratingComments' => [],
-                'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray() : [],
-                'branchId' => $branchId, 'endDate' => $end, 'error' => $error,
-                'heading' => $title, 'kind' => $kind, 'rows' => $rows,
-                'formAction' => self::MATRIX_ROUTES[$kind],
-                'showBranchSelect' => service('session')->get('BranchID') === null,
-                'startDate' => $start,
-                'statusId' => $statusId, 'statuses' => $kind === 'in-progress' ? $this->statusOptions() : [],
-            ]));
+            $templates = [
+                'jobs-by-day' => 'report_job_byday',
+                'pending' => 'report_job_pending',
+                'pending-total' => 'report_total_job_pending',
+                'in-progress-average' => 'report_in_progress_average',
+                'in-progress' => 'report_in_progress_job',
+            ];
+            $branches = $role === 1
+                ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray()
+                : [];
+            $legacyRows = $rows;
+            if ($kind === 'jobs-by-day') {
+                $legacyRows = array_map(static fn (array $row): array => [
+                    'brand_details' => $row['Brand'] ?? '', 'type_details' => $row['Product Type'] ?? '',
+                    'result_a' => self::integerReportValue($row['0'] ?? 0),
+                    'result_b' => self::integerReportValue($row['1-7'] ?? 0),
+                    'result_c' => self::integerReportValue($row['8-30'] ?? 0),
+                    'result_d' => self::integerReportValue($row['31-45'] ?? 0),
+                    'result_e' => self::integerReportValue($row['> 45'] ?? 0),
+                ], array_filter($rows, static fn (array $row): bool =>
+                    ($row['Brand'] ?? '') !== 'TOTAL'
+                    && ! str_starts_with((string) ($row['Brand'] ?? ''), 'Over all repair time')
+                ));
+            } elseif ($kind === 'pending') {
+                $legacyRows = array_map(static fn (array $row): array => [
+                    'trackID' => $row['trackID'] ?? '', 'status_name_th' => $row['Status'] ?? '',
+                    'orderIDShow' => $row['เล่มที่/เลขที่'] ?? '', 'customerTel' => $row['เบอร์มือถือลูกค้า'] ?? '',
+                    'date_repair' => self::legacyDate((string) ($row['วันที่ส่งซ่อม'] ?? '')),
+                    'Total' => $row['Day'] ?? 0,
+                ], array_filter($rows, static fn (array $row): bool => ($row['No'] ?? '') !== 'TOTAL'));
+            } elseif ($kind === 'in-progress') {
+                $legacyRows = array_map(static fn (array $row): array => [
+                    'status_name_th' => $row['Status'] ?? '', 'trackID' => $row['Track Id'] ?? '',
+                    'orderIDShow' => $row['Order Id'] ?? '', 'branchID' => $row['Branch Name'] ?? '',
+                    'customerFullname' => $row['Full Name'] ?? '', 'customerTel' => $row['Tel'] ?? '',
+                    'requestDate' => self::legacyDate((string) ($row['Request Date'] ?? '')),
+                    'Total' => $row['Day'] ?? 0,
+                ], $rows);
+            }
+            $statusOptions = array_map(static fn (array $status): array => [
+                'status_id' => $status['status_id'], 'status_name' => $status['status_name'],
+            ], $this->statusOptions());
+            $records = LegacyViewRenderer::escapedRecords($legacyRows);
+            $variables = [
+                'GroupID' => service('session')->get('GroupID'), 'BranchID' => service('session')->get('BranchID'),
+                'BID' => $branchId ?? 0, 'start_date' => esc($start), 'end_date' => esc($end),
+                'branch_type_image' => '',
+                'brans_list' => LegacyViewRenderer::escapedRecords($branches),
+                'branchs' => array_column($branches, 'branch_name', 'branch_name'),
+                'statuses' => LegacyViewRenderer::escapedRecords($statusOptions),
+                'status_id' => $statusId, 'selected_status_id' => $statusId === '' ? [] : explode(',', $statusId),
+                'resultInfo' => $kind === 'jobs-by-day' ? $legacyRows : $rows,
+                'pending_list' => $records, 'jobs' => $records,
+            ];
+            if ($kind === 'pending-total') {
+                $variables['pending_Neworder'] = $rows[0]['Job'] ?? 0;
+                $variables['pending_Complete'] = $rows[1]['Job'] ?? 0;
+                $variables['pending_Aftercomplete'] = $rows[2]['Job'] ?? 0;
+            } elseif ($kind === 'in-progress-average') {
+                $variables['newStatusTotals'] = $rows[0]['Job'] ?? 0;
+                $variables['requestStatusTotals'] = $rows[1]['Job'] ?? 0;
+                $variables['repairStatusTotals'] = $rows[2]['Job'] ?? 0;
+                $variables['closeStatusTotals'] = $rows[3]['Job'] ?? 0;
+                $variables['returnStatusTotals'] = $rows[4]['Job'] ?? 0;
+            }
+            foreach (['Total_result_a', 'Total_result_b', 'Total_result_c', 'Total_result_d', 'Total_result_e',
+                'pTotal_result_a', 'pTotal_result_b', 'pTotal_result_c', 'pTotal_result_d', 'p_total_result',
+                'Total_p_result', 'Total_p_result_a', 'Total_p_result_b', 'Total_p_result_c', 'Total_p_result_d',
+                'Total_p_result_e', 'pending_Aftercomplete', 'pending_Complete', 'pending_Neworder',
+                'closeStatusTotals', 'newStatusTotals', 'repairStatusTotals', 'requestStatusTotals',
+                'returnStatusTotals', 'temp_Total_result'] as $total) {
+                if (! array_key_exists($total, $variables)) {
+                    $variables[$total] = 0;
+                }
+            }
+            $content = (new LegacyViewRenderer())->render($templates[$kind], $variables);
+            $html = $this->layout('Tracking : Dashboard', $content, ['contentOwnsWrapper' => true]);
         }
 
         return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
@@ -93,7 +153,15 @@ final class Reports extends BaseController
      * @param list<array<string, mixed>> $comments
      * @param list<array<string, mixed>> $branches
      */
-    private function ratingReport(array $rows, array $comments, array $branches, ?int $branchId, string $start, string $end): string
+    private function ratingReport(
+        array $rows,
+        array $comments,
+        array $branches,
+        ?int $branchId,
+        ?int $exportBranchId,
+        string $start,
+        string $end,
+    ): string
     {
         $groups = [];
         foreach ($rows as $row) {
@@ -114,7 +182,7 @@ final class Reports extends BaseController
         $renderer = new LegacyViewRenderer(oldValues: ['branch_id' => (string) $selectedBranch]);
         $content = $renderer->render('report', [
             'GroupID' => $groupId,
-            'BranchID' => $selectedBranch,
+            'BranchID' => $exportBranchId ?? '',
             'start_date' => esc($start),
             'end_date' => esc($end),
             'ratings' => ['group' => $groups],
@@ -152,33 +220,47 @@ final class Reports extends BaseController
         }
         $db = db_connect();
         $role = (int) service('session')->get('role');
-        $html = $this->layout('Report Summary', view('reports/summary', [
-            'branches' => $role === 1 ? $db->table('branch')->select('branch_id, branch_name')->orderBy('branch_id')->get()->getResultArray() : [],
-            'branchId' => $branchId,
-            'brands' => $db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray(),
-            'error' => $error,
-            'filters' => array_map(static fn (mixed $value): string => is_string($value) ? $value : '', $filters),
-            'page' => (int) $page,
-            'rows' => $rows,
-            'statuses' => $db->table('statusaction')->select('status_id, status_name')->orderBy('status_id')->get()->getResultArray(),
-            'types' => $db->table('type')->select('type_id, type_details')->orderBy('type_id')->get()->getResultArray(),
-        ]));
+        $content = (new LegacyViewRenderer())->render('tracking/reportsummary', [
+            'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
+            'Brand' => LegacyViewRenderer::escapedRecords($db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray()),
+            'Producttype' => LegacyViewRenderer::escapedRecords($db->table('type')->select('type_id, type_details')->orderBy('type_id')->get()->getResultArray()),
+            'Condition' => LegacyViewRenderer::escapedRecords($db->table('condition')->select('condition_id, condition_details')->orderBy('condition_id')->get()->getResultArray()),
+            'Estimateprice' => LegacyViewRenderer::escapedRecords($db->table('estimateprice')->select('estimateprice_id, estimateprice_details')->orderBy('estimateprice_id')->get()->getResultArray()),
+            'Fixed' => LegacyViewRenderer::escapedRecords($db->table('fixed')->select('fixed_id, fixed_details')->orderBy('fixed_id')->get()->getResultArray()),
+            'Status' => LegacyViewRenderer::escapedRecords($db->table('statusaction')->select('status_id, status_name, status_name_th')->orderBy('status_id')->get()->getResultArray()),
+            'searchText' => esc($filters['searchText']), 'sdate' => esc($filters['sdate']), 'edate' => esc($filters['edate']),
+            'status_id' => esc($filters['status_id']), 'companny_id' => $branchId ?? '', 'page' => (int) $page,
+        ]);
+        $html = $this->layout('Tracking : Listing', $content, ['contentOwnsWrapper' => true]);
 
         return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
     }
 
     public function export(string $type): ResponseInterface
     {
+        return $this->buildExport($type);
+    }
+
+    private function buildExport(
+        string $type,
+        bool $legacyRatings = false,
+        ?string $routeBranchId = null,
+        ?string $routeStartDate = null,
+        ?string $routeEndDate = null,
+        bool $detailedRatings = false,
+    ): ResponseInterface {
         if (! in_array($type, ['tracking', 'summary', 'ratings', 'in-progress'], true)) {
             throw PageNotFoundException::forPageNotFound();
         }
-        $branchId = $this->branchScope();
+        $branchId = $this->branchScope($routeBranchId);
         // Parity with CI3 report export, which raises memory_limit before pulling rows
         // (application/controllers/Order.php:446 / User.php:444 -> ini_set('memory_limit', '8048M')).
         if (ini_set('memory_limit', '8048M') === false) {
             log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
         }
-        [$defaultStart, $defaultEnd] = $this->defaultRange($this->input('start_date'), $this->input('end_date'));
+        [$defaultStart, $defaultEnd] = $routeStartDate !== null || $routeEndDate !== null
+            ? $this->defaultRange(self::legacyRouteDate($routeStartDate), self::legacyRouteDate($routeEndDate))
+            : $this->defaultRange($this->input('start_date'), $this->input('end_date'));
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
@@ -190,23 +272,116 @@ final class Reports extends BaseController
                     $this->input('searchText'), $this->input('sdate'), $this->input('edate'),
                     $this->input('status_id'), $this->input('detailBrandId'), $this->input('detailTypeId'), $branchId,
                 ),
-                'ratings' => $matrix->ratings($defaultStart, $defaultEnd, $branchId),
+                'ratings' => $detailedRatings
+                    ? $matrix->ratingExport($defaultStart, $defaultEnd, $branchId)
+                    : $matrix->ratings($defaultStart, $defaultEnd, $branchId),
                 'in-progress' => $matrix->matrix('in-progress', $defaultStart, $defaultEnd, $branchId, $this->normalizeStatusIds($this->input('status_id'))),
             };
         } catch (InvalidArgumentException $exception) {
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
         }
 
+        $template = [
+            'ratings' => 'excel_report_rating',
+            'in-progress' => 'excel_in_progress_job',
+            'tracking' => 'tracking/excel_report_tracking',
+            'summary' => 'tracking/excel_reportsummary',
+        ][$type];
+        if ($type === 'in-progress') {
+            $rows = array_map(static fn (array $row): array => [
+                'status_name_th' => $row['Status'] ?? '', 'trackID' => $row['Track Id'] ?? '',
+                'orderIDShow' => $row['Order Id'] ?? '', 'branchID' => $row['Branch Name'] ?? '',
+                'customerFullname' => $row['Full Name'] ?? '', 'customerTel' => $row['Tel'] ?? '',
+                'requestDate' => self::legacyDate((string) ($row['Request Date'] ?? '')),
+                'Total' => $row['Day'] ?? 0,
+            ], $rows);
+        }
+        $records = $type === 'ratings' && $detailedRatings ? [] : LegacyViewRenderer::escapedRecords($rows);
+        $body = (new LegacyViewRenderer())->render($template, [
+            'ratings' => $type === 'ratings' && $detailedRatings ? self::escapedRatingExport($rows) : [],
+            'jobs' => $records, 'OrdersRecords' => $records,
+            'branchs' => $type === 'in-progress' ? array_column($rows, 'branchID', 'branchID') : [],
+            'Condition' => [], 'Estimateprice' => [], 'Fixed' => [],
+            'BranchID' => service('session')->get('BranchID'),
+        ]);
+
+        if ($type === 'ratings' && $legacyRatings) {
+            $filename = 'Rating_Report_' . time() . '.xls';
+
+            return $this->response
+                ->setHeader('Content-Type', 'application/x-msexcel; name="' . $filename . '"')
+                ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
+                ->setHeader('Pragma', 'no-cache')
+                ->setHeader('X-Content-Type-Options', 'nosniff')
+                ->setBody($body);
+        }
+
         return $this->response
             ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=UTF-8')
             ->setHeader('Content-Disposition', 'attachment; filename="' . $type . '-report.xls"')
             ->setHeader('X-Content-Type-Options', 'nosniff')
-            ->setBody(view('reports/export', ['rows' => $rows, 'title' => self::HEADINGS[$type][0] ?? ucfirst($type)]));
+            ->setBody($body);
     }
 
-    public function legacyExport(string $type, string ...$ignored): ResponseInterface
+    public function legacyExport(string $type, string ...$segments): ResponseInterface
     {
-        return $this->export($type);
+        if ($type === 'ratings' && count($segments) === 3) {
+            return $this->buildExport(
+                $type,
+                legacyRatings: true,
+                routeBranchId: $segments[0],
+                routeStartDate: $segments[1],
+                routeEndDate: $segments[2],
+                detailedRatings: true,
+            );
+        }
+        if ($type === 'ratings' && ! in_array(count($segments), [0, 2], true)) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $this->buildExport($type, $type === 'ratings');
+    }
+
+    /** @param array<string, array<string, mixed>> $rows @return array<string, array<string, mixed>> */
+    private static function escapedRatingExport(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            foreach ($row as $field => $value) {
+                if (is_string($value)) {
+                    $row[$field] = esc($value);
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private static function legacyRouteDate(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $date = DateTimeImmutable::createFromFormat('!d-m-Y', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            || $date->format('d-m-Y') !== $value) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return $date->format('d/m/Y');
+    }
+
+    private static function integerReportValue(mixed $value): int
+    {
+        return (int) str_replace(',', '', is_scalar($value) ? (string) $value : '0');
+    }
+
+    private static function legacyDate(string $value): string
+    {
+        $date = DateTimeImmutable::createFromFormat('!d/m/Y', $value);
+
+        return $date === false ? $value : $date->format('Y-m-d');
     }
 
     /**
@@ -242,7 +417,7 @@ final class Reports extends BaseController
     private function statusOptions(): array
     {
         return db_connect()->table('statusaction')
-            ->select('status_id, status_name_th')
+            ->select('status_id, status_name, status_name_th')
             ->where('status_id >=', 1)->where('status_id <=', 5)
             ->orderBy('status_id', 'ASC')->get()->getResultArray();
     }

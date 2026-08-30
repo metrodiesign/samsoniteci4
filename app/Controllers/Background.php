@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Master\BackgroundStore;
 use App\Master\BranchTypeImageStore;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -127,19 +128,29 @@ final class Background extends BaseController
 
     private function renderList(): string
     {
-        return $this->layout('background Web EN Edit', view('background_list', ['caption' => 'background web List'] + [
-            'rows' => (new BackgroundStore(db_connect()))->all(),
-        ]), ['subtitle' => '']);
+        $content = (new LegacyViewRenderer())->render('master/background_web', [
+            'BackgroundRecords' => LegacyViewRenderer::escapedRecords((new BackgroundStore(db_connect()))->all()),
+        ]);
+
+        return $this->layout('Tracking : background web', $content, ['contentOwnsWrapper' => true]);
     }
 
     /** @param array<string, mixed>|null $row */
     private function renderForm(?array $row): string
     {
-        return $this->layout('background Web EN Management', view('background_form', [
-            'fields' => BackgroundStore::FIELDS,
-            'row' => $row,
-            'legacyAction' => $row === null ? 'addBackground' : 'editBackground',
-        ]), ['subtitle' => 'Add / Edit Branch']);
+        $variables = $row === null ? [] : [
+            'BackgroundInfo' => LegacyViewRenderer::escapedRecords([$row]),
+        ];
+        $content = (new LegacyViewRenderer())->render(
+            $row === null ? 'master/add_background' : 'master/edit_background',
+            $variables,
+        );
+
+        return $this->layout(
+            $row === null ? 'Tracking : Add New Background' : 'CodeInsect : Edit Background',
+            $content,
+            ['contentOwnsWrapper' => true],
+        );
     }
 
     private function save(?int $id, string $successPath): RedirectResponse|ResponseInterface

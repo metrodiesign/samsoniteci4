@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Imports\ImportWorkflow;
+use App\Presentation\LegacyViewRenderer;
 use CodeIgniter\HTTP\ResponseInterface;
 use InvalidArgumentException;
 use Throwable;
@@ -13,20 +14,20 @@ final class Imports extends BaseController
     {
         $this->assertKind($kind);
 
-        $titles = [
-            'status' => 'Upload Management',
-            'price' => 'Upload Price Management',
-            'new-order' => 'Upload NEW REQUEST Management',
-        ];
-        $legacy = [
-            'status' => ['preview' => 'ExcelDataAdd', 'confirm' => 'ExcelConfirm'],
-            'price' => ['preview' => 'ExcelPriceDataAdd', 'confirm' => 'ExcelPriceConfirm'],
-            'new-order' => ['preview' => 'ExcelNewOrderDataAdd', 'confirm' => 'ExcelNewOrderConfirm'],
+        $template = [
+            'status' => 'tracking/upload_excel',
+            'price' => 'tracking/upload_price_excel',
+            'new-order' => 'tracking/upload_neworder_excel',
+        ][$kind];
+        $content = (new LegacyViewRenderer())->render($template);
+
+        $pageTitle = [
+            'status' => 'Tracking : branch Listing',
+            'price' => 'Tracking : branch Listing',
+            'new-order' => 'Tracking : Upload NEW REQUEST Listing',
         ][$kind];
 
-        return $this->layout($titles[$kind] ?? ('Import ' . $kind), view('import_form', [
-            'kind' => $kind, 'caption' => 'Enter Upload Details', 'legacyPreview' => $legacy['preview'],
-        ]), ['subtitle' => 'Add / Upload']);
+        return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
     }
 
     public function preview(string $kind): string|ResponseInterface
@@ -61,9 +62,41 @@ final class Imports extends BaseController
             return $this->response->setStatusCode(503)->setJSON(['error' => 'import_unavailable']);
         }
 
-        $legacyConfirm = ['status' => 'ExcelConfirm', 'price' => 'ExcelPriceConfirm', 'new-order' => 'ExcelNewOrderConfirm'][$kind];
+        $template = [
+            'status' => 'tracking/show_upload_excel',
+            'price' => 'tracking/show_price_upload_excel',
+            'new-order' => 'tracking/show_upload_neworder_excel',
+        ][$kind];
+        $legacyRows = array_map(static function (array $row) use ($kind): array {
+            $data = $row['data'];
+            $trackId = is_scalar($data['_track_id'] ?? null) ? (string) $data['_track_id'] : '';
 
-        return $this->layout('Import preview', view('import_preview', ['kind' => $kind, 'legacyConfirm' => $legacyConfirm, ...$preview]));
+            return [
+                'trackID' => $trackId,
+                'action_status' => is_numeric($data['_action_status'] ?? null) ? (int) $data['_action_status'] : 0,
+                'countorderID' => $trackId === '' ? 0 : 1,
+                'temp_waranty_cmg' => $kind === 'price' ? '' : ($data['warranty'] ?? ''),
+                'temp_orderIDShow' => $data['order_id'] ?? '', 'temp_Status' => $data['status'] ?? '',
+                'temp_Update' => $data['updated_at'] ?? '', 'temp_recripUpdate' => $data['repair_started_at'] ?? '',
+                'temp_number_cmg' => $data['number_cmg'] ?? '',
+                'temp_customerFullname' => $data['customer_name'] ?? '', 'temp_customerTel' => $data['telephone'] ?? '',
+                'temp_orderID' => str_replace('/', '', is_scalar($data['order_id'] ?? null) ? (string) $data['order_id'] : ''),
+                'temp_pic' => $data['repair_price'] ?? '',
+                'branch_name' => '', 'customerFullname' => '', 'requestDate' => '', 'status_name_th' => '',
+                'preview_row' => $row['row'], 'preview_error' => $row['error'],
+            ];
+        }, $preview['rows']);
+        $content = (new LegacyViewRenderer())->render(
+            $template,
+            ['sheet_data' => LegacyViewRenderer::escapedRecords($legacyRows)],
+            ['batch_id' => $preview['batch_id']],
+        );
+
+        $pageTitle = $kind === 'new-order'
+            ? 'Tracking : Upload New REQUEST'
+            : 'Tracking : branch Listing';
+
+        return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
     }
 
     public function confirm(string $kind, string $batchId): ResponseInterface

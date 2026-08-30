@@ -391,6 +391,39 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertSame(1, $this->ratingTotals($onlyEnd->getBody())[7]);
     }
 
+    public function testLegacyRatingsExportUsesSingleSlashCallerAndCi3Headers(): void
+    {
+        $page = $this->withSession($this->session(1, 1, null))->post('/user/report', [
+            'csrf_test_name' => service('security')->getHash(),
+            'branch_id' => '0', 'start_date' => '30/07/2026', 'end_date' => '30/08/2026',
+        ]);
+        $page->assertStatus(200);
+        self::assertStringContainsString(
+            '/user/excel_ratings/0/30-07-2026/30-08-2026',
+            $page->getBody(),
+        );
+        self::assertStringNotContainsString('/user/excel_ratings//', $page->getBody());
+
+        $export = $this->withSession($this->session(1, 1, null))
+            ->get('/user/excel_ratings/0/30-07-2026/30-08-2026');
+        $export->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/\Aapplication\/x-msexcel; name="Rating_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Type'),
+        );
+        self::assertMatchesRegularExpression(
+            '/\Ainline; filename="Rating_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Disposition'),
+        );
+        self::assertSame('no-cache', $export->response()->getHeaderLine('Pragma'));
+        $export->assertSee('Rating Report');
+        $export->assertSee('WP00C-REPORT-001');
+        self::assertStringContainsString(
+            '<table x:str',
+            $export->getBody(),
+        );
+    }
+
     public function testRatingsExportUsesDefaultedRangeNotWholeTable(): void
     {
         // AC-3: export with no dates yields the same one-month window as the page, not the whole table.
@@ -451,7 +484,13 @@ final class ReportHttpTest extends CIUnitTestCase
         foreach (['/user/excel_ratings', '/user/excel_in_progress_job', '/Order/excel_report', '/Order/excel_report_sum'] as $path) {
             $legacy = $this->withSession($this->session(2, 2, 1))->get($path);
             $legacy->assertStatus(200);
-            self::assertStringContainsString('attachment; filename=', $legacy->response()->getHeaderLine('Content-Disposition'));
+            $expectedDisposition = $path === '/user/excel_ratings'
+                ? 'inline; filename="Rating_Report_'
+                : 'attachment; filename=';
+            self::assertStringContainsString(
+                $expectedDisposition,
+                $legacy->response()->getHeaderLine('Content-Disposition'),
+            );
         }
     }
 
