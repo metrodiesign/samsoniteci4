@@ -7,6 +7,7 @@ use App\Orders\OrderStore;
 use App\Orders\OrderCreationWorkflow;
 use App\Orders\OrderImageStore;
 use App\Orders\OrderTransitionWorkflow;
+use App\Presentation\LegacyViewRenderer;
 use App\Reporting\TrackingReport;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\Files\UploadedFile;
@@ -69,15 +70,22 @@ final class Order extends BaseController
         ],
     ];
 
-    public function listing(?string $fixedStatus = null): string|ResponseInterface
+    public function listing(?string $fixedStatus = null, ?string $legacyOffset = null): string|ResponseInterface
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
-        $rawPage = $this->request->getGet('page');
-        $rawSearch = $this->request->getGet('search');
-        $rawSdate = $this->request->getGet('sdate');
-        $rawEdate = $this->request->getGet('edate');
+        $rawPage = $legacyOffset === null ? $this->request->getGet('page') : null;
+        $isPost = $this->request->getMethod() === 'POST';
+        $rawSearch = $isPost ? $this->request->getPost('searchText') : $this->request->getGet('search');
+        $rawSdate = $isPost ? $this->request->getPost('sdate') : $this->request->getGet('sdate');
+        $rawEdate = $isPost ? $this->request->getPost('edate') : $this->request->getGet('edate');
         $status = is_string($rawStatus) && preg_match('/\A[1-8]\z/D', $rawStatus) === 1 ? (int) $rawStatus : null;
-        $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+        if ($legacyOffset !== null) {
+            $page = preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $legacyOffset) === 1
+                ? intdiv((int) $legacyOffset, 50) + 1
+                : 0;
+        } else {
+            $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+        }
         $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
         $sdate = is_string($rawSdate) ? $rawSdate : '';
         $edate = is_string($rawEdate) ? $rawEdate : '';
@@ -102,33 +110,95 @@ final class Order extends BaseController
         ));
 
         $profile = self::PROFILES[$status] ?? null;
-
-        return $this->layout((self::PROFILES[$status]['title'] ?? ('Orders — status ' . $status)), view('orders', [
-            'rows' => $rows,
-            'status' => $status, 'page' => $page, 'search' => $search, 'sdate' => $sdate, 'edate' => $edate,
-            'profile' => $profile,
-            'statusUpdates' => $statusUpdates,
-            'canWrite' => in_array((int) $session->get('role'), [1, 2], true),
-            'providers' => $db->table('provider')
-                ->select('provider_id, provider_name')
-                ->orderBy('provider_id', 'ASC')
-                ->get()
-                ->getResultArray(),
-        ]), [
-            'subtitle' => $profile['subtitle'] ?? '',
-            'actions' => ($profile['add_new'] ?? false) ? $this->actionLink('/orders/new', 'Add New') : '',
+        $path = strtolower(trim($this->request->getUri()->getPath(), '/'));
+        $template = match ($status) {
+            1 => $path === 'sendorderlisting' ? 'tracking/send_order' : 'tracking/order',
+            2 => 'tracking/tracking',
+            3 => 'tracking/trackingrepair',
+            4 => 'tracking/trackingreturn',
+            5 => 'tracking/trackingclose',
+            7 => 'tracking/tracking_completed',
+            default => null,
+        };
+        if ($template === null) {
+            return $this->layout('Orders — status ' . $status, view('orders', [
+                'rows' => $rows, 'status' => $status, 'page' => $page, 'search' => $search,
+                'sdate' => $sdate, 'edate' => $edate, 'profile' => null,
+                'statusUpdates' => $statusUpdates, 'canWrite' => false, 'providers' => [],
+            ]));
+        }
+        if ($profile === null) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+        $statuses = $db->table('statusaction')
+            ->select('status_id, status_name')
+            ->orderBy('status_id', 'ASC')
+            ->get()
+            ->getResultArray();
+        $providers = $db->table('provider')
+            ->select('provider_id, provider_name')
+            ->orderBy('provider_id', 'ASC')
+            ->get()
+            ->getResultArray();
+        $paginationBase = match ($status) {
+            1 => $path === 'sendorderlisting' ? 'sendorderListing' : 'ordersListing',
+            2 => 'TrackingListing', 3 => 'TrackingcloseListing', 4 => 'TrackingreturnListing',
+            5 => 'TrackingcompleteListing', 7 => 'TrackingCompletedListing',
+        };
+        $pagination = $this->legacyListingPagination(
+            $paginationBase,
+            $page,
+            $store->listingCount($status, $branchId, $search, $sdate, $edate),
+        );
+        $content = (new LegacyViewRenderer(pagination: $pagination, statusUpdates: $statusUpdates))->render($template, [
+            'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
+            'Status' => LegacyViewRenderer::escapedRecords($statuses),
+            'Providers' => LegacyViewRenderer::escapedRecords($providers),
+            'searchText' => esc($search), 'sdate' => esc($sdate), 'edate' => esc($edate),
+            'page' => ($page - 1) * 50, 'BranchID' => $session->get('BranchID'),
         ]);
+
+        $pageTitle = $status === 1 && $path === 'orderslisting'
+            ? 'Tracking : branch Listing'
+            : 'Tracking : Listing';
+
+        return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
+    }
+
+    private function legacyListingPagination(string $base, int $page, int $total): string
+    {
+        $pages = (int) ceil($total / 50);
+        if ($pages <= 1) {
+            return '';
+        }
+        $links = '<nav><ul class="pagination">';
+        for ($number = 1; $number <= $pages; $number++) {
+            if ($number === $page) {
+                $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
+            } else {
+                $links .= '<li><a href="' . base_url($base . '/' . (($number - 1) * 50)) . '">' . $number . '</a></li>';
+            }
+        }
+
+        return $links . '</ul></nav>';
     }
 
     public function newOrder(): string
     {
-        return $this->layout('NEW REQUEST REPAIR', view('order_new', [
-            'submissionId' => bin2hex(random_bytes(16)),
-            'caption' => 'Enter Request order Details',
-            // CI3 Order::add() prefills the readonly field with date('d/m/Y'); the stored value
-            // still comes from the server clock inside OrderCreationWorkflow.
+        $catalogues = $this->legacyOrderCatalogues($this->formMasterData());
+        $session = service('session');
+        $branchId = $session->get('BranchID');
+        $branchShort = $branchId === null ? '' : db_connect()->table('branch')->select('default_suffix')
+            ->where('branch_id', (int) $branchId)->get()->getRow('default_suffix');
+        $content = (new LegacyViewRenderer())->render('tracking/add_order', [
+            ...$catalogues,
             'requestDate' => date('d/m/Y'),
-        ] + $this->formMasterData()), profile: 'order');
+            'times' => bin2hex(random_bytes(16)),
+            'branchshort' => is_scalar($branchShort) ? (string) $branchShort : '',
+            'BranchID' => $branchId,
+        ]);
+
+        return $this->layout('Tracking : Add New Order', $content, ['contentOwnsWrapper' => true], 'order');
     }
 
     public function create(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
@@ -239,18 +309,28 @@ final class Order extends BaseController
 
         // CI3 keeps the queue-1 title on the edit screen too; the track id already shows in the
         // REQUEST ID / TRACK ID fields.
-        return $this->layout('NEW REQUEST REPAIR', view('order_edit', [
-            'row' => $row,
-            'submissionId' => bin2hex(random_bytes(16)),
-            'caption' => 'Enter Request order Details',
-        ] + $this->formMasterData()), profile: 'order');
+        $content = (new LegacyViewRenderer())->render('tracking/edit_order', [
+            ...$this->legacyOrderCatalogues($this->formMasterData()),
+            'OrdersInfo' => LegacyViewRenderer::escapedRecords([$row]),
+            'times' => bin2hex(random_bytes(16)),
+            'BranchID' => service('session')->get('BranchID'),
+        ]);
+
+        return $this->layout('Tracking : Edit Branch', $content, ['contentOwnsWrapper' => true], 'order');
     }
 
     public function print(string $rawId): string
     {
         $row = $this->accessibleOrder($rawId);
 
-        return view('order_print', ['row' => $row] + $this->printMasterData($row));
+        $master = $this->formMasterData();
+        $print = $this->printMasterData($row);
+
+        return (new LegacyViewRenderer())->render('tracking/print_order', [
+            ...$this->legacyOrderCatalogues($master),
+            'OrdersInfo' => LegacyViewRenderer::escapedRecords([$row]),
+            'BranchName' => esc($print['branchName']),
+        ]);
     }
 
     public function image(string $name): ResponseInterface
@@ -325,6 +405,20 @@ final class Order extends BaseController
      *
      * @return array<string, list<array<string, mixed>>>
      */
+    /** @param array<string, list<array<string, mixed>>> $catalogues @return array<string, mixed> */
+    private function legacyOrderCatalogues(array $catalogues): array
+    {
+        return [
+            'Producttype' => LegacyViewRenderer::escapedRecords($catalogues['types'] ?? []),
+            'Brand' => LegacyViewRenderer::escapedRecords($catalogues['brands'] ?? []),
+            'Condition' => LegacyViewRenderer::escapedRecords($catalogues['conditions'] ?? []),
+            'Estimateprice' => LegacyViewRenderer::escapedRecords($catalogues['estimatePrices'] ?? []),
+            'Fixed' => LegacyViewRenderer::escapedRecords($catalogues['fixedItems'] ?? []),
+            'branchtypes' => LegacyViewRenderer::escapedRecords($catalogues['branchTypes'] ?? []),
+            'Branchs' => LegacyViewRenderer::escapedRecords($catalogues['branches'] ?? []),
+        ];
+    }
+
     private function formMasterData(): array
     {
         $db = db_connect();
@@ -497,6 +591,8 @@ final class Order extends BaseController
         $searchText   = $this->request->getPost('searchText');
         $startDate    = $this->request->getPost('sdate');
         $endDate      = $this->request->getPost('edate');
+        $startDate = is_string($startDate) && $startDate !== '' ? $startDate : date('d/m/Y');
+        $endDate = is_string($endDate) && $endDate !== '' ? $endDate : date('d/m/Y');
         $rawStatusIds = $this->request->getPost('status_id');
         $error        = null;
 
@@ -507,19 +603,21 @@ final class Order extends BaseController
             $error = $exception->getMessage();
         }
 
-        $content = view('reports/tracking', [
-            'branchId'         => $branchId,
-            'error'            => $error,
-            'page'             => (int) $pageNumber,
-            'rows'             => $rows,
-            'searchText'       => is_string($searchText) ? $searchText : '',
-            'selectedStatusIds' => $report->parseStatusIds($rawStatusIds),
-            'showCmg'          => service('session')->get('BranchID') === null,
-            'startDate'        => is_string($startDate) ? $startDate : '',
-            'endDate'          => is_string($endDate) ? $endDate : '',
-            'statuses'         => $report->statuses(),
+        $selected = $report->parseStatusIds($rawStatusIds);
+        $content = (new LegacyViewRenderer())->render('tracking/report_tracking_test', [
+            'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
+            'Status' => LegacyViewRenderer::escapedRecords($report->statuses()),
+            'page' => (int) $pageNumber,
+            'searchText' => esc(is_string($searchText) ? $searchText : ''),
+            'selected_status_id' => $selected,
+            'data_status_id' => implode(',', $selected),
+            'companny_id' => $branchId ?? '',
+            'sdate' => esc($startDate),
+            'edate' => esc($endDate),
+            'BranchID' => $branchId,
+            'GroupID' => $session->get('GroupID'),
         ]);
-        $html = $this->layout('Report Tracking', $content);
+        $html = $this->layout('Tracking : Listing', $content, ['contentOwnsWrapper' => true]);
 
         return $error === null
             ? $html

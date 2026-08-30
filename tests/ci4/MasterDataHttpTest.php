@@ -419,8 +419,8 @@ final class MasterDataHttpTest extends CIUnitTestCase
 
     public function testBranchListingColumnContractHoldsForZeroOneAndFiftyRows(): void
     {
-        $empty = html_entity_decode((string) $this->getAsAdmin('/master/branch')->getBody());
-        self::assertStringContainsString('<th>Branch type</th>', $empty);
+        $empty = html_entity_decode((string) $this->getAsAdmin('/master/branch')->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertMatchesRegularExpression('/<th>\s*Branch type\s*<\/th>/s', $empty);
         self::assertStringNotContainsString('<th>Detail</th>', $empty);
         self::assertStringNotContainsString('<th>book order</th>', $empty);
 
@@ -450,7 +450,8 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $this->db->table('branch')->insertBatch($rows);
         $fifty = (string) $this->getAsAdmin('/master/branch?page=1')->getBody();
         self::assertStringContainsString('BRANCH-50', $fifty);
-        self::assertStringContainsString('/branchListing/2', $fifty);
+        // CI3 uses 50 rows per page; exactly 50 rows do not create a second page.
+        self::assertStringNotContainsString('/branchListing/50', $fifty);
         self::assertStringNotContainsString('HIDDEN-DETAIL-', $fifty);
         self::assertStringNotContainsString('HIDDEN-ORDER-', $fifty);
     }
@@ -498,7 +499,9 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $page1->assertSee('PAGE BRANCH');
         $page1->assertSee('Publishing');
         $page1->assertDontSee('Number Limit');
-        $page1->assertSee('/bookListing/2');
+        // CI3 Book::bookListing configures userListing/ as the paginator base; its view
+        // intercepts the click and posts the offset to bookListing/.
+        self::assertStringContainsString('/userListing/50', (string) $page1->getBody());
 
         $page2 = $this->getAsAdmin('/master/book?page=2');
         $page2->assertStatus(200);
@@ -514,7 +517,7 @@ final class MasterDataHttpTest extends CIUnitTestCase
         $searched->assertStatus(200);
         $searched->assertSee('value="p"');
         $searched->assertSee('name="searchText" value="p"');
-        $searched->assertSee('/bookListing/2');
+        self::assertStringContainsString('/userListing/50', (string) $searched->getBody());
         $searched->assertDontSee('Number Limit');
 
         $missing = $this->getAsAdmin('/master/book?search=absent');
@@ -553,11 +556,12 @@ final class MasterDataHttpTest extends CIUnitTestCase
             $listing = $this->getAsAdmin('/master/branchtype');
             $listing->assertStatus(200);
             $listing->assertSee('<img');
-            $listing->assertSee('/branch-type-image/' . $name);
+            // CI3 master/branchtype.php concatenates base_url() with the stored filename.
+            self::assertStringContainsString('src="http://example.invalid/' . $name . '"', (string) $listing->getBody());
 
             $edit = $this->getAsAdmin('/master/branchtype/7');
             $edit->assertStatus(200);
-            $edit->assertSee('/branch-type-image/' . $name);
+            self::assertStringContainsString('src="http://example.invalid/' . $name . '"', (string) $edit->getBody());
 
             $served = $this->get('/branch-type-image/' . $name);
             $served->assertStatus(200);
@@ -574,13 +578,20 @@ final class MasterDataHttpTest extends CIUnitTestCase
     {
         // AC-1 + AC-5: every listing renders a table + an Add New link to /master/<type>/new,
         // and carries no entity <form method="post"> (the reset button only exists in that form).
+        $ci3AddRoutes = [
+            'branch' => 'BranchNew', 'branchtype' => 'add_new_branchtype',
+            'statustype' => 'add_new_statustype', 'producttype' => 'add_new_producttype',
+            'book' => 'BookNew', 'brand' => 'add_new_brand', 'condition' => 'add_new_condition',
+            'estimateprice' => 'add_new_estimateprice', 'fixed' => 'add_new_fixed',
+            'provider' => 'add_new_provider',
+        ];
         foreach (array_keys($this->definitions()) as $type) {
             $listing = $this->getAsAdmin('/master/' . $type);
             $listing->assertStatus(200);
             $body = (string) $listing->getBody();
             self::assertStringContainsString('<table', $body, $type);
             self::assertStringContainsString('Add New', $body, $type);
-            self::assertStringContainsString('/master/' . $type . '/new', $body, $type);
+            self::assertStringContainsString('http://example.invalid/' . $ci3AddRoutes[$type], $body, $type);
             // AC-1: no entity create form on the listing. The entity form posts to /master/<type>
             // exactly (create) or /master/<type>/<id> (update); the search form is GET and the
             // per-row delete forms post to /master/<type>/<id>/delete, so neither matches this
@@ -650,9 +661,10 @@ final class MasterDataHttpTest extends CIUnitTestCase
             $add = $this->getAsAdmin('/master/' . $type . '/new');
             $add->assertStatus(200);
             $body = (string) $add->getBody();
-            self::assertStringContainsString('<form role="form" method="post"', $body, $type);
+            self::assertStringContainsString('<form role="form"', $body, $type);
+            self::assertStringContainsString('method="post"', $body, $type);
             self::assertStringContainsString('type="reset"', $body, $type);
-            self::assertStringContainsString('>Submit</button>', $body, $type);
+            self::assertMatchesRegularExpression('/<input[^>]*type="submit"[^>]*value="Submit"/s', $body, $type);
             self::assertStringNotContainsString('<table', $body, $type);
         }
     }
@@ -666,9 +678,15 @@ final class MasterDataHttpTest extends CIUnitTestCase
             $edit = $this->getAsAdmin('/master/' . $type . '/' . $id);
             $edit->assertStatus(200);
             $body = (string) $edit->getBody();
-            self::assertStringContainsString('<form role="form" method="post"', $body, $type);
+            self::assertStringContainsString('<form role="form"', $body, $type);
+            self::assertStringContainsString('method="post"', $body, $type);
             self::assertStringContainsString('type="reset"', $body, $type);
-            self::assertStringContainsString('name="' . $def['pk'] . '" value="' . $id . '"', $body, $type);
+            $sourcePrimaryKey = $type === 'book' ? 'bookId' : $def['pk'];
+            self::assertMatchesRegularExpression(
+                '/<input(?=[^>]*\bname="' . preg_quote($sourcePrimaryKey, '/') . '")(?=[^>]*\bvalue="' . $id . '")[^>]*>/s',
+                $body,
+                $type,
+            );
             // The label column value is prefilled on the edit form.
             self::assertStringContainsString('value="ZQX"', $body, $type);
             self::assertStringNotContainsString('<table', $body, $type);

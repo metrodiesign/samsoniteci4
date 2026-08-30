@@ -2,7 +2,7 @@
 
 namespace App\Controllers;
 
-use App\Master\BackgroundStore;
+use App\Presentation\LegacyViewRenderer;
 use App\Tracking\TrackingLookup;
 
 final class Tracking extends BaseController
@@ -78,32 +78,25 @@ final class Tracking extends BaseController
     /** @param list<array{status_id: int, status_name: string, status_name_th: string, occurred_at: string}> $timeline */
     private function render(string $language, string $trackId, array $timeline, bool $notFound): string
     {
-        $suffix      = $language === 'th' ? '_th' : '';
-        $backgrounds = new BackgroundStore(db_connect());
-
-        if ($timeline === []) {
-            $content = view('tracking_form', [
-                'language'              => $language,
-                'trackId'               => $trackId,
-                'notFound'              => $notFound,
-                'backgroundImage'       => $backgrounds->published('image_track_laptop' . $suffix),
-                'backgroundImageMobile' => $backgrounds->published('image_track_mobile' . $suffix),
-            ]);
+        $renderer = new LegacyViewRenderer(oldValues: ['searchText' => $trackId]);
+        if ($timeline === [] && ! $notFound) {
+            $content = $renderer->render($language . '/track');
         } else {
-            $content = view('tracking_result', [
-                'language'              => $language,
-                'trackId'               => $trackId,
-                'timeline'              => $timeline,
-                'backgroundImage'       => $backgrounds->published('image_trackstatus_laptop' . $suffix),
-                'backgroundImageMobile' => $backgrounds->published('image_trackstatus_mobile' . $suffix),
+            $records = array_map(static fn (array $event): array => [
+                'action_id' => null,
+                'update_id' => null,
+                'status_name' => $event['status_name'],
+                'status_name_th' => $event['status_name_th'],
+                's_date' => $event['occurred_at'],
+            ], $timeline);
+            $content = $renderer->render($language . '/trackstatus', [
+                'OrdersRecords' => LegacyViewRenderer::escapedRecords($records),
             ]);
         }
 
         return view('layout_public', [
-            'title'                 => 'Samsonite',
-            'language'              => $language,
-            'legacyTrackingProfile' => true,
-            'content'               => $content,
+            'language' => $language,
+            'content' => $content,
         ]);
     }
 }

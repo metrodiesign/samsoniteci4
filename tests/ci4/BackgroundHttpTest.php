@@ -42,7 +42,7 @@ final class BackgroundHttpTest extends CIUnitTestCase
         file_put_contents($this->png, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
     }
 
-    public function testBackgroundCrudDrivesPublicPageAndRejectsAlternateExtension(): void
+    public function testBackgroundCrudKeepsPrivateImageRouteWhileCi3PublicViewOwnsItsMarkup(): void
     {
         $this->withSession($this->session())->get('/backgrounds')->assertStatus(200);
 
@@ -56,7 +56,8 @@ final class BackgroundHttpTest extends CIUnitTestCase
 
         $public = $this->get('/track');
         $public->assertStatus(200);
-        $public->assertSee('/background-image/' . $filename);
+        // Pinned CI3 en/track.php does not inject the CMS filename into the form markup.
+        $public->assertDontSee('/background-image/' . $filename);
         $image = $this->get('/background-image/' . $filename);
         $image->assertStatus(200);
         self::assertSame('image/png', $image->response()->getHeaderLine('Content-Type'));
@@ -100,7 +101,7 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $edit->assertDontSee('image track aptop (en)'); // add-mode text absent in edit mode
     }
 
-    public function testBackgroundListingUsesCi3TableSafePreviewsAndOnlyEditAction(): void
+    public function testBackgroundListingUsesCi3TableRawPreviewPathsAndOnlyEditAction(): void
     {
         $track = str_repeat('a', 32) . '.png';
         $trackStatus = str_repeat('b', 32) . '.png';
@@ -129,18 +130,18 @@ final class BackgroundHttpTest extends CIUnitTestCase
             ],
         ]);
         $body = (string) $this->withSession($this->session())->get('/backgrounds')->getBody();
-        $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
-
-        self::assertStringContainsString(
-            '<th>ฺId</th><th>Track</th><th>Tracks tatus</th><th>Contact</th><th>Status</th><th class="text-center">Actions</th>',
+        $decoded = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertMatchesRegularExpression(
+            '/<th>\s*ฺId\s*<\/th>\s*<th>\s*Track\s*<\/th>\s*<th>\s*Tracks tatus\s*<\/th>'
+                . '\s*<th>\s*Contact\s*<\/th>\s*<th>\s*Status\s*<\/th>\s*<th class="text-center">\s*Actions\s*<\/th>/s',
             $decoded,
         );
-        self::assertStringContainsString('/background-image/' . $track, $body);
-        self::assertStringContainsString('/background-image/' . $trackStatus, $body);
-        self::assertStringContainsString('/background-image/' . $contact, $body);
-        self::assertSame(3, substr_count($body, '/background-image/'));
-        self::assertStringNotContainsString('../../secret.png', $body);
-        self::assertStringNotContainsString('not-a-contract-name.png', $body);
+        // Pinned CI3 master/background_web.php concatenates base_url() with the stored value.
+        self::assertStringContainsString('src="http://example.invalid/' . $track . '"', $body);
+        self::assertStringContainsString('src="http://example.invalid/' . $trackStatus . '"', $body);
+        self::assertStringContainsString('src="http://example.invalid/' . $contact . '"', $body);
+        self::assertStringContainsString('src="http://example.invalid/../../secret.png"', $body);
+        self::assertStringContainsString('src="http://example.invalid/not-a-contract-name.png"', $body);
         self::assertSame(1, substr_count($body, '<td>Publishing</td>'));
         self::assertSame(2, substr_count($body, '<td>Unpublish</td>'));
         self::assertStringContainsString('href="http://example.invalid/editBackgroundOld/1" title="Edit"', $body);
@@ -159,9 +160,10 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $this->db->table('tbl_background_web')->insert(['status' => 1, 'date' => '2026-08-25 00:00:00']);
         $id = (int) $this->db->insertID();
         $body = (string) $this->withSession($this->session())->get('/backgrounds/new')->getBody();
-        self::assertStringContainsString('<form role="form" method="post" action="http://example.invalid/addBackground"', $body);
+        self::assertStringContainsString('<form role="form" id="addbackground" action="http://example.invalid/addBackground"', $body);
+        self::assertStringContainsString('method="post"', $body);
         self::assertStringContainsString('type="reset"', $body);
-        self::assertStringContainsString('>Submit</button>', $body);
+        self::assertStringContainsString('type="submit" class="btn btn-primary" value="Submit"', $body);
         self::assertStringNotContainsString('href="/backgrounds/' . $id . '"', $body); // no row link
     }
 
@@ -174,9 +176,10 @@ final class BackgroundHttpTest extends CIUnitTestCase
         $this->db->table('tbl_background_web')->insert(['status' => 1, 'date' => '2026-08-25 00:00:00']);
         $other = (int) $this->db->insertID();
         $body = (string) $this->withSession($this->session())->get('/backgrounds/' . $edited)->getBody();
-        self::assertStringContainsString('<form role="form" method="post" action="http://example.invalid/editBackground"', $body);
+        self::assertStringContainsString('<form role="form" id="editBackground" action="http://example.invalid/editBackground"', $body);
+        self::assertStringContainsString('method="post"', $body);
         self::assertStringContainsString('type="reset"', $body);
-        self::assertStringContainsString('name="background_id" value="' . $edited . '"', $body);
+        self::assertStringContainsString('value="' . $edited . '" name="background_id" id="background_id"', $body);
         self::assertStringNotContainsString('href="/backgrounds/' . $other . '"', $body); // no other-row link
     }
 

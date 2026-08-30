@@ -1,0 +1,15 @@
+services:
+  web:
+    environment:
+      PARITY_SESSION_BOOTSTRAP: enabled
+    volumes:
+      - ../samsoniteci3:/var/www/html
+      - ./web/config/database.php:/var/www/html/application/config/database.php:ro
+      - ./web/config/config.dev.php:/var/www/html/application/config/config.php:ro
+      - ./scripts/runtime-comparison/ci3-hooks.php:/var/www/html/application/config/hooks.php:ro
+      - ./scripts/runtime-comparison/ci3-hooks:/var/www/html/application/hooks:ro
+
+  ci4:
+    environment:
+      CI_ENVIRONMENT: parity
+      PARITY_SESSION_BOOTSTRAP: enabled

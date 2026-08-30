@@ -287,7 +287,9 @@ final class MenuHttpTest extends CIUnitTestCase
             $entrypoints = array_merge($entrypoints, $this->runtimeAssetReferences($document));
         }
         $closure = $this->runtimeAssetClosure($entrypoints);
-        self::assertCount(119, $closure);
+        // Strict CI3 shells contribute 117 reachable runtime assets; the two former
+        // CI4-native public background entrypoints are no longer emitted.
+        self::assertCount(117, $closure);
 
         $trackedFiles = [
             ...$closure,
@@ -582,8 +584,10 @@ final class MenuHttpTest extends CIUnitTestCase
         // AC-5: pin the $branchId the controller forwards into visible(). Mutating
         // BaseController::layout() to pass null instead of $branchId lets these two hidden
         // order queues render for a branch user, turning both assertions red.
-        $branch->assertDontSee('TRANSPORTING');
+        // CI3 includes/header.php hides the third and fourth ORDER rows for branch users.
+        $branch->assertSee('TRANSPORTING');
         $branch->assertDontSee('STATUS REPAIR');
+        $branch->assertDontSee('DELIVERED');
     }
 
     public function testBranchUserHidesOrderQueuesAndRenumbersContinuously(): void
@@ -707,10 +711,14 @@ final class MenuHttpTest extends CIUnitTestCase
         ]);
         $escapedId = (int) $this->db->insertID();
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
-        $decoded = (string) preg_replace('/\s+/', ' ', html_entity_decode($body));
+        $decoded = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
         self::assertStringContainsString('<table class="table table-hover">', $body);
-        self::assertStringContainsString('<th>ฺId</th><th>Menu Group name</th><th class="text-center">Actions</th>', $decoded);
+        self::assertMatchesRegularExpression(
+            '/<th>\s*ฺId\s*<\/th>\s*<th>\s*Menu Group name\s*<\/th>'
+                . '\s*<th class="text-center">\s*Actions\s*<\/th>/s',
+            $decoded,
+        );
         self::assertStringContainsString('<td>1</td>', $body);
         self::assertStringContainsString('<td>CENTRAL</td>', $body);
         self::assertStringContainsString('href="http://example.invalid/editMunuOld/1" title="Edit"', $body);
@@ -729,10 +737,13 @@ final class MenuHttpTest extends CIUnitTestCase
     {
         // AC-2: /menu/new renders a blank entity form with a reset button and no menu listing.
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu/new')->getBody();
-        self::assertMatchesRegularExpression('#<form role="form" id="addMenu" method="post" action="[^"]*/addMenu">#', $body);
+        self::assertMatchesRegularExpression(
+            '#<form role="form" id="addMenu" action="[^"]*/addMenu" method="post">#',
+            $body,
+        );
         self::assertStringContainsString('type="reset"', $body);
         self::assertStringContainsString('type="submit" class="btn btn-primary" value="Submit"', $body);
-        self::assertStringContainsString('name="name" value=""', $body); // blank form
+        self::assertMatchesRegularExpression('/<input(?=[^>]*name="name")(?=[^>]*value="")[^>]*>/', $body); // blank form
         // No listing: the BRANCH row link (id 4) only appears on the list page.
         self::assertStringNotContainsString('href="/menu/4"', $body);
     }
@@ -748,7 +759,7 @@ final class MenuHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('value="3" checked', $body);     // group 3 not selected
         self::assertStringContainsString('type="reset"', $body);
         self::assertMatchesRegularExpression('#action="[^"]*/editMenu"#', $body);
-        self::assertStringContainsString('name="group_id" id="group_id" value="1"', $body);
+        self::assertStringContainsString('value="1" name="group_id" id="group_id"', $body);
         self::assertStringNotContainsString('href="/menu/4"', $body);        // no other-row link
     }
 
@@ -779,7 +790,8 @@ final class MenuHttpTest extends CIUnitTestCase
     {
         // AC-7: the search/filter form on the listing must not carry a reset button.
         $body = (string) $this->withSession($this->session($this->adminId, 1, 1, null))->get('/menu')->getBody();
-        self::assertStringContainsString('<form action="http://example.invalid/menuListing" method="post" id="searchList">', $body);
+        // Pinned CI3 master/menus.php carries the historical bookListing action.
+        self::assertStringContainsString('<form action="http://example.invalid/bookListing" method="POST" id="searchList">', $body);
         self::assertStringContainsString('name="searchText"', $body);
         self::assertStringNotContainsString('type="reset"', $body);
     }
@@ -792,7 +804,7 @@ final class MenuHttpTest extends CIUnitTestCase
 
         $edit = (string) $this->withSession($session)->get('/editMunuOld/1')->getBody();
         self::assertStringContainsString('action="http://example.invalid/editMenu"', $edit);
-        self::assertStringContainsString('name="group_id" id="group_id" value="1"', $edit);
+        self::assertStringContainsString('value="1" name="group_id" id="group_id"', $edit);
 
         $this->postAsAdmin('/addMenu', ['name' => 'LEGACY MENU', 'group_type' => ['1']])
             ->assertRedirectTo('/addNewMenu');

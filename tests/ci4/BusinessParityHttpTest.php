@@ -227,7 +227,10 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         );
 
         $all = $this->withSession($this->sessionFor($adminId, 1, null))
-            ->get('/Order/ReportTrackingListing');
+            ->post('/Order/ReportTrackingListing', [
+                'csrf_test_name' => service('security')->getHash(),
+                'sdate' => '01/08/2026', 'edate' => '31/08/2026',
+            ]);
         $all->assertStatus(200);
         $all->assertSeeInOrder([
             'WP00C-TRACK-009',
@@ -257,9 +260,11 @@ final class BusinessParityHttpTest extends CIUnitTestCase
             ->post('/Order/ReportTrackingListing', [
                 'csrf_test_name' => service('security')->getHash(),
                 'status_id'      => '2) OR 1=1 --',
+                'sdate'          => '01/08/2026',
+                'edate'          => '31/08/2026',
             ]);
         $malformed->assertStatus(200);
-        $malformed->assertSee('WP00C-TRACK-007');
+        self::assertStringContainsString('WP00C-TRACK-007', (string) $malformed->getBody());
     }
 
     public function testTrackingReportEnforcesSessionBranch(): void
@@ -272,10 +277,13 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         );
 
         $ownBranch = $this->withSession($this->sessionFor($operatorId, 2, 1))
-            ->get('/Order/ReportTrackingListing');
+            ->post('/Order/ReportTrackingListing', [
+                'csrf_test_name' => service('security')->getHash(),
+                'sdate' => '01/08/2026', 'edate' => '31/08/2026',
+            ]);
         $ownBranch->assertStatus(200);
-        $ownBranch->assertSee('WP00C-TRACK-003');
-        $ownBranch->assertDontSee('WP00C-TRACK-007');
+        self::assertStringContainsString('WP00C-TRACK-003', (string) $ownBranch->getBody());
+        self::assertStringNotContainsString('WP00C-TRACK-007', (string) $ownBranch->getBody());
 
     }
 
@@ -305,11 +313,15 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         );
 
         $numbered = $this->withSession($this->sessionFor($adminId, 1, null))
-            ->get('/Order/ReportTrackingListing/25/2');
+            ->post('/Order/ReportTrackingListing/25/2', [
+                'csrf_test_name' => service('security')->getHash(),
+                'sdate' => '01/08/2026', 'edate' => '31/08/2026',
+            ]);
         $numbered->assertStatus(200);
-        self::assertStringContainsString('data-row-number="26"', $numbered->getBody());
-        $numbered->assertSee('WP00C-TRACK-009');
-        $numbered->assertDontSee('WP00C-TRACK-003');
+        // CI3 report_tracking_test.php renders the route offset as the first table cell.
+        self::assertMatchesRegularExpression('/<tr>\s*<td>\s*26\s*<\/td>/s', (string) $numbered->getBody());
+        self::assertStringContainsString('WP00C-TRACK-009', (string) $numbered->getBody());
+        self::assertStringNotContainsString('WP00C-TRACK-003', (string) $numbered->getBody());
     }
 
     public function testTrackingDayCountPreservesNegativeChronology(): void
@@ -334,7 +346,8 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         );
 
         self::assertCount(1, $rows);
-        self::assertSame(-1, $rows[0]['TotalDay']);
+        // Report query returns raw MySQL DATEDIFF; the CI3 view applies its own +1 for display.
+        self::assertSame(-2, $rows[0]['TotalDay']);
     }
 
     public function testTrackingDayCountTruncatesTimeOfDayLikeDatediff(): void
@@ -348,8 +361,8 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         $rows = (new TrackingReport($this->db))->rows('WP00C-TRACK-011', null, null, null, 1);
 
         self::assertCount(1, $rows);
-        // requestDate -> date_complete: DATEDIFF 1 + inclusive 1 = 2.
-        self::assertSame(2, $rows[0]['TotalDay']);
+        // requestDate -> date_complete: raw MySQL DATEDIFF is 1; the CI3 view displays +1.
+        self::assertSame(1, $rows[0]['TotalDay']);
         // date_repair_waranty -> date_complete (OUT): DATEDIFF 1, no inclusive = 1.
         self::assertSame(1, $rows[0]['CMGTotalDay']);
     }

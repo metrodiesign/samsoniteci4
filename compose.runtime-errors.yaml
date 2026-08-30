@@ -1,0 +1,10 @@
+services:
+  web:
+    environment:
+      PARITY_ERROR_TRIGGER: enabled
+    volumes:
+      - ./scripts/runtime-comparison/ci3-parity-errors.php:/var/www/html/application/controllers/Parityerrors.php:ro
+
+  ci4:
+    environment:
+      PARITY_ERROR_TRIGGER: enabled

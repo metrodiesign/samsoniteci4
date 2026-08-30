@@ -275,9 +275,11 @@ CREATE TABLE status_log (
 INSERT INTO request_order VALUES
   (1, 'WP00C-CONCURRENT-A', 'SYNTHETIC A', 'a@example.invalid'),
   (2, 'WP00C-CONCURRENT-B', 'SYNTHETIC B', 'b@example.invalid');
+-- Pinned CI3 en/trackstatus.php renders status_name_th, so keep the isolation
+-- discriminator in both language columns.
 INSERT INTO statusaction VALUES
-  (1, 'TRACK-A-ONLY', 'ติดตามเอเท่านั้น'),
-  (2, 'TRACK-B-ONLY', 'ติดตามบีเท่านั้น');
+  (1, 'TRACK-A-ONLY', 'TRACK-A-ONLY'),
+  (2, 'TRACK-B-ONLY', 'TRACK-B-ONLY');
 INSERT INTO status_log VALUES
   (1, 'WP00C-CONCURRENT-A', 1, NULL, '2026-08-01 00:00:00'),
   (2, 'WP00C-CONCURRENT-B', 2, NULL, '2026-08-02 00:00:00');

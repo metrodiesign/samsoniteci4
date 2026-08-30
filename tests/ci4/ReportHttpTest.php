@@ -30,6 +30,9 @@ final class ReportHttpTest extends CIUnitTestCase
             'statusaction' => 'status_id INTEGER PRIMARY KEY, status_name VARCHAR(250), status_name_th VARCHAR(250)',
             'brand' => 'brand_id INTEGER PRIMARY KEY, brand_details VARCHAR(250)',
             'type' => 'type_id INTEGER PRIMARY KEY, type_details VARCHAR(250)',
+            'condition' => 'condition_id INTEGER PRIMARY KEY, condition_details VARCHAR(250)',
+            'estimateprice' => 'estimateprice_id INTEGER PRIMARY KEY, estimateprice_details VARCHAR(250)',
+            'fixed' => 'fixed_id INTEGER PRIMARY KEY, fixed_details VARCHAR(250)',
             'request_order' => 'request_id INTEGER PRIMARY KEY, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL, orderID VARCHAR(100), orderIDShow VARCHAR(100), number_cmg VARCHAR(100), detailAgent INTEGER, customerFullname VARCHAR(250), customerTel VARCHAR(100), customerEmail VARCHAR(100), detailSKUName VARCHAR(100), detailBrandId INTEGER, detailTypeId INTEGER, branchID INTEGER, action_status INTEGER, date_repair DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, date_deliver DATETIME, date_complete DATETIME, provider_id INTEGER, logistics_etc_detail TEXT, RepairPrice DECIMAL(8,2), waranty_cmg VARCHAR(100), detailNumberWaranty VARCHAR(100), detailEquipment TEXT, detailNote TEXT, detailCondition VARCHAR(250), detailConditionOther VARCHAR(250), detailEstimatePrice VARCHAR(250), detailEstimatePriceOther VARCHAR(250), detailFixed VARCHAR(250), detailFixedOther VARCHAR(250)',
             'rating' => 'rating_id INTEGER PRIMARY KEY AUTOINCREMENT, add_id INTEGER, rating INTEGER, order_id VARCHAR(100), branchID INTEGER, cdate DATETIME',
             'rating_comment' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, track_id VARCHAR(100), branch_id INTEGER, comment TEXT, created_at DATETIME',
@@ -217,7 +220,7 @@ final class ReportHttpTest extends CIUnitTestCase
         $ratings->assertSee('50.00%');
 
         $inProgress = $this->withSession($this->session(2, 2, 1))->get('/user/report_in_progress_job');
-        self::assertStringContainsString('/reports/in-progress/export', $inProgress->getBody());
+        self::assertStringContainsString('/user/excel_in_progress_job?branchId=1', $inProgress->getBody());
 
         $filtered = $this->withSession($this->session(1, 1, null))->post('/user/report', [
             'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
@@ -238,29 +241,21 @@ final class ReportHttpTest extends CIUnitTestCase
             $central = $this->withSession($this->session(1, 1, null))->get($route);
             $central->assertStatus(200);
             $body = $central->getBody();
-            if ($route === '/user/report') {
-                self::assertStringContainsString('<label class="d-block">Branch:</label>', $body);
-                self::assertStringContainsString('<select id="branch_id" name="branch_id" class="form-control">', $body);
-                self::assertStringContainsString('<option value="0">ALL</option>', $body);
-                self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
-                self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
-            } else {
-                self::assertStringContainsString('<label for="branch_id">Branch:</label>', $body);
-                self::assertStringContainsString('<select id="branch_id" name="branch_id">', $body);
-                self::assertStringContainsString('<option value="0">ALL</option>', $body);
-                self::assertStringContainsString('<option value="1">BRANCH A,branch-a</option>', $body);
-                self::assertStringContainsString('<option value="2">BRANCH B,branch-b</option>', $body);
-            }
+            self::assertMatchesRegularExpression('/<select(?=[^>]*id="branch_id")(?=[^>]*name="branch_id")[^>]*>/s', $body);
+            self::assertMatchesRegularExpression('/<option value="0">\s*ALL\s*<\/option>/s', $body);
+            self::assertMatchesRegularExpression('/<option value="1"[^>]*>\s*BRANCH A,branch-a\s*<\/option>/s', $body);
+            self::assertMatchesRegularExpression('/<option value="2"[^>]*>\s*BRANCH B,branch-b\s*<\/option>/s', $body);
 
             $branch = $this->withSession($this->session(2, 2, 1))->get($route);
             $branch->assertStatus(200);
-            if ($route === '/user/report') {
-                self::assertStringContainsString('<input type="hidden" name="branch_id" value="1" id="branch_id" class="form-control">', $branch->getBody());
-                self::assertStringNotContainsString('<select id="branch_id" name="branch_id" class="form-control">', $branch->getBody());
-            } else {
-                self::assertStringContainsString('<input type="hidden" id="branch_id" name="branch_id" value="1">', $branch->getBody());
-                self::assertStringNotContainsString('<select id="branch_id" name="branch_id">', $branch->getBody());
-            }
+            self::assertMatchesRegularExpression(
+                '/<input(?=[^>]*type="hidden")(?=[^>]*name="branch_id")(?=[^>]*value="1")[^>]*>/s',
+                (string) $branch->getBody(),
+            );
+            self::assertDoesNotMatchRegularExpression(
+                '/<select(?=[^>]*id="branch_id")(?=[^>]*name="branch_id")[^>]*>/s',
+                (string) $branch->getBody(),
+            );
         }
     }
 
@@ -280,11 +275,17 @@ final class ReportHttpTest extends CIUnitTestCase
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['5'],
         ]);
         $inProgress->assertStatus(200);
-        self::assertStringContainsString('<option value="2" selected>BRANCH B,branch-b</option>', $inProgress->getBody());
+        self::assertMatchesRegularExpression(
+            '/<option value="2"[^>]*selected[^>]*>\s*BRANCH B,branch-b\s*<\/option>/s',
+            (string) $inProgress->getBody(),
+        );
         $inProgress->assertSee('WP00C-REPORT-005');
         $inProgress->assertDontSee('WP00C-REPORT-001');
-        self::assertStringContainsString('/reports/in-progress/export', $inProgress->getBody());
-        self::assertStringContainsString('branch_id=2', $inProgress->getBody());
+        // CI3 report_in_progress_job.php builds this query from the session BranchID;
+        // a central actor therefore keeps branchId empty even after selecting branch 2.
+        self::assertStringContainsString('/user/excel_in_progress_job?branchId=', $inProgress->getBody());
+        self::assertStringNotContainsString('/user/excel_in_progress_job?branchId=2', $inProgress->getBody());
+        self::assertStringContainsString('status=5', $inProgress->getBody());
     }
 
     public function testBranchUserCannotRequestAnotherBranchInMatrixOrExport(): void
@@ -331,9 +332,9 @@ final class ReportHttpTest extends CIUnitTestCase
         $response = $this->withSession($this->session(2, 2, 1))->get('/user/report_total_job_pending');
         $response->assertStatus(200);
         // The 1-day-old row is within the default one-month window, the 40-day-old row is not: bucket 3 counts 1.
-        self::assertStringContainsString(
-            '<td data-col="Detail">Pending for customer to pick up</td><td data-col="Job">1</td>',
-            $response->getBody(),
+        self::assertMatchesRegularExpression(
+            '/<td>\s*Pending for customer to pick up\s*<\/td>\s*<td align="right">\s*1\s*<\/td>/s',
+            (string) $response->getBody(),
         );
         // The defaulted range is echoed back into the filter form.
         $today = new \DateTimeImmutable('today');
@@ -391,6 +392,39 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertSame(1, $this->ratingTotals($onlyEnd->getBody())[7]);
     }
 
+    public function testLegacyRatingsExportUsesSingleSlashCallerAndCi3Headers(): void
+    {
+        $page = $this->withSession($this->session(1, 1, null))->post('/user/report', [
+            'csrf_test_name' => service('security')->getHash(),
+            'branch_id' => '0', 'start_date' => '30/07/2026', 'end_date' => '30/08/2026',
+        ]);
+        $page->assertStatus(200);
+        self::assertStringContainsString(
+            '/user/excel_ratings/0/30-07-2026/30-08-2026',
+            $page->getBody(),
+        );
+        self::assertStringNotContainsString('/user/excel_ratings//', $page->getBody());
+
+        $export = $this->withSession($this->session(1, 1, null))
+            ->get('/user/excel_ratings/0/30-07-2026/30-08-2026');
+        $export->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/\Aapplication\/x-msexcel; name="Rating_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Type'),
+        );
+        self::assertMatchesRegularExpression(
+            '/\Ainline; filename="Rating_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Disposition'),
+        );
+        self::assertSame('no-cache', $export->response()->getHeaderLine('Pragma'));
+        $export->assertSee('Rating Report');
+        $export->assertSee('WP00C-REPORT-001');
+        self::assertStringContainsString(
+            '<table x:str',
+            $export->getBody(),
+        );
+    }
+
     public function testRatingsExportUsesDefaultedRangeNotWholeTable(): void
     {
         // AC-3: export with no dates yields the same one-month window as the page, not the whole table.
@@ -411,11 +445,11 @@ final class ReportHttpTest extends CIUnitTestCase
     {
         $all = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
         $all->assertStatus(200);
-        self::assertStringContainsString('8 matching order(s)', $all->getBody());
-        foreach (['searchText', 'sdate', 'edate', 'status_id', 'detailBrandId', 'detailTypeId', 'branch_id'] as $field) {
+        self::assertSame(8, $this->summaryRowCount((string) $all->getBody()));
+        foreach (['searchText', 'sdate', 'edate', 'status_id', 'detailBrandId', 'detailTypeId'] as $field) {
             self::assertStringContainsString('name="' . $field . '"', $all->getBody());
         }
-        self::assertStringContainsString('/reports/summary/export', $all->getBody());
+        self::assertStringContainsString('/order/excel_report/', $all->getBody());
         $all->assertDontSee('WP00C-REPORT-MISSING');
 
         $filtered = $this->withSession($this->session(1, 1, null))->post('/reportsummary', [
@@ -423,18 +457,18 @@ final class ReportHttpTest extends CIUnitTestCase
             'detailBrandId' => '2', 'detailTypeId' => '2', 'sdate' => '01/08/2026', 'edate' => '31/08/2026',
         ]);
         $filtered->assertStatus(200);
-        $filtered->assertSee('WP00C-REPORT-002');
-        $filtered->assertDontSee('WP00C-REPORT-004');
+        self::assertStringContainsString('WP00C-REPORT-002', (string) $filtered->getBody());
+        self::assertStringNotContainsString('WP00C-REPORT-004', (string) $filtered->getBody());
 
         $branch = $this->withSession($this->session(2, 2, 1))->get('/reportsummary');
-        $branch->assertSee('4 matching order(s)');
-        $branch->assertDontSee('WP00C-REPORT-005');
+        self::assertSame(4, $this->summaryRowCount((string) $branch->getBody()));
+        self::assertStringNotContainsString('WP00C-REPORT-005', (string) $branch->getBody());
     }
 
     public function testTrackingSummaryRatingsAndInProgressExportsHaveStableXlsContract(): void
     {
         $trackingPage = $this->withSession($this->session(2, 2, 1))->get('/ReportTrackingListing');
-        self::assertStringContainsString('/reports/tracking/export', $trackingPage->getBody());
+        self::assertStringContainsString('/order/excel_report/', $trackingPage->getBody());
 
         foreach (['tracking', 'summary', 'ratings', 'in-progress'] as $type) {
             try {
@@ -451,7 +485,13 @@ final class ReportHttpTest extends CIUnitTestCase
         foreach (['/user/excel_ratings', '/user/excel_in_progress_job', '/Order/excel_report', '/Order/excel_report_sum'] as $path) {
             $legacy = $this->withSession($this->session(2, 2, 1))->get($path);
             $legacy->assertStatus(200);
-            self::assertStringContainsString('attachment; filename=', $legacy->response()->getHeaderLine('Content-Disposition'));
+            $expectedDisposition = $path === '/user/excel_ratings'
+                ? 'inline; filename="Rating_Report_'
+                : 'attachment; filename=';
+            self::assertStringContainsString(
+                $expectedDisposition,
+                $legacy->response()->getHeaderLine('Content-Disposition'),
+            );
         }
     }
 
@@ -491,7 +531,7 @@ final class ReportHttpTest extends CIUnitTestCase
             'csrf_test_name' => service('security')->getHash(), 'sdate' => '', 'edate' => '',
         ]);
         $empty->assertStatus(200);
-        $empty->assertSee('8 matching order(s)');
+        self::assertSame(8, $this->summaryRowCount((string) $empty->getBody()));
     }
 
     public function testSummaryLimitsEachLegacyPageToOneHundredRows(): void
@@ -504,22 +544,23 @@ final class ReportHttpTest extends CIUnitTestCase
 
         $first = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
         $first->assertStatus(200);
-        $first->assertSee('100 matching order(s)');
-        $first->assertSee('WP00C-PAGE-110');
-        $first->assertDontSee('WP00C-PAGE-010');
+        self::assertSame(100, $this->summaryRowCount((string) $first->getBody()));
+        self::assertStringContainsString('WP00C-PAGE-110', (string) $first->getBody());
+        self::assertStringNotContainsString('WP00C-PAGE-010', (string) $first->getBody());
 
         $second = $this->withSession($this->session(1, 1, null))->get('/reportsummary/100');
         $second->assertStatus(200);
-        $second->assertSee('9 matching order(s)');
-        $second->assertSee('WP00C-PAGE-010');
-        $second->assertDontSee('WP00C-PAGE-110');
+        self::assertSame(9, $this->summaryRowCount((string) $second->getBody()));
+        self::assertStringContainsString('WP00C-PAGE-010', (string) $second->getBody());
+        self::assertStringNotContainsString('WP00C-PAGE-110', (string) $second->getBody());
 
         $filteredFirst = $this->withSession($this->session(1, 1, null))->get('/reportsummary?searchText=WP00C-PAGE');
-        self::assertStringContainsString('/reportsummary/100?searchText=WP00C-PAGE', $filteredFirst->getBody());
+        self::assertSame(100, $this->summaryRowCount((string) $filteredFirst->getBody()));
+        self::assertStringContainsString('baseURL + "reportsummary/" + value', (string) $filteredFirst->getBody());
         $filteredSecond = $this->withSession($this->session(1, 1, null))->get('/reportsummary/100?searchText=WP00C-PAGE');
-        $filteredSecond->assertSee('1 matching order(s)');
-        $filteredSecond->assertSee('WP00C-PAGE-010');
-        $filteredSecond->assertDontSee('WP00C-PAGE-110');
+        self::assertSame(1, $this->summaryRowCount((string) $filteredSecond->getBody()));
+        self::assertStringContainsString('WP00C-PAGE-010', (string) $filteredSecond->getBody());
+        self::assertStringNotContainsString('WP00C-PAGE-110', (string) $filteredSecond->getBody());
     }
 
     public function testInProgressAverageRouteRendersGenericViewWithThaiBucketsAndTwoDecimalPercent(): void
@@ -532,14 +573,13 @@ final class ReportHttpTest extends CIUnitTestCase
         $response->assertStatus(200);
         // The view emits Thai labels as numeric HTML entities; decode so assertions read as real Thai.
         $body = html_entity_decode($response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        // Generic view emits each bucket as data-col cells with the CI3 Thai label and number_format job count.
-        self::assertStringContainsString(
-            '<td data-col="Detail">เปิดงานซ่อม รอศูนย์บริการมารับ</td><td data-col="Job">1</td>',
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*เปิดงานซ่อม รอศูนย์บริการมารับ\s*<\/td>\s*<td align="right">\s*1\s*<\/td>/s',
             $body,
         );
         // Order id 9 (branch 1, status 2) is counted: this kind has no INNER JOIN, so status 2 = 2 jobs.
-        self::assertStringContainsString(
-            '<td data-col="Detail">สินค้าจัดส่งเข้าศูนย์บริการ</td><td data-col="Job">2</td>',
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*สินค้าจัดส่งเข้าศูนย์บริการ\s*<\/td>\s*<td align="right">\s*2\s*<\/td>/s',
             $body,
         );
         // Percent is number_format(p, 2): 40.00% (not round's "40"); the TOTAL row sums to 100.00%.
@@ -577,8 +617,8 @@ final class ReportHttpTest extends CIUnitTestCase
         ]);
         $page->assertStatus(200);
         // Export link carries the active status filter (comma percent-encoded by http_build_query).
-        self::assertStringContainsString('/reports/in-progress/export', $page->getBody());
-        self::assertStringContainsString('status_id=2%2C4', $page->getBody());
+        self::assertStringContainsString('/user/excel_in_progress_job?', $page->getBody());
+        self::assertStringContainsString('status=2%2C4', $page->getBody());
 
         // Export returns the same filtered rows as the screen, with screen column names as XLS headers.
         $export = $this->withSession($this->session(1, 1, null))
@@ -609,9 +649,13 @@ final class ReportHttpTest extends CIUnitTestCase
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
         ]);
         $response->assertStatus(200);
-        // Generic view emits the CI3 bucket columns as data-col cells; the single job counts in 31-45.
-        self::assertStringContainsString('data-col="31-45"', $response->getBody());
-        self::assertStringContainsString('<td data-col="31-45">1</td>', $response->getBody());
+        self::assertMatchesRegularExpression('/<th class="text-center">\s*31-45\s*<\/th>/s', (string) $response->getBody());
+        self::assertMatchesRegularExpression(
+            '/<td>\s*BRAND A\s*<\/td>\s*<td>\s*TYPE A\s*<\/td>'
+                . '\s*<td>\s*0\s*<\/td>\s*<td>\s*0\s*<\/td>\s*<td>\s*0\s*<\/td>'
+                . '\s*<td>\s*1\s*<\/td>/s',
+            (string) $response->getBody(),
+        );
         $response->assertDontSee('WP00C-REPORT-005');
     }
 
@@ -702,6 +746,11 @@ final class ReportHttpTest extends CIUnitTestCase
             'date_deliver' => $status >= 5 ? $date : null, 'date_complete' => $status === 7 ? $date : null,
             'provider_id' => 1, 'logistics_etc_detail' => 'PROVIDER', 'RepairPrice' => '100.00', 'waranty_cmg' => 'IN',
         ];
+    }
+
+    private function summaryRowCount(string $html): int
+    {
+        return preg_match_all('/<td>\s*WP00C-(?:REPORT|PAGE)-[^<]+\s*<\/td>/s', $html);
     }
 
     /** @return list<int> */

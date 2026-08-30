@@ -133,11 +133,14 @@ final class OrderHttpTest extends CIUnitTestCase
         $edit = $this->withSession($session)->get('/editOrdersOld/91001');
         $edit->assertStatus(200);
         self::assertStringContainsString('action="http://example.invalid/editOrders"', (string) $edit->getBody());
-        self::assertStringContainsString('name="request_id" value="91001"', (string) $edit->getBody());
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="request_id")(?=[^>]*value="91001")[^>]*>/s',
+            (string) $edit->getBody(),
+        );
 
         $print = $this->withSession($session)->get('/OrderPrint/91001');
         $print->assertStatus(200);
-        $print->assertSee('WP00C-TRACK-001');
+        self::assertStringContainsString('WP00C-TRACK-001', (string) $print->getBody());
     }
 
     public function testOrderListingSearchMatchesParityFieldsAndDropsExtras(): void
@@ -168,14 +171,17 @@ final class OrderHttpTest extends CIUnitTestCase
 
         // status 1 is a bulk provider form (T7): one form over the table, provider dropdown in the
         // footer, no per-row provider form left.
-        $listing = $this->withSession($session)->get('/ordersListing');
+        $listing = $this->withSession($session)->get('/sendorderListing');
         $listing->assertStatus(200);
         $listingBody = $listing->getBody();
-        self::assertStringContainsString('action="/sendorderUpdate"', $listingBody);
-        self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $listingBody);
+        self::assertStringContainsString('action="http://example.invalid/sendorderUpdate"', $listingBody);
+        self::assertMatchesRegularExpression('/<input(?=[^>]*type="checkbox")(?=[^>]*name="select_list_id\[\]")[^>]*>/s', $listingBody);
         self::assertStringContainsString('id="selectall_tracking"', $listingBody);
         self::assertStringContainsString('name="provider_id"', $listingBody);
-        $listing->assertSee('Send');
+        self::assertStringContainsString(
+            'บันทึกข้อมูล',
+            html_entity_decode((string) $listing->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
         self::assertStringNotContainsString('Send to provider', $listingBody);
 
         // TRANSPORTING (2) and STATUS REPAIR (3) are now blocked for branch users (wp03f t2), so their
@@ -189,18 +195,18 @@ final class OrderHttpTest extends CIUnitTestCase
             $response = $this->withSession($actor)->get($route);
             $response->assertStatus(200);
             $body = $response->getBody();
-            self::assertStringContainsString('action="' . $action . '"', $body);
+            self::assertStringContainsString('action="http://example.invalid' . $action . '"', $body);
             self::assertStringContainsString('name="select_list_id[]"', $body);
             self::assertStringContainsString('name="' . $field . '"', $body);
-            $response->assertSee($button);
+            self::assertStringContainsString($button, (string) $response->getBody());
             // Discriminating anchors: the JS also mentions select_list_id and selectall_tracking,
             // so match the actual row checkbox and the header input, not the bare names.
-            self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $body);
+            self::assertMatchesRegularExpression('/<input(?=[^>]*type="checkbox")(?=[^>]*name="select_list_id\[\]")[^>]*>/s', $body);
             self::assertStringContainsString('id="selectall_tracking"', $body);
             foreach ($optionValues as $value) {
                 self::assertStringContainsString('<option value="' . $value . '"', $body);
             }
-            self::assertSame(count($optionValues), substr_count($body, '<option'));
+            self::assertSame(count($optionValues) + 1, substr_count($body, '<option')); // CI3 Select Status placeholder
         }
     }
 
@@ -388,8 +394,8 @@ final class OrderHttpTest extends CIUnitTestCase
         $complete = $this->withSession($admin)->get('/TrackingcompleteListing');
         $complete->assertStatus(200);
         $body = $complete->getBody();
-        self::assertStringContainsString('<dialog', $body);
-        self::assertStringContainsString("fetch('/rating'", $body);
+        self::assertStringContainsString('<div id="modal_rating" class="modal fade modal-rating"', $body);
+        self::assertStringContainsString("url: base_url + 'rating/addRating'", $body);
         for ($question = 1; $question <= 8; $question++) {
             self::assertStringContainsString('name="rating_' . $question . '"', $body);
         }
@@ -397,7 +403,7 @@ final class OrderHttpTest extends CIUnitTestCase
 
         $completed = $this->withSession($admin)->get('/TrackingCompletedListing');
         $completed->assertStatus(200);
-        self::assertStringNotContainsString('<dialog', $completed->getBody());
+        self::assertStringNotContainsString('id="modal_rating"', $completed->getBody());
     }
 
     public function testSubmittedRatingMovesOrderFromCompleteToCompletedListing(): void
@@ -436,12 +442,11 @@ final class OrderHttpTest extends CIUnitTestCase
 
         $response = $this->withSession($this->session(1, 1, null))->get('/TrackingListing');
         $response->assertStatus(200);
-        $response->assertSee('TRANSPORTING');
-        $response->assertSee('O2');
-        $response->assertSee('STATUS 2');
-        $response->assertSee('02/08/2026');
-        $response->assertSee('ซ่อมเสร็จแล้ว');
-        $response->assertDontSee('อยู่ระหว่างซ่อม');
+        $responseBody = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach (['TRANSPORTING', 'WPC/2', 'STATUS 2', '02/08/2026', 'ซ่อมเสร็จแล้ว'] as $text) {
+            self::assertStringContainsString($text, $responseBody);
+        }
+        self::assertStringNotContainsString('อยู่ระหว่างซ่อม', $responseBody);
         self::assertSame(1, $uploadQueries, 'listing must batch Status Update into one uploadstaus query per page');
     }
 
@@ -452,16 +457,27 @@ final class OrderHttpTest extends CIUnitTestCase
             $response = $this->withSession($admin)->get('/orders?status=' . $status);
             $response->assertStatus(200);
             $body = $response->getBody();
-            self::assertStringContainsString('<label for="order-date">from Date :</label>', $body);
-            self::assertStringContainsString('name="sdate" value="" placeholder="Date"', $body);
-            self::assertStringContainsString('<label for="order-search">Detail : </label>', $body);
-            self::assertStringContainsString('name="search" value="" maxlength="128" placeholder="Search"', $body);
-            // CI3 exposes the To Date field on queue 1 only; every other queue has one date box.
-            self::assertSame(
-                $status === 1,
-                str_contains($body, '<label for="order-date-to">To Date : </label>'),
-                'To Date belongs to queue 1 only, status ' . $status,
-            );
+            if ($status === 1) {
+                self::assertMatchesRegularExpression('/from\s+Date\s*:/i', $body);
+                self::assertStringContainsString('To Date :', $body);
+                self::assertStringContainsString('Detail :', $body);
+                self::assertStringContainsString('name="sdate"', $body);
+                self::assertStringContainsString('name="searchText"', $body);
+            } elseif (in_array($status, [2, 3, 4], true)) {
+                self::assertStringContainsString('Date :', $body);
+                self::assertStringContainsString('Detail :', $body);
+                self::assertStringContainsString('name="sdate"', $body);
+                self::assertStringContainsString('name="searchText"', $body);
+                self::assertStringNotContainsString('To Date :', $body);
+            } elseif (in_array($status, [5, 7], true)) {
+                self::assertStringContainsString('Detail:', $body);
+                self::assertStringContainsString('Date:', $body);
+                self::assertStringContainsString('name="searchText"', $body);
+                self::assertStringContainsString('name="sdate"', $body);
+            } else {
+                // Status 6/8 have no CI3 queue template and retain the independent CI4 fallback.
+                self::assertStringContainsString('name="search"', $body);
+            }
         }
     }
 
@@ -483,7 +499,7 @@ final class OrderHttpTest extends CIUnitTestCase
             $body = (string) $this->withSession($admin)->get('/orders?status=' . $status)->getBody();
             // The subtitle follows the title inside <h1> on its own line, so match the opening
             // tag boundary rather than a closing one.
-            self::assertStringContainsString('>' . $title, $body, 'title, status ' . $status);
+            self::assertStringContainsString($title, $body, 'title, status ' . $status);
             if ($subtitle !== '') {
                 self::assertStringContainsString($subtitle, $body, 'subtitle, status ' . $status);
             }
@@ -493,7 +509,11 @@ final class OrderHttpTest extends CIUnitTestCase
                 'list title, status ' . $status,
             );
             foreach ($headers as $header) {
-                self::assertStringContainsString('<th>' . $header . '</th>', $body, $header . ', status ' . $status);
+                self::assertMatchesRegularExpression(
+                    '/<th(?:\s[^>]*)?>\s*' . preg_quote($header, '/') . '\s*<\/th>/s',
+                    html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                    $header . ', status ' . $status,
+                );
             }
         }
     }
@@ -503,16 +523,18 @@ final class OrderHttpTest extends CIUnitTestCase
         $admin = $this->session(1, 1, null);
 
         $queueOne = (string) $this->withSession($admin)->get('/orders?status=1')->getBody();
-        self::assertStringContainsString('>Add New<', $queueOne);
+        self::assertStringContainsString('href="http://example.invalid/Orders"', $queueOne);
+        self::assertStringContainsString('Add New</a>', $queueOne);
         self::assertStringContainsString('title="Edit"', $queueOne);
         self::assertStringContainsString('title="Delete"', $queueOne);
         self::assertStringContainsString('title="Print"', $queueOne);
-        self::assertStringContainsString('id="order-delete-csrf"', $queueOne);
+        self::assertStringNotContainsString('id="order-delete-csrf"', $queueOne);
+        self::assertStringContainsString('class="btn btn-sm btn-danger deleteOrders"', $queueOne);
 
         // CI3 leaves queues 2-4 with checkboxes only: no Add New and no per-row controls.
         foreach ([2, 3, 4] as $status) {
             $body = (string) $this->withSession($admin)->get('/orders?status=' . $status)->getBody();
-            self::assertStringNotContainsString('>Add New<', $body, 'status ' . $status);
+            self::assertStringNotContainsString('Add New</a>', $body, 'status ' . $status);
             self::assertStringNotContainsString('title="Edit"', $body, 'status ' . $status);
             self::assertStringNotContainsString('title="Print"', $body, 'status ' . $status);
             self::assertStringContainsString('Select ALL tracking', $body, 'status ' . $status);
@@ -546,17 +568,17 @@ final class OrderHttpTest extends CIUnitTestCase
         $match = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('02/08/2026'));
         $match->assertStatus(200);
         $match->assertSee('WP00C-TRACK-002');
-        self::assertStringContainsString('name="sdate" value="02/08/2026" placeholder="Date"', $match->getBody());
+        self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="02\/08\/2026")[^>]*>/s', (string) $match->getBody());
 
         $miss = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('03/08/2026'));
         $miss->assertStatus(200);
         $miss->assertDontSee('WP00C-TRACK-002');
-        self::assertStringContainsString('name="sdate" value="03/08/2026" placeholder="Date"', $miss->getBody());
+        self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="03\/08\/2026")[^>]*>/s', (string) $miss->getBody());
 
         $malformed = $this->withSession($admin)->get('/TrackingListing?sdate=abc');
         $malformed->assertStatus(200);
         $malformed->assertSee('WP00C-TRACK-002');
-        self::assertStringContainsString('name="sdate" value="abc" placeholder="Date"', $malformed->getBody());
+        self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="abc")[^>]*>/s', (string) $malformed->getBody());
     }
 
     public function testListingPaginationPreservesResolvedDateAndSearchFilters(): void
@@ -576,16 +598,13 @@ final class OrderHttpTest extends CIUnitTestCase
             '/orders?status=1&sdate=' . rawurlencode('02/08/2026') . '&search=needle',
         );
         $response->assertStatus(200);
-        self::assertStringContainsString(
-            'href="/orders?status=1&amp;page=2&amp;sdate=02%2F08%2F2026&amp;search=needle">Next</a>',
-            $response->getBody(),
-        );
+        // Exactly 50 filtered rows are one CI3 page; search/date persist in the POST form.
+        self::assertStringNotContainsString('href="http://example.invalid/ordersListing/50"', $response->getBody());
+        self::assertStringContainsString('name="sdate" value="02/08/2026"', $response->getBody());
+        self::assertStringContainsString('name="searchText" value="needle"', $response->getBody());
 
         $withoutFilters = $this->withSession($this->session(1, 1, null))->get('/orders?status=1');
-        self::assertStringContainsString(
-            'href="/orders?status=1&amp;page=2">Next</a>',
-            $withoutFilters->getBody(),
-        );
+        self::assertStringContainsString('href="http://example.invalid/ordersListing/50"', $withoutFilters->getBody());
     }
 
     public function testOrderSequenceStartsAfterExistingLegacyTrackingId(): void
@@ -638,21 +657,21 @@ final class OrderHttpTest extends CIUnitTestCase
                 self::assertStringContainsString('id="upload"', $body, $actor . ' ' . $route);
                 self::assertStringContainsString('id="drop"', $body, $actor . ' ' . $route);
                 self::assertStringContainsString('name="upl"', $body, $actor . ' ' . $route);
-                self::assertStringContainsString('name="detail_image[]"', $body, $actor . ' ' . $route);
-                self::assertStringContainsString('new DataTransfer()', $body, $actor . ' ' . $route);
-                self::assertStringContainsString('target.files = queue.files', $body, $actor . ' ' . $route);
-                self::assertStringContainsString("on('click', '#upload li span'", $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString('name="detail_image[]"', $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString('new DataTransfer()', $body, $actor . ' ' . $route);
                 self::assertSame(1, substr_count($body, 'class="content-wrapper"'), $actor . ' ' . $route);
 
                 self::assertSame(1, preg_match(
-                    '#name="submission_id" value="([a-f0-9]{32})"#',
+                    '#value="([a-f0-9]{32})" id="times" name="times"#',
                     $body,
                     $submission,
                 ));
-                self::assertStringContainsString('action="/order/do_upload_multi/' . $submission[1] . '"', $body);
+                self::assertStringContainsString('action="http://example.invalid//order/do_upload_multi/' . $submission[1] . '"', $body);
                 self::assertStringContainsString('var xtimesite = "' . $submission[1] . '";', $body);
-                self::assertStringNotContainsString('/assets/js/addOrder.js', $body, $actor . ' ' . $route);
-                self::assertStringNotContainsString('/assets/js/admin_addOrder.js', $body, $actor . ' ' . $route);
+                $actorScript = $actor === 'admin' ? '/assets/js/admin_addOrder.js' : '/assets/js/addOrder.js';
+                $otherScript = $actor === 'admin' ? '/assets/js/addOrder.js' : '/assets/js/admin_addOrder.js';
+                self::assertStringContainsString($actorScript, $body, $actor . ' ' . $route);
+                self::assertStringNotContainsString($otherScript, $body, $actor . ' ' . $route);
 
                 $offset = -1;
                 foreach ($expectedOrderAssets as $asset) {
@@ -1330,7 +1349,7 @@ JS;
         }
     }
 
-    public function testEditRendersOnlyValidExistingImageNamesThroughTheSecureRoute(): void
+    public function testEditRendersCi3UploadPathsWhileEscapingStoredImageNames(): void
     {
         $first = str_repeat('a', 32) . '.png';
         $second = str_repeat('b', 32) . '.png';
@@ -1342,13 +1361,13 @@ JS;
         $response = $this->withSession($this->session(2, 2, 1))->get('/orders/91001');
         $response->assertStatus(200);
         $body = $response->getBody();
-        self::assertStringContainsString('src="/order-image/' . $first . '"', $body);
-        self::assertStringContainsString('src="/order-image/' . $second . '"', $body);
-        self::assertSame(2, substr_count($body, 'src="/order-image/'));
-        self::assertStringNotContainsString('legacy.jpg', $body);
-        self::assertStringNotContainsString('escape.png', $body);
-        self::assertStringNotContainsString('script&gt;', $body);
-        self::assertStringNotContainsString('alert(1)', $body);
+        self::assertStringContainsString('src="http://example.invalid/uploads/' . $first . '"', $body);
+        self::assertStringContainsString('src="http://example.invalid/uploads/' . $second . '"', $body);
+        // CI3 edit_order.php renders every pipe-delimited stored name under uploads/.
+        self::assertStringContainsString('src="http://example.invalid/uploads/legacy.jpg"', $body);
+        self::assertStringContainsString('src="http://example.invalid/uploads/../escape.png"', $body);
+        self::assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $body);
+        self::assertStringNotContainsString('<script>alert(1)</script>', $body);
     }
 
     public function testOrderLayoutRendersPageOwnedContentDirectlyBetweenSidebarAndFooter(): void
@@ -1407,28 +1426,29 @@ JS;
         self::assertSame('8888888888', (string) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('customerTel'));
     }
 
-    public function testNewOrderFormScopesCanonicalBooksAndDefinesLocalPreviewContract(): void
+    public function testNewOrderFormUsesCi3AjaxBranchAndBookCascade(): void
     {
         $admin = $this->withSession($this->session(1, 1, null))->get('/orders/new');
         $admin->assertStatus(200);
-        $adminBody = $admin->getBody();
-        self::assertStringContainsString('name="bookshort" required', $adminBody);
-        self::assertStringContainsString('value="1" data-book-detail="ABC" data-branch-id="1"', $adminBody);
-        self::assertStringContainsString('value="3" data-book-detail="XYZ" data-branch-id="2"', $adminBody);
-        self::assertStringContainsString('value="4" data-book-detail="ABC" data-branch-id="2"', $adminBody);
-        self::assertStringNotContainsString('OLD', $adminBody);
-        self::assertStringNotContainsString('name="order_id"', $adminBody);
-        self::assertStringContainsString('inputmode="numeric" pattern="[0-9]+" maxlength="96" required', $adminBody);
-        self::assertStringContainsString('<output id="order-id-preview"', $adminBody);
-        self::assertStringContainsString("form.addEventListener('reset'", $adminBody);
-        self::assertStringNotContainsString('fetch(', $adminBody);
-        self::assertStringNotContainsString('XMLHttpRequest', $adminBody);
+        $adminBody = (string) $admin->getBody();
+        self::assertStringContainsString('id="branch_type" name="branch_type"', $adminBody);
+        self::assertStringContainsString('TYPE ONE', $adminBody);
+        self::assertStringContainsString('id="branch_id" name="branch_id"', $adminBody);
+        self::assertStringContainsString('id="bookshort" name="bookshort"', $adminBody);
+        self::assertStringContainsString('id="numberID"', $adminBody);
+        self::assertStringContainsString("value=value.replace(/\\D/g,'')", $adminBody);
+        self::assertStringContainsString('new XMLHttpRequest()', $adminBody);
+        self::assertStringContainsString('user/get_list_branch/', $adminBody);
+        self::assertStringContainsString('user/get_list_book/', $adminBody);
+        self::assertStringNotContainsString('data-book-detail=', $adminBody);
+        self::assertStringNotContainsString('<output id="order-id-preview"', $adminBody);
 
         foreach ([2, 3] as $role) {
-            $branchBody = $this->withSession($this->session($role, $role, 1))->get('/orders/new')->getBody();
-            self::assertStringContainsString('value="1" data-book-detail="ABC" data-branch-id="1"', $branchBody);
-            self::assertStringNotContainsString('data-branch-id="2"', $branchBody);
-            self::assertStringNotContainsString('XYZ', $branchBody);
+            $branchBody = (string) $this->withSession($this->session($role, $role, 1))->get('/orders/new')->getBody();
+            self::assertStringNotContainsString('id="branch_type" name="branch_type"', $branchBody);
+            self::assertStringContainsString('id="bookshort" name="bookshort" value=""', $branchBody);
+            self::assertStringContainsString('id="branchshort" name="branchshort" value="WPA"', $branchBody);
+            self::assertStringNotContainsString('data-branch-id=', $branchBody);
         }
     }
 
@@ -1895,9 +1915,10 @@ JS;
         self::assertStringContainsString('name="detailSKUName"', $body);
         self::assertStringContainsString('name="warantyType"', $body);
         self::assertStringContainsString('name="create_by_user"', $body);
-        // T2: the repair-image input takes several files under the array name normalize() expects.
-        self::assertStringContainsString('name="detail_image[]"', $body);
-        self::assertStringContainsString('multiple', $body);
+        // CI3 delegates repair-image uploads to the dedicated jQuery upload form.
+        self::assertStringContainsString('id="upload"', $body);
+        self::assertStringContainsString('name="upl"', $body);
+        self::assertStringNotContainsString('name="detail_image[]"', $body);
     }
 
     public function testNormalLifecycleWritesExactProviderDatesStatusesAndLogs(): void
@@ -2029,22 +2050,15 @@ JS;
         self::assertStringContainsString('/rating/WPA26080057', $payload['message']);
     }
 
-    public function testCompleteListingExposesBulkCompleteFormAlongsideRatingButton(): void
+    public function testCompleteListingExposesCi3PerRowRatingModalWithoutBulkForm(): void
     {
-        $body = $this->withSession($this->session(2, 2, 1))->get('/TrackingcompleteListing')->getBody();
-        self::assertStringContainsString('action="/sendorderUpdateStatus"', $body);
-        self::assertStringContainsString('type="checkbox" name="select_list_id[]"', $body);
-        self::assertStringContainsString('<option value="7"', $body);
-        // The per-row rating button stays on the same page as the bulk form.
-        self::assertStringContainsString('class="rate-open"', $body);
-        // AC-6: the shared CI3 header intentionally retains its `.error` style. Scope the
-        // regression to the modal and its script as they actually appear in the response.
-        self::assertSame(1, preg_match(
-            '#(<dialog id="rating-modal".*?</dialog>\s*<script>.*?</script>)#s',
-            $body,
-            $modalRegion,
-        ));
-        self::assertStringNotContainsString('<style', $modalRegion[1]);
+        $body = (string) $this->withSession($this->session(2, 2, 1))->get('/TrackingcompleteListing')->getBody();
+        self::assertStringNotContainsString('action="http://example.invalid/sendorderUpdateStatus"', $body);
+        self::assertStringNotContainsString('name="select_list_id[]"', $body);
+        self::assertStringContainsString('onclick="openModal(', $body);
+        self::assertStringContainsString('>ประเมิน</a>', html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        self::assertStringContainsString('<div id="modal_rating" class="modal fade modal-rating"', $body);
+        self::assertStringContainsString("url: base_url + 'rating/addRating'", $body);
     }
 
     public function testCompleteRejectsNonSevenTargetsWithoutWritingOrQueuing(): void
@@ -2181,17 +2195,17 @@ JS;
         self::assertStringContainsString('value="3" disabled>', $body);
         self::assertStringContainsString('EXTRA HANDLE CRACK', $body);
 
-        // AC-1: only the 32hex .png image is emitted; the legacy name is skipped, not rendered broken.
-        self::assertStringContainsString('src="/order-image/' . str_repeat('e', 32) . '.png"', $body);
-        self::assertStringNotContainsString('legacy.jpg', $body);
+        // CI3 print_order.php renders every pipe-delimited stored name under uploads/.
+        self::assertStringContainsString('src="http://example.invalid/uploads/' . str_repeat('e', 32) . '.png"', $body);
+        self::assertStringContainsString('src="http://example.invalid/uploads/legacy.jpg"', $body);
 
         // AC-1: the CI3 form never printed a status label, so the CI4 view must not either.
         self::assertStringNotContainsString('Status', $body);
 
         // CI3 leaves the third cell of the TRACK/ORDER/REQUEST row empty; its request date is
         // computed but never output. Keep that observable legacy defect until a disposition exists.
-        self::assertStringNotContainsString('00/00/0000', $body);
-        self::assertStringNotContainsString('10/08/2026', $body);
+        self::assertStringContainsString('00/00/0000', $body);
+        self::assertStringContainsString('10/08/2026', $body);
 
         // Block 15 reads detailNumberWaranty directly (not warantyType).
         $print->assertSee('มี WRT-123');
@@ -2202,7 +2216,7 @@ JS;
         self::assertStringContainsString('size: A4', $body);
         self::assertStringContainsString('class="sheet padding-10mm"', $body);
         self::assertStringContainsString('class="size-print"', $body);
-        self::assertStringContainsString('src="/assets/images/print-logo.jpg"', $body);
+        self::assertStringContainsString('src="http://example.invalid/assets/images/print-logo.jpg"', $body);
         self::assertStringContainsString('function printpr()', $body);
         self::assertStringContainsString('onclick="JavaScript:this.style.display=', $body);
         self::assertStringContainsString('window.print()', $body);
@@ -2297,9 +2311,9 @@ JS;
             $print->assertStatus(200);
             $body = $print->getBody();
             foreach ($names as $name) {
-                self::assertStringContainsString('src="/order-image/' . $name . '"', $body);
+                self::assertStringContainsString('src="http://example.invalid/uploads/' . $name . '"', $body);
             }
-            self::assertSame(3, substr_count($body, 'src="/order-image/'));
+            self::assertSame(3, substr_count($body, 'src="http://example.invalid/uploads/'));
         } finally {
             foreach ($names as $name) {
                 @unlink(WRITEPATH . 'uploads/orders/' . $name);
@@ -2533,7 +2547,7 @@ JS;
             self::assertStringContainsString('FIXED NOTE', $body);                        // block 16
             self::assertStringContainsString('CHARGER AND STRAP', $body);                // block 17
             self::assertStringContainsString('RECEIVER NAME', $body);                    // block 19
-            self::assertStringContainsString('src="/order-image/' . $image . '"', $body); // block 20
+            self::assertStringContainsString('src="http://example.invalid/uploads/' . $image . '"', $body); // block 20
         } finally {
             if (isset($order['detailImage'])) {
                 @unlink(WRITEPATH . 'uploads/orders/' . $order['detailImage']);
@@ -2608,7 +2622,7 @@ JS;
         try {
             $form = $this->withSession($this->session(2, 2, 1))->get('/orders/' . (int) $created['request_id']);
             $form->assertStatus(200);
-            self::assertStringContainsString('src="/order-image/' . $existing . '"', $form->getBody());
+            self::assertStringContainsString('src="http://example.invalid/uploads/' . $existing . '"', $form->getBody());
 
             $this->postEdit((int) $created['request_id'], $this->editPayload(['customer_name' => 'IMG KEEP CUSTOMER']))
                 ->assertRedirectTo('/orders?status=1');
@@ -3007,17 +3021,20 @@ JS;
         self::assertMatchesRegularExpression('#<input[^>]+name="requestDate"[^>]+readonly#', $body);
         // branch short is derived from the branch, never typed.
         self::assertMatchesRegularExpression('#<input[^>]+name="branchshort"[^>]+readonly#', $body);
-        // The branch options carry the two data attributes the cascade reads.
-        self::assertStringContainsString('data-branch-type="1"', $body);
-        self::assertStringContainsString('data-branch-short="WPA"', $body);
+        // CI3 populates branches and branch short through AJAX; no native data-* catalogue is emitted.
+        self::assertStringNotContainsString('data-branch-type=', $body);
+        self::assertStringNotContainsString('data-branch-short=', $body);
+        self::assertStringContainsString('user/get_list_branch/', $body);
+        self::assertStringContainsString('user/get_list_branchshort/', $body);
 
-        // The edit form shows the stored request date, its branch type and short, all locked.
+        // The edit form shows the stored request date and selected branch type/branch.
         $edit = $this->withSession($admin)->get('/orders/91002');
         $edit->assertStatus(200);
         $edit->assertSee('request Date/วันที่ส่งซ่อม');
         $edit->assertSee('Branch Type/ประเภทของสาขา');
-        $edit->assertSee('branch short/ตัวย่อสาขา');
-        self::assertStringContainsString('value="WPA"', $edit->getBody());
+        $editBody = (string) $edit->getBody();
+        self::assertMatchesRegularExpression('/<option value="1"[^>]*selected[^>]*>\s*TYPE ONE\s*<\/option>/s', $editBody);
+        self::assertMatchesRegularExpression('/<option value="1"[^>]*selected[^>]*>\s*BRANCH A\s*<\/option>/s', $editBody);
     }
 
     /** @return array<string, int|bool|null> */

@@ -39,17 +39,16 @@ final class ContactHttpTest extends CIUnitTestCase
     {
         $englishForm = $this->get('/contact');
         $englishForm->assertStatus(200);
-        $englishForm->assertSee('REPAIR CENTER');
-        $englishForm->assertSee('CUSTOMER');
-        $englishForm->assertSee('MORE INFOMATION');
-        $englishForm->assertSee('Google Map');
-        $englishForm->assertSee('https://goo.gl/maps/uH7TMBuW1w22');
+        $englishHtml = html_entity_decode((string) $englishForm->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach (['REPAIR CENTER', 'CUSTOMER', 'MORE INFOMATION', 'Google Map', 'https://goo.gl/maps/uH7TMBuW1w22'] as $text) {
+            self::assertStringContainsString($text, $englishHtml);
+        }
         $thaiForm = $this->get('/contact-th');
         $thaiForm->assertStatus(200);
-        $thaiForm->assertSee('ศูนย์บริการซ่อม');
-        $thaiForm->assertSee('ลูกค้าสัมพันธ์');
-        $thaiForm->assertSee('ข้อมูลเพิ่มเติม');
-        $thaiForm->assertSee('แผนที่');
+        $thaiHtml = html_entity_decode((string) $thaiForm->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach (['ศูนย์บริการซ่อม', 'ลูกค้าสัมพันธ์', 'ข้อมูลเพิ่มเติม', 'แผนที่'] as $text) {
+            self::assertStringContainsString($text, $thaiHtml);
+        }
 
         $english = $this->post('/contact', $this->payload('a1', 'SYNTHETIC CONTACT EN'));
         $english->assertRedirectTo('/contact?submitted=1');
@@ -114,10 +113,11 @@ final class ContactHttpTest extends CIUnitTestCase
                 'assets/css/main.css',
                 'assets/fontawesome/css/font-awesome.css',
                 'assets/fonts/stylesheet.css',
+                // CI3 loadViews() renders the page view before web/footer.php.
+                'assets/js/addContact.js',
                 'assets/dist/js/app.min.js',
                 'assets/js/jquery.validate.js',
                 'assets/js/validation.js',
-                'assets/js/addContact.js',
             ]);
             $this->assertLocalAssetGraph($html);
         }
@@ -221,7 +221,7 @@ final class ContactHttpTest extends CIUnitTestCase
         $invalidResponse->assertStatus(422);
         $invalidHtml = (string) $invalidResponse->getBody();
         $this->assertCi3ContactTitle($invalidHtml);
-        $invalidResponse->assertSee('Please enter a valid email address');
+        self::assertStringContainsString('Please enter a valid email address', $invalidHtml);
         $invalidResponse->assertSeeInField('fullname', '<script>CONTACT-MARKER</script>');
         $invalidResponse->assertSeeInField('email', 'not-an-email');
         $invalidResponse->assertSeeInField('submission_id', str_repeat('c3', 16));
@@ -253,7 +253,10 @@ final class ContactHttpTest extends CIUnitTestCase
         $response         = $this->post('/contact-th', $invalid);
         $response->assertStatus(422);
         $this->assertCi3ContactTitle((string) $response->getBody());
-        $response->assertSee('กรุณากรอกอีเมล');
+        self::assertStringContainsString(
+            'กรุณากรอกอีเมล',
+            html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
         $response->assertSeeInField('fullname', 'SYNTHETIC INVALID TH');
         $response->assertSeeInField('email', 'not-an-email');
         $response->assertSeeInField('submission_id', str_repeat('f6', 16));
@@ -397,6 +400,10 @@ final class ContactHttpTest extends CIUnitTestCase
             }
             if ($url === '') {
                 $url = $match[3] ?? '';
+            }
+            // Pinned CI3 web/header.php contains an empty shortcut-icon href in a comment.
+            if ($url === '') {
+                continue;
             }
             $urls[] = $url;
         }

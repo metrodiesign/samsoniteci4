@@ -16,6 +16,7 @@ final class LegacyViewRenderer
     public readonly LegacyLoaderAdapter $load;
     public readonly LegacyPaginationAdapter $pagination;
     public readonly LegacyRequestOrderAdapter $request_order_model;
+    public readonly LegacyDashboardAdapter $dashboard_model;
     public readonly LegacyUserModelAdapter $user_model;
 
     /** @param array<string, string> $validationErrors @param array<string, string> $oldValues @param array<string, string> $statusUpdates */
@@ -31,8 +32,9 @@ final class LegacyViewRenderer
         $this->session = new LegacySessionAdapter($session ?? service('session'));
         $this->load = new LegacyLoaderAdapter();
         $this->pagination = new LegacyPaginationAdapter($pagination);
-        $this->request_order_model = new LegacyRequestOrderAdapter($statusUpdates);
-        $this->user_model = new LegacyUserModelAdapter(db_connect(), $this->session);
+        $this->request_order_model = new LegacyRequestOrderAdapter($statusUpdates, db_connect());
+        $this->dashboard_model = new LegacyDashboardAdapter();
+        $this->user_model = new LegacyUserModelAdapter(db_connect());
     }
 
     /** @param array<string, mixed> $variables @param array<string, string> $hiddenFields */
@@ -45,6 +47,7 @@ final class LegacyViewRenderer
         if (! is_file($path)) {
             throw new \InvalidArgumentException('Unknown legacy view: ' . $template);
         }
+        $this->traceParityRender($template);
 
         helper(['form', 'url']);
         extract($variables, EXTR_SKIP);
@@ -53,6 +56,9 @@ final class LegacyViewRenderer
             $source = file_get_contents($path);
             if ($source === false) {
                 throw new \RuntimeException('Cannot read legacy view: ' . $template);
+            }
+            if ($template === 'report') {
+                $source = self::withSingleSlashRatingExport($source);
             }
             $source = str_replace(
                 [
@@ -68,6 +74,9 @@ final class LegacyViewRenderer
                     'set_value(',
                     '$this->request_order_model->getBranchName($branch_id)',
                     'checkdate($pBB, $pCC, $pAA)',
+                    '$pDD=$pAA+543;',
+                    '$pDD = $pAA + 543;',
+                    '$DD=$AA+543;',
                 ],
                 [
                     base_url('assets/font-awesome/4.3.0/css/font-awesome.min.css'),
@@ -82,6 +91,9 @@ final class LegacyViewRenderer
                     '$this->setValue(',
                     '$BranchName',
                     'checkdate((int) $pBB, (int) $pCC, (int) $pAA)',
+                    '$pDD=(int) $pAA+543;',
+                    '$pDD = (int) $pAA + 543;',
+                    '$DD=(int) $AA+543;',
                 ],
                 $source,
             );
@@ -93,6 +105,39 @@ final class LegacyViewRenderer
         }
 
         return $this->withSecurityFields($html, $hiddenFields);
+    }
+
+    private static function withSingleSlashRatingExport(string $source): string
+    {
+        $legacyExpression = '$BranchID . \'/\' . str_replace(\'/\', \'-\', $start_date)';
+        $fixedExpression = '($BranchID === \'\' || $BranchID === null '
+            . '? \'\' : $BranchID . \'/\') . str_replace(\'/\', \'-\', $start_date)';
+        $source = str_replace($legacyExpression, $fixedExpression, $source, $replacements);
+        if ($replacements !== 1) {
+            throw new \RuntimeException('Cannot adapt the ratings export URL to a single slash.');
+        }
+
+        return $source;
+    }
+
+    private function traceParityRender(string $template): void
+    {
+        if (! defined('ENVIRONMENT') || ENVIRONMENT !== 'parity') {
+            return;
+        }
+        $requestId = $_SERVER['HTTP_X_PARITY_REQUEST_ID'] ?? $_GET['parity_request_id'] ?? getenv('PARITY_REQUEST_ID') ?: '';
+        if (! is_string($requestId) || preg_match('/\A[a-zA-Z0-9_-]{8,64}\z/D', $requestId) !== 1) {
+            return;
+        }
+        $record = [
+            'request_id' => $requestId,
+            'timestamp' => gmdate(DATE_ATOM),
+            'method' => $_SERVER['REQUEST_METHOD'] ?? 'CLI',
+            'path' => parse_url($_SERVER['REQUEST_URI'] ?? 'CLI', PHP_URL_PATH),
+            'status' => http_response_code(),
+            'templates' => ['ci3/' . $template . '.php'],
+        ];
+        file_put_contents(WRITEPATH . 'parity-template-trace.jsonl', json_encode($record, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND | LOCK_EX);
     }
 
     public function validationErrors(string $prefix = '', string $suffix = ''): string
@@ -207,27 +252,50 @@ final class LegacyLoaderAdapter
 final class LegacyRequestOrderAdapter
 {
     /** @param array<string, string> $statusUpdates */
-    public function __construct(private array $statusUpdates)
-    {
+    public function __construct(
+        private array $statusUpdates,
+        private \CodeIgniter\Database\BaseConnection $db,
+    ) {
     }
 
-    public function chack_status_update(string $orderId, string $telephone): string
+    public function chack_status_update(mixed $orderId, mixed $telephone): string
     {
-        return esc($this->statusUpdates[$orderId . "\0" . $telephone] ?? '');
+        $order = is_scalar($orderId) ? (string) $orderId : '';
+        $phone = is_scalar($telephone) ? (string) $telephone : '';
+
+        return esc($this->statusUpdates[$order . "\0" . $phone] ?? '');
     }
 
     public function get_orderIDShowBytel(string $telephone): string
     {
         return '';
     }
+
+    public function getProviderName(mixed $providerId): string
+    {
+        $id = filter_var($providerId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($id === false) {
+            return '';
+        }
+        $name = $this->db->table('provider')->select('provider_name')->where('provider_id', $id)->get()->getRow('provider_name');
+
+        return esc(is_string($name) ? $name : '');
+    }
+}
+
+final class LegacyDashboardAdapter
+{
+    /** @return list<object> */
+    public function music_count(mixed $trackId, mixed $telephone): array
+    {
+        return [];
+    }
 }
 
 final class LegacyUserModelAdapter
 {
-    public function __construct(
-        private \CodeIgniter\Database\BaseConnection $db,
-        private LegacySessionAdapter $session,
-    ) {
+    public function __construct(private \CodeIgniter\Database\BaseConnection $db)
+    {
     }
 
     public function getbransName(mixed $branchId): string
@@ -296,13 +364,9 @@ final class LegacyUserModelAdapter
             ->where('group_type', $id)->orderBy('id', 'ASC')->get()->getResultArray();
         $visible = [];
         $seen = [];
-        $isBranch = $this->session->userdata('BranchID') !== null;
         foreach ($rows as $row) {
             $link = (string) ($row['menu_link'] ?? '');
             if (preg_match('/\A[a-zA-Z0-9_\/-]+\z/D', $link) !== 1 || isset($seen[$link])) {
-                continue;
-            }
-            if ($isBranch && in_array($link, ['TrackingListing', 'TrackingcloseListing'], true)) {
                 continue;
             }
             $seen[$link] = true;

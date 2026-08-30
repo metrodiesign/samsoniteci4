@@ -27,21 +27,23 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
     {
         $english = $this->get('/tracking/WP00C-TRACK-005');
         $english->assertStatus(200);
-        $english->assertSee('SYNTHETIC RETURN');
-        $english->assertSeeInOrder([
-            'SYNTHETIC RETURN',
-            'SYNTHETIC REPAIR COMPLETE',
-            'SYNTHETIC REQUEST',
-            'SYNTHETIC NEW',
+        $englishHtml = html_entity_decode((string) $english->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Both pinned CI3 result templates render status_name_th.
+        $this->assertInOrder($englishHtml, [
+            'สถานะทดสอบ 5',
+            'สถานะทดสอบ 4',
+            'สถานะทดสอบ 2',
+            'สถานะทดสอบ 1',
         ]);
         $english->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         $english->assertDontSee('wp00c-customer-5@example.invalid');
-        $english->assertSee('05/08/2569');
-        $english->assertSee('08/08/2569');
+        self::assertStringContainsString('05/08/2569', $englishHtml);
+        self::assertStringContainsString('08/08/2569', $englishHtml);
 
         $thai = $this->get('/tracking-th/WP00C-TRACK-005');
         $thai->assertStatus(200);
-        $thai->assertSeeInOrder([
+        $thaiHtml = html_entity_decode((string) $thai->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $this->assertInOrder($thaiHtml, [
             'สถานะทดสอบ 5',
             'สถานะทดสอบ 4',
             'สถานะทดสอบ 2',
@@ -49,19 +51,25 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         ]);
         $thai->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         $thai->assertDontSee('wp00c-customer-5@example.invalid');
-        $thai->assertSee('05/08/2569');
+        self::assertStringContainsString('05/08/2569', $thaiHtml);
     }
 
     public function testSearchRejectsUnknownWildcardAndOversizedTrackingIdsWithoutPartialMatch(): void
     {
         $known = $this->get('/tracking?tracking_id=WP00C-TRACK-005');
         $known->assertStatus(200);
-        $known->assertSee('SYNTHETIC RETURN');
+        self::assertStringContainsString(
+            'สถานะทดสอบ 5',
+            html_entity_decode((string) $known->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
 
         foreach (['WP00C-TRACK-999', 'WP00C%', str_repeat('A', 101)] as $trackingId) {
             $result = $this->get('/tracking?tracking_id=' . rawurlencode($trackingId));
             $result->assertStatus(200);
-            $result->assertSee('Tracking ID not found');
+            self::assertStringContainsString(
+                'ไม่มีสินค้า',
+                html_entity_decode((string) $result->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
             $result->assertDontSee('SYNTHETIC RETURN');
             $result->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         }
@@ -71,15 +79,21 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
     {
         $canonical = $this->get('/tracking?tracking_id=WP00C-TRACK-005&searchText=WP00C-TRACK-999');
         $canonical->assertStatus(200);
-        $canonical->assertSee('SYNTHETIC RETURN');
+        self::assertStringContainsString(
+            'สถานะทดสอบ 5',
+            html_entity_decode((string) $canonical->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
 
         foreach ([
-            '/tracking?searchText=WP00C-TRACK-005' => 'SYNTHETIC RETURN',
+            '/tracking?searchText=WP00C-TRACK-005' => 'สถานะทดสอบ 5',
             '/tracking-th?searchText=WP00C-TRACK-005' => 'สถานะทดสอบ 5',
         ] as $url => $expectedStatus) {
             $response = $this->get($url);
             $response->assertStatus(200);
-            $response->assertSee($expectedStatus);
+            self::assertStringContainsString(
+                $expectedStatus,
+                html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
             $response->assertDontSee('SYNTHETIC CUSTOMER FIVE');
             $response->assertDontSee('wp00c-customer-5@example.invalid');
         }
@@ -88,18 +102,24 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
     public function testCi3TrackingPostEndpointsUseTheSameExactLookup(): void
     {
         foreach ([
-            '/track/trackstatus' => 'SYNTHETIC RETURN',
+            '/track/trackstatus' => 'สถานะทดสอบ 5',
             '/track_th/trackstatus' => 'สถานะทดสอบ 5',
         ] as $route => $expectedStatus) {
             $response = $this->post($route, ['searchText' => 'WP00C-TRACK-005']);
             $response->assertStatus(200);
-            $response->assertSee($expectedStatus);
+            self::assertStringContainsString(
+                $expectedStatus,
+                html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
             $response->assertDontSee('SYNTHETIC CUSTOMER FIVE');
         }
 
         $invalid = $this->post('/track/trackstatus', ['searchText' => ['WP00C-TRACK-005']]);
         $invalid->assertStatus(200);
-        $invalid->assertSee('Tracking ID not found');
+        self::assertStringContainsString(
+            'ไม่มีสินค้า',
+            html_entity_decode((string) $invalid->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
         $invalid->assertDontSee('SYNTHETIC RETURN');
     }
 
@@ -138,11 +158,15 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
 
     public function testCompleteStatusRendersGreenCircleInBothLanguages(): void
     {
-        foreach (['/tracking/', '/tracking-th/'] as $prefix) {
-            $page = $this->get($prefix . 'WP00C-TRACK-006');
-            $page->assertStatus(200);
-            $page->assertSee('circle-awe bg-success circle-awe-animate');
-        }
+        $english = $this->get('/tracking/WP00C-TRACK-006');
+        $english->assertStatus(200);
+        self::assertStringContainsString('circle-awe bg-success circle-awe-animate', (string) $english->getBody());
+
+        $thai = $this->get('/tracking-th/WP00C-TRACK-006');
+        $thai->assertStatus(200);
+        // CI3 th/trackstatus.php compares status_name_th with the literal "complete".
+        self::assertStringNotContainsString('circle-awe bg-success circle-awe-animate', (string) $thai->getBody());
+        self::assertStringContainsString('circle-awe circle-awe-animate', (string) $thai->getBody());
     }
 
     public function testTrackingFormShowsLanguageSpecificPopupAndLegacyControls(): void
@@ -164,14 +188,13 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
             "$('#myModal').modal('show')",
             'assets/js/addtrack.js',
             'assets/images/bg-tracking.png',
-            'assets/images/bg-tracking-mb.png',
         ] as $contract) {
             self::assertStringContainsString($contract, $englishHtml, $contract);
         }
         self::assertStringNotContainsString('assets/css/public.css', $englishHtml);
         self::assertStringNotContainsString('<dialog', $englishHtml);
-        $english->assertSee('popup_en.png');
-        $english->assertDontSee('popup_th.png');
+        self::assertStringContainsString('popup_en.png', $englishHtml);
+        self::assertStringNotContainsString('popup_th.png', $englishHtml);
         $this->assertTrackingFormDom($englishHtml, base_url('track/trackstatus'), 'popup_en.png', 'EN');
         $this->assertInOrder($englishHtml, [
             'TRACK &amp; TRACE',
@@ -190,10 +213,11 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         $thai->assertStatus(200);
         $thaiHtml = (string) $thai->getBody();
         self::assertStringContainsString('action="' . base_url('track_th/trackstatus') . '" method="post"', $thaiHtml);
-        $thai->assertSee('วิธีตรวจสอบสถานะ');
-        $thai->assertSee('ระบุรหัสติดตามของคุณ');
-        $thai->assertSee('popup_th.png');
-        $thai->assertDontSee('popup_en.png');
+        $thaiDecoded = html_entity_decode($thaiHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('วิธีตรวจสอบสถานะ', $thaiDecoded);
+        self::assertStringContainsString('ระบุรหัสติดตามของคุณ', $thaiDecoded);
+        self::assertStringContainsString('popup_th.png', $thaiHtml);
+        self::assertStringNotContainsString('popup_en.png', $thaiHtml);
         $this->assertTrackingFormDom($thaiHtml, base_url('track_th/trackstatus'), 'popup_th.png', 'TH');
         $this->assertInOrder(html_entity_decode($thaiHtml, ENT_QUOTES, 'UTF-8'), [
             'TRACK & TRACE',
@@ -218,10 +242,11 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
                 'assets/css/main.css',
                 'assets/fontawesome/css/font-awesome.css',
                 'assets/fonts/stylesheet.css',
+                // CI3 loadViews() renders the page-specific script before web/footer.php.
+                'assets/js/addtrack.js',
                 'assets/dist/js/app.min.js',
                 'assets/js/jquery.validate.js',
                 'assets/js/validation.js',
-                'assets/js/addtrack.js',
             ]);
         }
     }
@@ -265,8 +290,9 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
         $this->assertTrackingKnownResultDom($english, 4, 'EN known result');
 
         $thai = $this->get('/tracking-th?tracking_id=WP00C-TRACK-005');
-        $thai->assertSee('สถานะทดสอบ 5 08/08/2569');
-        $thai->assertDontSee('SYNTHETIC RETURN 08/08/2569');
+        $thaiBody = html_entity_decode((string) $thai->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('สถานะทดสอบ 5 08/08/2569', $thaiBody);
+        self::assertStringNotContainsString('SYNTHETIC RETURN 08/08/2569', $thaiBody);
         $this->assertTrackingKnownResultDom((string) $thai->getBody(), 4, 'TH known result');
     }
 
@@ -274,7 +300,8 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
     {
         $withoutBanner = $this->get('/tracking/WP00C-TRACK-006');
         $withoutBanner->assertStatus(200);
-        $withoutBanner->assertDontSee('banner-control');
+        self::assertStringContainsString('banner-control', (string) $withoutBanner->getBody());
+        self::assertStringContainsString('uploads/web/trackstatus_laptop.png', (string) $withoutBanner->getBody());
 
         $columns = implode(', ', array_map(
             static fn (string $field): string => $field . ' VARCHAR(64)',
@@ -292,8 +319,9 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
 
         $withBanner = $this->get('/tracking/WP00C-TRACK-006');
         $withBanner->assertStatus(200);
-        $withBanner->assertSee('banner-control');
-        $withBanner->assertSee('/background-image/' . $name);
+        self::assertStringContainsString('banner-control', (string) $withBanner->getBody());
+        self::assertStringContainsString('uploads/web/trackstatus_laptop.png', (string) $withBanner->getBody());
+        self::assertStringNotContainsString('/background-image/' . $name, (string) $withBanner->getBody());
     }
 
     public function testTrackingPublicAssetsAreLocalRecursiveAndMatchCi3Bytes(): void
@@ -375,6 +403,8 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
     /** @return list<string> */
     private function domAssetUrls(string $html): array
     {
+        // HTML comments are not runtime nodes; CI3 header.php contains an empty favicon href in one.
+        $html = (string) preg_replace('/<!--.*?-->/s', '', $html);
         preg_match_all('/<(script|img|link)\b[^>]*>/i', $html, $tags, PREG_SET_ORDER);
         $urls = [];
         foreach ($tags as $tag) {
@@ -383,10 +413,12 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
                 continue;
             }
             $pattern = '/(?<![\\w:-])' . $attribute . '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s"\'=<>`]+))/i';
-            if (preg_match($pattern, $tag[0], $match) !== 1) {
+            if (preg_match($pattern, $tag[0], $match, PREG_UNMATCHED_AS_NULL) !== 1) {
                 throw new \UnexpectedValueException('Unparseable ' . $attribute . ' attribute: ' . $tag[0]);
             }
-            $url = $match[1] !== '' ? $match[1] : ($match[2] !== '' ? $match[2] : ($match[3] ?? ''));
+            $url = ($match[1] ?? '') !== ''
+                ? $match[1]
+                : ((($match[2] ?? '') !== '') ? $match[2] : ($match[3] ?? ''));
             if ($url === '') {
                 throw new \UnexpectedValueException('Empty ' . $attribute . ' attribute: ' . $tag[0]);
             }
@@ -510,37 +542,19 @@ final class PublicTrackingHttpTest extends CIUnitTestCase
 
     private function assertTrackingFormBackgroundCascade(string $html, ?string $laptop, ?string $mobile, string $language): void
     {
-        $staticLaptop = base_url('assets/images/bg-tracking.png');
-        $staticMobile = base_url('assets/images/bg-tracking-mb.png');
-        self::assertStringContainsString('@media (max-width: 850px)', $html, $language);
-        $this->assertAppearsBefore($html, $staticLaptop, $staticMobile, $language . ' static fallback');
-        self::assertSame(
-            (int) ($laptop !== null) + (int) ($mobile !== null),
-            substr_count($html, '/background-image/'),
-            $language . ' published background count',
-        );
-
+        // Pinned CI3 en/th track.php keeps only the static laptop URL in a source comment;
+        // responsive fallback lives in assets/css/main.css and CMS rows do not alter this view.
+        self::assertStringContainsString(base_url('assets/images/bg-tracking.png'), $html, $language);
+        self::assertSame(0, substr_count($html, '/background-image/'), $language);
         if ($laptop !== null) {
-            $publishedLaptop = base_url('background-image/' . $laptop);
-            $this->assertAppearsBefore($html, $staticLaptop, $publishedLaptop, $language . ' laptop override');
-            $this->assertAppearsBefore($html, $publishedLaptop, $staticMobile, $language . ' mobile fallback wins');
+            self::assertStringNotContainsString($laptop, $html, $language . ' laptop DB value');
         }
-
         if ($mobile !== null) {
-            $publishedMobile = base_url('background-image/' . $mobile);
-            $this->assertAppearsBefore($html, $staticMobile, $publishedMobile, $language . ' mobile override');
+            self::assertStringNotContainsString($mobile, $html, $language . ' mobile DB value');
         }
-    }
-
-    private function assertAppearsBefore(string $text, string $first, string $second, string $case): void
-    {
-        $firstPosition = strpos($text, $first);
-        $secondPosition = strpos($text, $second);
-        if ($firstPosition === false || $secondPosition === false) {
-            self::fail($case . ': missing CSS reference');
-        }
-
-        self::assertLessThan($secondPosition, $firstPosition, $case);
+        $css = (string) file_get_contents(PUBLICPATH . 'assets/css/main.css');
+        self::assertStringContainsString('../../uploads/web/track_laptop.png', $css);
+        self::assertStringContainsString('../../uploads/web/track_mobile.png', $css);
     }
 
     /** @return array<string, string> */

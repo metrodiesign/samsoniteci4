@@ -58,10 +58,12 @@ final class Contact extends BaseController
                 ->groupEnd();
         }
 
-        return $this->layout('Contact Management', view('contact_listing', [
-            'contacts' => $query->get()->getResultArray(),
-            'search'   => $search,
-        ]));
+        $content = (new LegacyViewRenderer())->render('master/contactlist', [
+            'contactRecords' => LegacyViewRenderer::escapedRecords($query->get()->getResultArray()),
+            'searchText' => esc($search),
+        ]);
+
+        return $this->layout('Tracking : contact', $content, ['contentOwnsWrapper' => true]);
     }
 
     private function submitLanguage(string $language): RedirectResponse|ResponseInterface

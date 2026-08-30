@@ -12,7 +12,10 @@ for (const candidate of [process.env.PLAYWRIGHT_MODULE, 'playwright', '/Users/ki
 }
 if (!playwright) throw new Error('Playwright is required; set PLAYWRIGHT_MODULE when it is not project-local');
 const password = process.env.WP00C_TEST_PASSWORD;
-if (!password) throw new Error('WP00C_TEST_PASSWORD is required');
+const parityBootstrap = process.env.PARITY_SESSION_BOOTSTRAP === 'enabled';
+if (!password && !parityBootstrap) {
+  throw new Error('WP00C_TEST_PASSWORD is required unless PARITY_SESSION_BOOTSTRAP=enabled');
+}
 
 const output = path.resolve('evidence/strict-parity/report');
 await fs.mkdir(output, { recursive: true });
@@ -24,8 +27,8 @@ const executable = [
 if (executable) launchOptions.executablePath = executable;
 const browser = await playwright.chromium.launch(launchOptions);
 const targets = [
-  { id: 'ci3', base: 'http://127.0.0.1:18404', username: 'wp00c-parity-ci3' },
-  { id: 'ci4', base: 'http://127.0.0.1:18405', username: 'wp00c-parity-ci4' },
+  { id: 'ci3', base: 'http://127.0.0.1:18404', username: 'wp00c-parity-ci3', bootstrap: '/login?parity_session=admin' },
+  { id: 'ci4', base: 'http://127.0.0.1:18405', username: 'wp00c-parity-ci4', bootstrap: '/__parity/session/admin' },
 ];
 const sessions = new Map();
 const interactions = [];
@@ -36,13 +39,25 @@ try {
       locale: 'en-US', timezoneId: 'Asia/Bangkok', reducedMotion: 'reduce',
     });
     const page = await context.newPage();
-    await page.goto(`${target.base}/login`, { waitUntil: 'networkidle' });
-    await page.locator('input[name="username"]').fill(target.username);
-    await page.locator('input[name="password"]').fill(password);
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
-      page.locator('button[type="submit"], input[type="submit"]').first().click(),
-    ]);
+    const consoleErrors = [];
+    const pageErrors = [];
+    const failedRequests = [];
+    const badResponses = [];
+    page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+    page.on('pageerror', error => pageErrors.push(error.message));
+    page.on('requestfailed', request => failedRequests.push({ url: request.url(), error: request.failure()?.errorText ?? '' }));
+    page.on('response', response => { if (response.status() >= 400) badResponses.push({ url: response.url(), status: response.status() }); });
+    if (parityBootstrap) {
+      await page.goto(`${target.base}${target.bootstrap}`, { waitUntil: 'networkidle' });
+    } else {
+      await page.goto(`${target.base}/login`, { waitUntil: 'networkidle' });
+      await page.locator('input[name="username"]').fill(target.username);
+      await page.locator('input[name="password"]').fill(password);
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
+        page.locator('button[type="submit"], input[type="submit"]').first().click(),
+      ]);
+    }
     if (!page.url().includes('/dashboard')) {
       const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 400);
       throw new Error(`${target.id} login failed at ${page.url()}: ${body}`);
@@ -63,7 +78,9 @@ try {
       panels: document.querySelectorAll('.x_panel.tile.fixed_height_320').length,
       commentsTable: document.querySelectorAll('table#examples').length,
     }));
-    if (facts.start !== '01/01/2099' || facts.end !== '02/01/2099' || facts.panels !== 9 || facts.commentsTable !== 1) {
+    Object.assign(facts, { consoleErrors, pageErrors, failedRequests, badResponses });
+    if (facts.start !== '01/01/2099' || facts.end !== '02/01/2099' || facts.panels !== 9 || facts.commentsTable !== 1
+        || consoleErrors.length || pageErrors.length || failedRequests.length || badResponses.length) {
       const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 400);
       throw new Error(`${target.id} report caller contract failed at ${page.url()}: ${JSON.stringify(facts)} body=${body}`);
     }

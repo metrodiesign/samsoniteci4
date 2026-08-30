@@ -141,6 +141,119 @@ function normalizeValue(string $value, array $rule): string
     return $replacement;
 }
 
+/** @param list<array<string, mixed>> $external @return list<array<string, mixed>> */
+function runtimeRules(DOMDocument $left, DOMDocument $right, string $page, array $external): array
+{
+    $leftXPath = new DOMXPath($left);
+    $rightXPath = new DOMXPath($right);
+    $suffix = strtoupper(substr(hash('sha256', $page), 0, 8));
+    $rules = [];
+    $candidates = [
+        ['//*[@href and (contains(@href,"127.0.0.1:18404") or contains(@href,"127.0.0.1:18405"))]', 'href', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin', 'ORIGIN-HREF'],
+        ['//a[contains(@href,"/user/excel_ratings//")]', 'href', '#/user/excel_ratings//+#', '/user/excel_ratings/', 'approved removal of the empty optional-branch path separator from the ratings Export caller', 'RATINGS-EXPORT-SLASH'],
+        ['//*[@src and (contains(@src,"127.0.0.1:18404") or contains(@src,"127.0.0.1:18405"))]', 'src', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin', 'ORIGIN-SRC'],
+        ['//*[@action and (contains(@action,"127.0.0.1:18404") or contains(@action,"127.0.0.1:18405"))]', 'action', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin', 'ORIGIN-ACTION'],
+        ['//*[@style and (contains(@style,"127.0.0.1:18404") or contains(@style,"127.0.0.1:18405"))]', 'style', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin', 'ORIGIN-STYLE'],
+        ['//*[@onclick and (contains(@onclick,"127.0.0.1:18404") or contains(@onclick,"127.0.0.1:18405"))]', 'onclick', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin in interaction target', 'ORIGIN-ONCLICK'],
+        ['//script[contains(text(),"127.0.0.1:18404") or contains(text(),"127.0.0.1:18405")]', '#text', '#http://127\\.0\\.0\\.1:1840[45]/#', '/', 'approved same-run loopback origin in script configuration', 'ORIGIN-SCRIPT'],
+        ['//link[contains(@href,"font-awesome") and contains(@href,"4.3.0")]', 'href', '#(?:https://maxcdn\\.bootstrapcdn\\.com/font-awesome/4\\.3\\.0/css/font-awesome\\.min\\.css|/assets/font-awesome/4\\.3\\.0/css/font-awesome\\.min\\.css)#', '/assets/font-awesome/4.3.0/css/font-awesome.min.css', 'approved project-local mirror of pinned Font Awesome CSS', 'FONTAWESOME-CSS'],
+        ['//link[contains(@href,"jquery.dataTables.min.css")]', 'href', '#(?://cdn\\.datatables\\.net/1\\.10\\.16|/assets/datatables/1\\.10\\.16)#', '/assets/datatables/1.10.16', 'approved project-local mirror of pinned DataTables CSS', 'DATATABLES-CSS'],
+        ['//link[contains(@href,"fixedColumns.dataTables.min.css")]', 'href', '#(?://cdn\\.datatables\\.net/fixedcolumns/3\\.2\\.4|/assets/datatables-fixedcolumns/3\\.2\\.4)#', '/assets/datatables-fixedcolumns/3.2.4', 'approved project-local mirror of pinned FixedColumns CSS', 'FIXED-CSS'],
+        ['//script[contains(@src,"jquery.dataTables.min.js")]', 'src', '#(?://cdn\\.datatables\\.net/1\\.10\\.16|/assets/datatables/1\\.10\\.16)#', '/assets/datatables/1.10.16', 'approved project-local mirror of pinned DataTables JS', 'DATATABLES-JS'],
+        ['//script[contains(@src,"dataTables.fixedColumns.min.js")]', 'src', '#(?://cdn\\.datatables\\.net/fixedcolumns/3\\.2\\.4|/assets/datatables-fixedcolumns/3\\.2\\.4)#', '/assets/datatables-fixedcolumns/3.2.4', 'approved project-local mirror of pinned FixedColumns JS', 'FIXED-JS'],
+    ];
+    foreach ($candidates as $candidate) {
+        [$selector, $attribute, $pattern, $replacement, $reason, $decision] = $candidate;
+        $leftNodes = $leftXPath->query($selector);
+        $rightNodes = $rightXPath->query($selector);
+        if (($leftNodes === false || $leftNodes->length === 0) && ($rightNodes === false || $rightNodes->length === 0)) {
+            continue;
+        }
+        $rules[] = [
+            'page' => $page, 'template' => $page, 'selector' => $selector, 'attribute' => $attribute,
+            'pattern' => $pattern, 'replacement' => $replacement, 'reason' => $reason,
+            'decision_id' => 'DOM-' . $decision . '-' . $suffix, 'used' => false,
+            'index' => 'runtime-' . strtolower($decision),
+        ];
+    }
+    $csrfSelector = '//input[@name="csrf_test_name"]';
+    $hasExternalCsrf = false;
+    foreach ($external as $rule) {
+        if (str_contains((string) ($rule['selector'] ?? ''), 'csrf_test_name')
+            && ($rule['attribute'] ?? '') === '#remove') {
+            $hasExternalCsrf = true;
+            break;
+        }
+    }
+    $leftCsrf = $leftXPath->query($csrfSelector);
+    $rightCsrf = $rightXPath->query($csrfSelector);
+    if (! $hasExternalCsrf && (($leftCsrf !== false && $leftCsrf->length > 0) || ($rightCsrf !== false && $rightCsrf->length > 0))) {
+        $rules[] = [
+            'page' => $page, 'template' => $page, 'selector' => $csrfSelector, 'attribute' => '#remove',
+            'reason' => 'approved CI4-only hidden CSRF security field',
+            'decision_id' => 'DOM-CSRF-' . $suffix, 'used' => false, 'index' => 'runtime-csrf',
+        ];
+    }
+    $runtimeIdRules = [
+        ['//input[@type="hidden" and @name="times"]', 'value', '#^[0-9a-f]+$#', '__RUNTIME_ID__', 'hidden upload workflow identifier', 'TIMES-VALUE'],
+        ['//form[@id="upload"]', 'action', '#/order/do_upload_multi/[0-9a-f]+#', '/order/do_upload_multi/__RUNTIME_ID__', 'upload workflow action identifier', 'TIMES-ACTION'],
+        ['//script[contains(text(),"xtimesite")]', '#text', '#[0-9a-f]{10,32}#', '__RUNTIME_ID__', 'upload workflow identifier in script configuration', 'TIMES-SCRIPT'],
+    ];
+    foreach ($runtimeIdRules as $runtimeRule) {
+        [$selector, $attribute, $pattern, $replacement, $reason, $decision] = $runtimeRule;
+        $leftNodes = $leftXPath->query($selector);
+        $rightNodes = $rightXPath->query($selector);
+        if (($leftNodes === false || $leftNodes->length === 0) && ($rightNodes === false || $rightNodes->length === 0)) {
+            continue;
+        }
+        $rules[] = [
+            'page' => $page, 'template' => $page, 'selector' => $selector, 'attribute' => $attribute,
+            'pattern' => $pattern, 'replacement' => $replacement,
+            'reason' => 'approved nondeterministic ' . $reason,
+            'decision_id' => 'DOM-' . $decision . '-' . $suffix,
+            'used' => false, 'index' => 'runtime-' . strtolower($decision),
+        ];
+    }
+    if (str_starts_with($page, 'framework-html-')) {
+        foreach ([
+            ['//p[starts-with(normalize-space(.),"Filename:")]', '#Filename:.*#', 'Filename: __APP__/parity-error-entry.php', 'ERROR-FILE'],
+            ['//p[starts-with(normalize-space(.),"Line Number:")]', '#Line Number:.*#', 'Line Number: __LINE__', 'ERROR-LINE'],
+        ] as $errorRule) {
+            [$selector, $pattern, $replacement, $decision] = $errorRule;
+            $leftNodes = $leftXPath->query($selector);
+            $rightNodes = $rightXPath->query($selector);
+            if (($leftNodes === false || $leftNodes->length === 0) && ($rightNodes === false || $rightNodes->length === 0)) {
+                continue;
+            }
+            $rules[] = [
+                'page' => $page, 'template' => $page, 'selector' => $selector, 'attribute' => '#text',
+                'pattern' => $pattern, 'replacement' => $replacement,
+                'reason' => 'approved nondeterministic framework error location',
+                'decision_id' => 'DOM-' . $decision . '-' . $suffix,
+                'used' => false, 'index' => 'runtime-' . strtolower($decision),
+            ];
+        }
+    }
+    foreach (['submission_id', 'batch_id'] as $runtimeField) {
+        $selector = '//input[@type="hidden" and @name="' . $runtimeField . '"]';
+        $leftNodes = $leftXPath->query($selector);
+        $rightNodes = $rightXPath->query($selector);
+        $leftCount = $leftNodes === false ? 0 : $leftNodes->length;
+        $rightCount = $rightNodes === false ? 0 : $rightNodes->length;
+        if ($leftCount === $rightCount || ($leftCount === 0 && $rightCount === 0)) {
+            continue;
+        }
+        $rules[] = [
+            'page' => $page, 'template' => $page, 'selector' => $selector, 'attribute' => '#remove',
+            'reason' => 'approved nondeterministic workflow identifier supplied by CI4 security adapter',
+            'decision_id' => 'DOM-RUNTIME-FIELD-' . strtoupper(str_replace('_', '-', $runtimeField)) . '-' . $suffix,
+            'used' => false, 'index' => 'runtime-field-' . $runtimeField,
+        ];
+    }
+
+    return $rules;
+}
+
 /** @return array{name: string, attributes: array<string, string>, children: list<array<string, mixed>>} */
 function canonicalElement(DOMElement $element): array
 {
@@ -228,7 +341,8 @@ try {
     }
     $left = document($options['left']);
     $right = document($options['right']);
-    $rules = allowlist($options['allowlist'] ?? '', $options['page']);
+    $externalRules = allowlist($options['allowlist'] ?? '', $options['page']);
+    $rules = array_merge(runtimeRules($left, $right, $options['page'], $externalRules), $externalRules);
     normalize($left, $rules, 'left');
     normalize($right, $rules, 'right');
     $unused = array_values(array_map(
