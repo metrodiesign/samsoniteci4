@@ -157,14 +157,14 @@ $routes->match(['GET', 'POST'], 'TrackingListing', 'Order::listing/2', ['filter'
 $routes->match(['GET', 'POST'], 'TrackingcloseListing', 'Order::listing/3', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
 $routes->match(['GET', 'POST'], 'TrackingreturnListing', 'Order::listing/4', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->match(['GET', 'POST'], 'TrackingcompleteListing', 'Order::listing/5', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->match(['GET', 'POST'], 'TrackingCompletedListing', 'Order::listing/7', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'TrackingCompletedListing', 'Order::listing/7', ['filter' => ['web-auth:legacy-redirect', 'authorized:read']]);
 $routes->match(['GET', 'POST'], 'ordersListing/(:num)', 'Order::listing/1/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->match(['GET', 'POST'], 'sendorderListing/(:num)', 'Order::listing/1/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->match(['GET', 'POST'], 'TrackingListing/(:num)', 'Order::listing/2/$1', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
 $routes->match(['GET', 'POST'], 'TrackingcloseListing/(:num)', 'Order::listing/3/$1', ['filter' => ['web-auth', 'authorized:read', 'branchless']]);
 $routes->match(['GET', 'POST'], 'TrackingreturnListing/(:num)', 'Order::listing/4/$1', ['filter' => ['web-auth', 'authorized:read']]);
 $routes->match(['GET', 'POST'], 'TrackingcompleteListing/(:num)', 'Order::listing/5/$1', ['filter' => ['web-auth', 'authorized:read']]);
-$routes->match(['GET', 'POST'], 'TrackingCompletedListing/(:num)', 'Order::listing/7/$1', ['filter' => ['web-auth', 'authorized:read']]);
+$routes->match(['GET', 'POST'], 'TrackingCompletedListing/(:num)', 'Order::listing/7/$1', ['filter' => ['web-auth:legacy-redirect', 'authorized:read']]);
 $routes->get('login', 'Login::index');
 $routes->post('loginMe', 'Login::authenticate', ['filter' => 'csrf']);
 $routes->get('logout', 'Login::logoutBridge', ['filter' => 'web-auth']);

@@ -73,21 +73,32 @@ final class Order extends BaseController
     public function listing(?string $fixedStatus = null, ?string $legacyOffset = null): string|ResponseInterface
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
-        $rawPage = $legacyOffset === null ? $this->request->getGet('page') : null;
+        $legacyCompletedContract = $fixedStatus === '7';
+        $rawPage = $legacyOffset === null && ! $legacyCompletedContract ? $this->request->getGet('page') : null;
         $isPost = $this->request->getMethod() === 'POST';
-        $rawSearch = $isPost ? $this->request->getPost('searchText') : $this->request->getGet('search');
-        $rawSdate = $isPost ? $this->request->getPost('sdate') : $this->request->getGet('sdate');
-        $rawEdate = $isPost ? $this->request->getPost('edate') : $this->request->getGet('edate');
+        if ($legacyCompletedContract) {
+            $rawSearch = $isPost ? $this->request->getPost('searchText') : null;
+            $rawSdate = $isPost ? $this->request->getPost('sdate') : null;
+            $rawEdate = null;
+        } else {
+            $rawSearch = $isPost ? $this->request->getPost('searchText') : $this->request->getGet('search');
+            $rawSdate = $isPost ? $this->request->getPost('sdate') : $this->request->getGet('sdate');
+            $rawEdate = $isPost ? $this->request->getPost('edate') : $this->request->getGet('edate');
+        }
         $status = is_string($rawStatus) && preg_match('/\A[1-8]\z/D', $rawStatus) === 1 ? (int) $rawStatus : null;
         if ($legacyOffset !== null) {
-            $page = preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $legacyOffset) === 1
-                ? intdiv((int) $legacyOffset, 50) + 1
-                : 0;
+            $offset = preg_match('/\A(?:0|[1-9][0-9]*)\z/D', $legacyOffset) === 1 ? (int) $legacyOffset : -1;
+            $page = $offset >= 0 ? intdiv($offset, 50) + 1 : 0;
         } else {
             $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
+            $offset = ($page - 1) * 50;
         }
-        $search = is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '';
-        $sdate = is_string($rawSdate) ? $rawSdate : '';
+        $search = $legacyCompletedContract
+            ? (is_string($rawSearch) ? $rawSearch : '')
+            : (is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '');
+        $sdate = $legacyCompletedContract
+            ? (is_string($rawSdate) && ! empty($rawSdate) ? $rawSdate : '')
+            : (is_string($rawSdate) ? $rawSdate : '');
         $edate = is_string($rawEdate) ? $rawEdate : '';
         if ($status === null || $page < 1) {
             throw PageNotFoundException::forPageNotFound();
@@ -103,7 +114,7 @@ final class Order extends BaseController
         $branchId = (int) $session->get('role') === 1 ? null : (int) $session->get('BranchID');
         $db = db_connect();
         $store = new OrderStore($db);
-        $rows = $store->listing($status, $branchId, $search, $page, $sdate, $edate);
+        $rows = $store->listing($status, $branchId, $search, $offset, $sdate, $edate, $legacyCompletedContract);
         $statusUpdates = $store->latestStatusUpdates(array_map(
             static fn (array $row): array => ['orderID' => (string) $row['orderID'], 'customerTel' => (string) $row['customerTel']],
             $rows,
@@ -147,15 +158,15 @@ final class Order extends BaseController
         };
         $pagination = $this->legacyListingPagination(
             $paginationBase,
-            $page,
-            $store->listingCount($status, $branchId, $search, $sdate, $edate),
+            $offset,
+            $store->listingCount($status, $branchId, $search, $sdate, $edate, $legacyCompletedContract),
         );
         $content = (new LegacyViewRenderer(pagination: $pagination, statusUpdates: $statusUpdates))->render($template, [
             'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
             'Status' => LegacyViewRenderer::escapedRecords($statuses),
             'Providers' => LegacyViewRenderer::escapedRecords($providers),
             'searchText' => esc($search), 'sdate' => esc($sdate), 'edate' => esc($edate),
-            'page' => ($page - 1) * 50, 'BranchID' => $session->get('BranchID'),
+            'page' => $offset, 'BranchID' => $session->get('BranchID'),
         ]);
 
         $pageTitle = $status === 1 && $path === 'orderslisting'
@@ -165,19 +176,61 @@ final class Order extends BaseController
         return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
     }
 
-    private function legacyListingPagination(string $base, int $page, int $total): string
+    private function legacyListingPagination(string $base, int $offset, int $total): string
     {
-        $pages = (int) ceil($total / 50);
+        $perPage = 50;
+        $numberOfLinks = 5;
+        $pages = (int) ceil($total / $perPage);
         if ($pages <= 1) {
             return '';
         }
+
+        if ($offset > $total) {
+            $offset = ($pages - 1) * $perPage;
+        }
+        $uriOffset = $offset;
+        $currentPage = (int) floor($offset / $perPage) + 1;
+        $start = ($currentPage - $numberOfLinks) > 0 ? $currentPage - ($numberOfLinks - 1) : 1;
+        $end = ($currentPage + $numberOfLinks) < $pages ? $currentPage + $numberOfLinks : $pages;
+        $baseUrl = rtrim(base_url($base), '/') . '/';
+        $firstUrl = $baseUrl;
+        $startRelationUsed = false;
         $links = '<nav><ul class="pagination">';
-        for ($number = 1; $number <= $pages; $number++) {
-            if ($number === $page) {
+
+        if ($currentPage > ($numberOfLinks + 1)) {
+            $links .= '<li class="arrow"><a href="' . $firstUrl
+                . '" data-ci-pagination-page="1" rel="start">First</a></li>';
+            $startRelationUsed = true;
+        }
+        if ($currentPage !== 1) {
+            $previousOffset = $uriOffset - $perPage;
+            $previousUrl = $previousOffset === 0 ? $firstUrl : $baseUrl . $previousOffset;
+            $links .= '<li class="arrow"><a href="' . $previousUrl . '" data-ci-pagination-page="'
+                . ($currentPage - 1) . '" rel="prev">Previous</a></li>';
+        }
+        for ($number = $start; $number <= $end; $number++) {
+            $pageOffset = ($number - 1) * $perPage;
+            if ($number === $currentPage) {
                 $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
+            } elseif ($pageOffset === 0) {
+                $relation = $startRelationUsed ? '' : ' rel="start"';
+                $links .= '<li><a href="' . $firstUrl . '" data-ci-pagination-page="' . $number . '"'
+                    . $relation . '>' . $number . '</a></li>';
+                $startRelationUsed = true;
             } else {
-                $links .= '<li><a href="' . base_url($base . '/' . (($number - 1) * 50)) . '">' . $number . '</a></li>';
+                $links .= '<li><a href="' . $baseUrl . $pageOffset . '" data-ci-pagination-page="'
+                    . $number . '">' . $number . '</a></li>';
             }
+        }
+        if ($currentPage < $pages) {
+            $nextOffset = $currentPage * $perPage;
+            $links .= '<li class="arrow"><a href="' . $baseUrl . $nextOffset
+                . '" data-ci-pagination-page="' . ($currentPage + 1) . '" rel="next">Next</a></li>';
+        }
+        if (($currentPage + $numberOfLinks) < $pages) {
+            $lastOffset = ($pages - 1) * $perPage;
+            $links .= '<li class="arrow"><a href="' . $baseUrl . $lastOffset
+                . '" data-ci-pagination-page="' . $pages . '">Last</a></li>';
         }
 
         return $links . '</ul></nav>';

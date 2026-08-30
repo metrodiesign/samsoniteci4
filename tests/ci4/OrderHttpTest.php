@@ -127,6 +127,230 @@ final class OrderHttpTest extends CIUnitTestCase
         $injection->assertDontSee('WP00C-TRACK-002');
     }
 
+    public function testCompletedListingRedirectsAnonymousRequestsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/TrackingCompletedListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/TrackingCompletedListing', [
+            'searchText' => 'WP00C-TRACK-007',
+            'sdate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
+    public function testCompletedListingInvalidLegacyDateReturnsNoRowsLikeCi3(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/TrackingCompletedListing', [
+            'searchText' => '',
+            'sdate' => 'not-a-date',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertDontSee('WP00C-TRACK-007');
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="sdate")(?=[^>]*value="not-a-date")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingTreatsLegacyZeroDateAsEmpty(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/TrackingCompletedListing', [
+            'searchText' => '',
+            'sdate' => '0',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP00C-TRACK-007');
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="sdate")(?=[^>]*value="")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingPreservesLegacySearchWhitespace(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/TrackingCompletedListing', [
+            'searchText' => ' WP00C-TRACK-007 ',
+            'sdate' => '',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertSame(1, preg_match('/<tbody[^>]*>(.*?)<\/tbody>/s', (string) $response->getBody(), $tableBody));
+        self::assertStringNotContainsString('WP00C-TRACK-007', $tableBody[1]);
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="searchText")(?=[^>]*value=" WP00C-TRACK-007 ")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingTreatsLegacyZeroSearchAsEmptyFilter(): void
+    {
+        $this->db->table('request_order')->where('request_id', 91007)->update([
+            'trackID' => 'PARITYTRACKSEVEN',
+        ]);
+        $response = $this->withSession($this->session(1, 1, null))->post('/TrackingCompletedListing', [
+            'searchText' => '0',
+            'sdate' => '',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('PARITYTRACKSEVEN');
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="searchText")(?=[^>]*value="0")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingDoesNotClearLongLegacySearch(): void
+    {
+        $search = str_repeat('X', 129);
+        $response = $this->withSession($this->session(1, 1, null))->post('/TrackingCompletedListing', [
+            'searchText' => $search,
+            'sdate' => '',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertSame(1, preg_match('/<tbody[^>]*>(.*?)<\/tbody>/s', (string) $response->getBody(), $tableBody));
+        self::assertStringNotContainsString('WP00C-TRACK-007', $tableBody[1]);
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="searchText")(?=[^>]*value="' . $search . '")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingIgnoresLegacyGetFilterAndPageParameters(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->get(
+            '/TrackingCompletedListing?search=PARITY-NO-MATCH&sdate=01%2F01%2F2000&page=2',
+        );
+
+        $response->assertStatus(200);
+        $response->assertSee('WP00C-TRACK-007');
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="searchText")(?=[^>]*value="")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*name="sdate")(?=[^>]*value="")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testCompletedListingOrdersRowsByRequestDateLikeCi3(): void
+    {
+        $this->db->table('request_order')->insertBatch([
+            [
+                'request_id' => 90007, 'requestDate' => '2030-01-01 00:00:00',
+                'trackID' => 'PARITY-NEWEST-DATE', 'orderID' => 'ODN', 'orderIDShow' => 'DATE/NEW',
+                'customerFullname' => 'NEWEST DATE', 'customerTel' => '0000000000',
+                'branchID' => 2, 'branch_type_id' => 2, 'UserID' => 9003, 'action_status' => 7,
+            ],
+            [
+                'request_id' => 99007, 'requestDate' => '2020-01-01 00:00:00',
+                'trackID' => 'PARITY-OLDEST-DATE', 'orderID' => 'ODO', 'orderIDShow' => 'DATE/OLD',
+                'customerFullname' => 'OLDEST DATE', 'customerTel' => '0000000000',
+                'branchID' => 2, 'branch_type_id' => 2, 'UserID' => 9003, 'action_status' => 7,
+            ],
+        ]);
+
+        $body = (string) $this->withSession($this->session(1, 1, null))
+            ->get('/TrackingCompletedListing')->getBody();
+
+        $newest = strpos($body, 'PARITY-NEWEST-DATE');
+        $existing = strpos($body, 'WP00C-TRACK-007');
+        $oldest = strpos($body, 'PARITY-OLDEST-DATE');
+        self::assertIsInt($newest);
+        self::assertIsInt($existing);
+        self::assertIsInt($oldest);
+        self::assertLessThan($existing, $newest);
+        self::assertLessThan($oldest, $existing);
+    }
+
+    public function testCompletedListingLegacyPathUsesRawCi3Offset(): void
+    {
+        $this->db->table('request_order')->insertBatch([
+            [
+                'request_id' => 90007, 'requestDate' => '2030-01-01 00:00:00',
+                'trackID' => 'PARITY-OFFSET-FIRST', 'orderID' => 'OOF', 'orderIDShow' => 'OFFSET/FIRST',
+                'customerFullname' => 'OFFSET FIRST', 'customerTel' => '0000000000',
+                'branchID' => 2, 'branch_type_id' => 2, 'UserID' => 9003, 'action_status' => 7,
+            ],
+            [
+                'request_id' => 99007, 'requestDate' => '2020-01-01 00:00:00',
+                'trackID' => 'PARITY-OFFSET-LAST', 'orderID' => 'OOL', 'orderIDShow' => 'OFFSET/LAST',
+                'customerFullname' => 'OFFSET LAST', 'customerTel' => '0000000000',
+                'branchID' => 2, 'branch_type_id' => 2, 'UserID' => 9003, 'action_status' => 7,
+            ],
+        ]);
+
+        $response = $this->withSession($this->session(1, 1, null))->get('/TrackingCompletedListing/1');
+
+        $response->assertStatus(200);
+        self::assertSame(1, preg_match('/<tbody[^>]*>(.*?)<\/tbody>/s', (string) $response->getBody(), $tableBody));
+        self::assertStringNotContainsString('PARITY-OFFSET-FIRST', $tableBody[1]);
+        self::assertStringContainsString('WP00C-TRACK-007', $tableBody[1]);
+        self::assertStringContainsString('PARITY-OFFSET-LAST', $tableBody[1]);
+    }
+
+    public function testCompletedListingPaginationRendersCi3OffsetLinks(): void
+    {
+        for ($index = 1; $index <= 50; $index++) {
+            $this->db->table('request_order')->insert([
+                'request_id' => 92000 + $index,
+                'requestDate' => sprintf('2025-01-01 00:%02d:00', $index - 1),
+                'trackID' => sprintf('PARITY-PAGE-%03d', $index),
+                'orderID' => 'OP' . $index,
+                'orderIDShow' => 'PAGE/' . $index,
+                'customerFullname' => 'PAGINATION ' . $index,
+                'customerTel' => '0000000000',
+                'branchID' => 2,
+                'branch_type_id' => 2,
+                'UserID' => 9003,
+                'action_status' => 7,
+            ]);
+        }
+        $admin = $this->session(1, 1, null);
+
+        $first = (string) $this->withSession($admin)->get('/TrackingCompletedListing')->getBody();
+        self::assertStringContainsString('<li class="active"><a href="#">1</a></li>', $first);
+        self::assertStringContainsString(
+            '<li><a href="http://example.invalid/TrackingCompletedListing/50" data-ci-pagination-page="2">2</a></li>',
+            $first,
+        );
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="http://example.invalid/TrackingCompletedListing/50" data-ci-pagination-page="2" rel="next">Next</a></li>',
+            $first,
+        );
+        self::assertStringNotContainsString('>Previous</a>', $first);
+
+        $second = (string) $this->withSession($admin)->get('/TrackingCompletedListing/50')->getBody();
+        self::assertStringContainsString('PARITY-PAGE-001', $second);
+        self::assertStringNotContainsString('PARITY-PAGE-050', $second);
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="http://example.invalid/TrackingCompletedListing/" data-ci-pagination-page="1" rel="prev">Previous</a></li>',
+            $second,
+        );
+        self::assertStringContainsString(
+            '<li><a href="http://example.invalid/TrackingCompletedListing/" data-ci-pagination-page="1" rel="start">1</a></li>',
+            $second,
+        );
+        self::assertStringContainsString('<li class="active"><a href="#">2</a></li>', $second);
+        self::assertStringNotContainsString('>Next</a>', $second);
+
+        $beyondLast = (string) $this->withSession($admin)->get('/TrackingCompletedListing/999999')->getBody();
+        self::assertStringNotContainsString('PARITY-PAGE-', $beyondLast);
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="http://example.invalid/TrackingCompletedListing/" data-ci-pagination-page="1" rel="prev">Previous</a></li>',
+            $beyondLast,
+        );
+        self::assertStringNotContainsString('/TrackingCompletedListing/999949', $beyondLast);
+        self::assertStringContainsString('<li class="active"><a href="#">2</a></li>', $beyondLast);
+    }
+
     public function testCi3OrderEditAndPrintAliasesKeepSourceFormActions(): void
     {
         $session = $this->session(1, 1, null);
