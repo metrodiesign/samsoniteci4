@@ -37,13 +37,19 @@ final class Reports extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
         $requestedBranch = $this->reportInput($kind, 'branch_id');
-        $branchId = $kind === 'pending'
-            ? $this->pendingBranchScope($requestedBranch)
-            : $this->branchScope();
+        $branchId = match ($kind) {
+            'pending', 'in-progress-average', 'in-progress' => $this->legacyPostedBranchScope($requestedBranch),
+            default => $this->branchScope(),
+        };
         $start = $this->reportInput($kind, 'start_date');
         $end = $this->reportInput($kind, 'end_date');
         [$start, $end] = $this->defaultRange($start, $end);
-        $statusId = $kind === 'in-progress' ? $this->normalizeStatusIds($this->input('status_id')) : '';
+        $statusId = $kind === 'in-progress'
+            ? $this->legacyInProgressStatus($this->reportInput($kind, 'status_id'))
+            : '';
+        if ($kind === 'in-progress' && $this->isInvalidLegacyInProgressStatus($statusId)) {
+            return $this->legacyInProgressDatabaseError($statusId, $start, $end, $branchId);
+        }
         $error = null;
         $db = db_connect();
         try {
@@ -53,8 +59,10 @@ final class Reports extends BaseController
                 : $matrix->matrix($kind, $start, $end, $branchId, $statusId);
         } catch (InvalidArgumentException $exception) {
             $rows = [];
-            // CI3 renders an empty pending report with HTTP 200 when its date input is malformed.
-            $error = $kind === 'pending' ? null : $exception->getMessage();
+            // CI3 renders these reports empty with HTTP 200 when their date input is malformed.
+            $error = in_array($kind, ['pending', 'in-progress-average', 'in-progress'], true)
+                ? null
+                : $exception->getMessage();
         }
         $role = (int) service('session')->get('role');
         [$title, $caption, $sectionTitle] = self::HEADINGS[$kind];
@@ -76,7 +84,7 @@ final class Reports extends BaseController
                 'in-progress-average' => 'report_in_progress_average',
                 'in-progress' => 'report_in_progress_job',
             ];
-            $branches = $role === 1
+            $branches = $role === 1 || $kind === 'in-progress'
                 ? $db->table('branch')->select('branch_id, branch_name, branch_user_name')->orderBy('branch_id')->get()->getResultArray()
                 : [];
             $legacyRows = $rows;
@@ -113,7 +121,10 @@ final class Reports extends BaseController
             ], $this->statusOptions());
             $records = LegacyViewRenderer::escapedRecords($legacyRows);
             $variables = [
-                'GroupID' => service('session')->get('GroupID'), 'BranchID' => service('session')->get('BranchID'),
+                'GroupID' => service('session')->get('GroupID'),
+                'BranchID' => $kind === 'in-progress' && $requestedBranch !== null && $requestedBranch !== ''
+                    ? $requestedBranch
+                    : service('session')->get('BranchID'),
                 'BID' => $branchId ?? 0, 'start_date' => esc($start), 'end_date' => esc($end),
                 'branch_type_image' => '',
                 'brans_list' => LegacyViewRenderer::escapedRecords($branches),
@@ -253,11 +264,15 @@ final class Reports extends BaseController
         ?string $routeStartDate = null,
         ?string $routeEndDate = null,
         bool $detailedRatings = false,
+        ?string $routeStatusId = null,
+        bool $trustRouteBranch = false,
     ): ResponseInterface {
         if (! in_array($type, ['tracking', 'summary', 'ratings', 'in-progress'], true)) {
             throw PageNotFoundException::forPageNotFound();
         }
-        $branchId = $this->branchScope($routeBranchId);
+        $branchId = $trustRouteBranch
+            ? $this->legacyExportBranchScope($routeBranchId)
+            : $this->branchScope($routeBranchId);
         // Parity with CI3 report export, which raises memory_limit before pulling rows
         // (application/controllers/Order.php:446 / User.php:444 -> ini_set('memory_limit', '8048M')).
         if (ini_set('memory_limit', '8048M') === false) {
@@ -280,7 +295,13 @@ final class Reports extends BaseController
                 'ratings' => $detailedRatings
                     ? $matrix->ratingExport($defaultStart, $defaultEnd, $branchId)
                     : $matrix->ratings($defaultStart, $defaultEnd, $branchId),
-                'in-progress' => $matrix->matrix('in-progress', $defaultStart, $defaultEnd, $branchId, $this->normalizeStatusIds($this->input('status_id'))),
+                'in-progress' => $matrix->matrix(
+                    'in-progress',
+                    $defaultStart,
+                    $defaultEnd,
+                    $branchId,
+                    $routeStatusId ?? $this->normalizeStatusIds($this->input('status_id')),
+                ),
             };
         } catch (InvalidArgumentException $exception) {
             return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
@@ -331,6 +352,15 @@ final class Reports extends BaseController
                 ->setHeader('X-Content-Type-Options', 'nosniff')
                 ->setBody($body);
         }
+        if ($type === 'in-progress') {
+            $filename = 'In_Progress_Report_' . time() . '.xls';
+
+            return $this->response
+                ->setHeader('Content-Type', 'application/x-msexcel; name="' . $filename . '"')
+                ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
+                ->setHeader('Pragma', 'no-cache')
+                ->setBody($body);
+        }
 
         return $this->response
             ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=UTF-8')
@@ -353,6 +383,22 @@ final class Reports extends BaseController
         }
         if ($type === 'ratings' && ! in_array(count($segments), [0, 2], true)) {
             throw PageNotFoundException::forPageNotFound();
+        }
+        if ($type === 'in-progress' && $segments === []) {
+            $branchId = $this->request->getGet('branchId');
+            $startDate = $this->request->getGet('startDate');
+            $endDate = $this->request->getGet('endDate');
+            $statusId = $this->request->getGet('status');
+
+            return $this->buildExport(
+                $type,
+                legacyExport: true,
+                routeBranchId: is_string($branchId) ? $branchId : null,
+                routeStartDate: is_string($startDate) ? $startDate : null,
+                routeEndDate: is_string($endDate) ? $endDate : null,
+                routeStatusId: is_string($statusId) ? $statusId : null,
+                trustRouteBranch: true,
+            );
         }
 
         return $this->buildExport($type, legacyExport: true);
@@ -416,10 +462,54 @@ final class Reports extends BaseController
         ];
     }
 
-    /**
-     * CI3 parity: the in-progress filter accepts status_id as either a CSV string or a
-     * status_id[] array; collapse both to a CSV string before parsing (decision 6).
-     */
+    private function legacyInProgressStatus(mixed $value): string
+    {
+        if (is_array($value)) {
+            return 'Array';
+        }
+
+        return is_string($value) ? $value : '';
+    }
+
+    private function isInvalidLegacyInProgressStatus(string $statusId): bool
+    {
+        if ($statusId === '' || $statusId === '0' || $statusId === 'Array') {
+            return false;
+        }
+
+        return preg_match('/\A\s*[0-9]+\s*(?:,\s*[0-9]+\s*)*\z/D', $statusId) !== 1;
+    }
+
+    private function legacyInProgressDatabaseError(
+        string $statusId,
+        string $startDate,
+        string $endDate,
+        ?int $branchId,
+    ): ResponseInterface {
+        // Deliberately reproduce CI3's leaked SQL error page for this approved route-specific seam.
+        $startDate = substr($startDate, 6, 4) . '-' . substr($startDate, 3, 2) . '-' . substr($startDate, 0, 2);
+        $endDate = substr($endDate, 6, 4) . '-' . substr($endDate, 3, 2) . '-' . substr($endDate, 0, 2);
+        $branch = $branchId === null ? '' : " and branchID = '{$branchId}'";
+        $query = "SELECT *, DATEDIFF('" . date('Y-m-d') . "', requestDate) AS Total, statusaction.status_name_th FROM request_order\n"
+            . "        inner join statusaction on request_order.action_status = statusaction.status_id\n"
+            . "        WHERE requestDate BETWEEN '{$startDate}' and '{$endDate}'{$branch} and action_status IN ({$statusId})"
+            . ' and date_complete IS NULL group by request_id order by requestDate asc';
+        $message = '<p>Error Number: 1054</p>'
+            . "<p>Unknown column '{$statusId}' in 'WHERE'</p>"
+            . '<p>' . $query . '</p>'
+            . '<p>Filename: models/Request_order_model.php</p><p>Line Number: 2002</p>';
+        $source = (string) file_get_contents(APPPATH . 'Views/ci3/errors/html/error_db.php');
+        $documentStart = strpos($source, '<!DOCTYPE html>');
+        $body = $documentStart === false ? '' : substr($source, $documentStart);
+        $body = str_replace(
+            ['<?php echo $heading; ?>', '<?php echo $message; ?>' . "\n"],
+            ['A Database Error Occurred', $message],
+            $body,
+        );
+
+        return $this->response->setStatusCode(500)->setBody($body);
+    }
+
     private function normalizeStatusIds(mixed $value): string
     {
         if (is_array($value)) {
@@ -440,17 +530,30 @@ final class Reports extends BaseController
 
     private function reportInput(string $kind, string $name): mixed
     {
-        // CI3's pending action reads input->post() even when the route is requested with GET.
-        if ($kind === 'pending' && strtoupper($this->request->getMethod()) !== 'POST') {
+        // These CI3 actions read input->post() even when the route is requested with GET.
+        if (in_array($kind, ['pending', 'in-progress-average', 'in-progress'], true)
+            && strtoupper($this->request->getMethod()) !== 'POST') {
             return null;
         }
 
         return $this->input($name);
     }
 
-    private function pendingBranchScope(mixed $requested): ?int
+    private function legacyExportBranchScope(?string $requested): ?int
     {
-        // CI3 trusts this route's posted branch for every role and falls back only when it is empty.
+        if ($requested === null || $requested === '' || $requested === '0') {
+            return null;
+        }
+        if (preg_match('/\A[1-9][0-9]*\z/D', $requested) !== 1) {
+            throw PageNotFoundException::forPageNotFound();
+        }
+
+        return (int) $requested;
+    }
+
+    private function legacyPostedBranchScope(mixed $requested): ?int
+    {
+        // CI3 trusts these routes' posted branch for every role and falls back only when it is empty.
         $sessionBranch = service('session')->get('BranchID');
         $sessionBranch = $sessionBranch === null ? null : (int) $sessionBranch;
         if ($requested === null || $requested === '') {

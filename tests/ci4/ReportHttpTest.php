@@ -206,6 +206,36 @@ final class ReportHttpTest extends CIUnitTestCase
         $post->assertRedirectTo('/login');
     }
 
+    public function testInProgressAverageRedirectsAnonymousRequestsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/user/report_in_progress_average');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/user/report_in_progress_average', [
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
+    public function testInProgressRoutesRedirectAnonymousRequestsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/user/report_in_progress_job');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/user/report_in_progress_job', [
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        $export = $this->withSession([])->get('/user/excel_in_progress_job');
+        $export->assertStatus(307);
+        $export->assertRedirectTo('/login');
+    }
+
     public function testRatingReportUsesItsDedicatedByteIdenticalCi3Target(): void
     {
         $target = APPPATH . 'Views/ci3/report.php';
@@ -298,7 +328,7 @@ final class ReportHttpTest extends CIUnitTestCase
 
         $inProgress = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
             'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
-            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['5'],
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => '5',
         ]);
         $inProgress->assertStatus(200);
         self::assertMatchesRegularExpression(
@@ -307,20 +337,18 @@ final class ReportHttpTest extends CIUnitTestCase
         );
         $inProgress->assertSee('WP00C-REPORT-005');
         $inProgress->assertDontSee('WP00C-REPORT-001');
-        // CI3 report_in_progress_job.php builds this query from the session BranchID;
-        // a central actor therefore keeps branchId empty even after selecting branch 2.
-        self::assertStringContainsString('/user/excel_in_progress_job?branchId=', $inProgress->getBody());
-        self::assertStringNotContainsString('/user/excel_in_progress_job?branchId=2', $inProgress->getBody());
-        self::assertStringContainsString('status=5', $inProgress->getBody());
+        self::assertStringContainsString(
+            '/user/excel_in_progress_job?branchId=2&amp;startDate=01-08-2026&amp;endDate=31-08-2026&amp;status=5',
+            $inProgress->getBody(),
+        );
     }
 
     public function testBranchUserCannotRequestAnotherBranchInProtectedMatrixOrExport(): void
     {
-        // report_job_pending is deliberately excluded: CI3 trusts its posted branch_id,
-        // which is locked by testPendingHonoursTamperedBranchLikeCi3().
+        // Pending and both in-progress routes are deliberately excluded: CI3 trusts their posted
+        // branch_id values, which their dedicated compatibility tests lock down.
         foreach ([
             '/user/report', '/user/report_job_byday', '/user/report_total_job_pending',
-            '/user/report_in_progress_average', '/user/report_in_progress_job',
         ] as $route) {
             try {
                 $this->withSession($this->session(2, 2, 1))->post($route, [
@@ -512,9 +540,11 @@ final class ReportHttpTest extends CIUnitTestCase
         foreach (['/user/excel_ratings', '/user/excel_in_progress_job', '/Order/excel_report', '/Order/excel_report_sum'] as $path) {
             $legacy = $this->withSession($this->session(2, 2, 1))->get($path);
             $legacy->assertStatus(200);
-            $expectedDisposition = $path === '/user/excel_ratings'
-                ? 'inline; filename="Rating_Report_'
-                : 'attachment; filename=';
+            $expectedDisposition = match ($path) {
+                '/user/excel_ratings' => 'inline; filename="Rating_Report_',
+                '/user/excel_in_progress_job' => 'inline; filename="In_Progress_Report_',
+                default => 'attachment; filename=',
+            };
             self::assertStringContainsString(
                 $expectedDisposition,
                 $legacy->response()->getHeaderLine('Content-Disposition'),
@@ -614,33 +644,309 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringContainsString('100.00%', $body);
     }
 
-    public function testInProgressStatusFilterAcceptsArrayAndCsvIdentically(): void
+    public function testInProgressAverageIgnoresGetFiltersAndUsesCi3DefaultRange(): void
     {
-        // status 2 -> order id 2, status 4 -> order id 4 (both branch 1, date_complete NULL).
+        $this->db->table('request_order')->truncate();
+        $today = new \DateTimeImmutable('today');
+        $job = $this->order(311, 1, 1, 1, 1);
+        $job['trackID'] = 'WP06A-AVERAGE-GET-IGNORED';
+        $job['requestDate'] = $today->modify('-5 days')->format('Y-m-d 00:00:00');
+        $this->db->table('request_order')->insert($job);
+
+        $query = http_build_query([
+            'branch_id' => '2',
+            'start_date' => $today->modify('-2 months')->format('d/m/Y'),
+            'end_date' => $today->modify('-2 months')->format('d/m/Y'),
+        ]);
+        $response = $this->withSession($this->session(1, 1, null))
+            ->get('/user/report_in_progress_average?' . $query);
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/name="start_date" value="' . preg_quote($today->modify('-1 month')->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+        self::assertMatchesRegularExpression(
+            '/name="end_date" value="' . preg_quote($today->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+        $body = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*เปิดงานซ่อม รอศูนย์บริการมารับ\s*<\/td>\s*<td align="right">\s*1\s*<\/td>/s',
+            $body,
+        );
+    }
+
+    public function testInProgressAverageReturnsEmptyReportForMalformedDatesLikeCi3(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_average', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
+            'start_date' => 'not-a-date', 'end_date' => 'not-a-date',
+        ]);
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/<td colspan="2"[^>]*>\s*TOTAL\s*<\/td>\s*<td align="right"[^>]*>\s*0\s*<\/td>'
+                . '\s*<td align="right"[^>]*>\s*0\.00%\s*<\/td>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testInProgressAverageHonoursTamperedBranchLikeCi3(): void
+    {
+        $this->db->table('request_order')->truncate();
+        $job = $this->order(312, 2, 3, 1, 1);
+        $job['trackID'] = 'WP06A-AVERAGE-CROSS-BRANCH';
+        $job['requestDate'] = '2026-08-15 00:00:00';
+        $this->db->table('request_order')->insert($job);
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_average', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+            'start_date' => '15/08/2026', 'end_date' => '15/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        $body = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*อยู่ระหว่างดำเนินการซ่อมสินค้า\s*<\/td>\s*<td align="right">\s*1\s*<\/td>/s',
+            $body,
+        );
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*type="hidden")(?=[^>]*name="branch_id")(?=[^>]*value="1")[^>]*>/s',
+            $body,
+        );
+    }
+
+    public function testInProgressAverageReplicatesCi3EndDateMidnightCutoff(): void
+    {
+        foreach ([309 => [1, '2026-08-31 00:00:00'], 310 => [2, '2026-08-31 12:00:00']] as $id => [$status, $requestDate]) {
+            $job = $this->order($id, 1, $status, 1, 1);
+            $job['trackID'] = 'WP06A-AVERAGE-END-' . $id;
+            $job['requestDate'] = $requestDate;
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_average', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '31/08/2026', 'end_date' => '31/08/2026',
+        ]);
+
+        $response->assertStatus(200);
+        $body = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*เปิดงานซ่อม รอศูนย์บริการมารับ\s*<\/td>\s*<td align="right">\s*1\s*<\/td>/s',
+            $body,
+        );
+        self::assertMatchesRegularExpression(
+            '/<td align="left">\s*สินค้าจัดส่งเข้าศูนย์บริการ\s*<\/td>\s*<td align="right">\s*0\s*<\/td>/s',
+            $body,
+        );
+        self::assertMatchesRegularExpression(
+            '/<td colspan="2"[^>]*>\s*TOTAL\s*<\/td>\s*<td align="right"[^>]*>\s*1\s*<\/td>/s',
+            $body,
+        );
+    }
+
+    public function testInProgressIgnoresGetFiltersAndUsesCi3DefaultRange(): void
+    {
+        $this->db->table('request_order')->truncate();
+        $today = new \DateTimeImmutable('today');
+        $job = $this->order(315, 1, 1, 1, 1);
+        $job['trackID'] = 'WP06A-INPROGRESS-GET-IGNORED';
+        $job['requestDate'] = $today->modify('-5 days')->format('Y-m-d 00:00:00');
+        $job['date_complete'] = null;
+        $this->db->table('request_order')->insert($job);
+
+        $query = http_build_query([
+            'branch_id' => '2', 'status_id' => '2',
+            'start_date' => $today->modify('-2 months')->format('d/m/Y'),
+            'end_date' => $today->modify('-2 months')->format('d/m/Y'),
+        ]);
+        $response = $this->withSession($this->session(1, 1, null))
+            ->get('/user/report_in_progress_job?' . $query);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-INPROGRESS-GET-IGNORED');
+        self::assertMatchesRegularExpression(
+            '/name="start_date" value="' . preg_quote($today->modify('-1 month')->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+        self::assertMatchesRegularExpression(
+            '/name="end_date" value="' . preg_quote($today->format('d/m/Y'), '/') . '"/',
+            (string) $response->getBody(),
+        );
+        self::assertStringContainsString('id="status_id" name="status_id" value=""', $response->getBody());
+    }
+
+    public function testInProgressReturnsEmptyReportForMalformedDatesLikeCi3(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
+            'start_date' => 'not-a-date', 'end_date' => 'not-a-date', 'status_id' => '',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertDontSee('WP00C-REPORT-001');
+        self::assertMatchesRegularExpression(
+            '/<tbody>\s*<\/tbody>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testInProgressHonoursTamperedBranchLikeCi3(): void
+    {
+        $this->db->table('request_order')->truncate();
+        $job = $this->order(316, 2, 3, 1, 1);
+        $job['trackID'] = 'WP06A-INPROGRESS-CROSS-BRANCH';
+        $job['requestDate'] = '2026-08-15 00:00:00';
+        $job['date_complete'] = null;
+        $this->db->table('request_order')->insert($job);
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '2',
+            'start_date' => '15/08/2026', 'end_date' => '15/08/2026', 'status_id' => '',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-INPROGRESS-CROSS-BRANCH');
+        self::assertMatchesRegularExpression(
+            '/<td>\s*WP06A-INPROGRESS-CROSS-BRANCH\s*<\/td>\s*<td>[^<]*<\/td>\s*<td>\s*BRANCH B\s*<\/td>/s',
+            (string) $response->getBody(),
+        );
+        self::assertMatchesRegularExpression(
+            '/<input(?=[^>]*type="hidden")(?=[^>]*name="branch_id")(?=[^>]*value="1")[^>]*>/s',
+            (string) $response->getBody(),
+        );
+    }
+
+    public function testInProgressReplicatesCi3EndDateMidnightCutoff(): void
+    {
+        $this->db->table('request_order')->truncate();
+        foreach ([313 => [2, '2026-08-31 00:00:00'], 314 => [4, '2026-08-31 12:00:00']] as $id => [$status, $requestDate]) {
+            $job = $this->order($id, 1, $status, 1, 1);
+            $job['trackID'] = 'WP06A-INPROGRESS-END-' . $id;
+            $job['requestDate'] = $requestDate;
+            $job['date_complete'] = null;
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $response = $this->withSession($this->session(2, 2, 1))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '1',
+            'start_date' => '31/08/2026', 'end_date' => '31/08/2026', 'status_id' => '',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertSee('WP06A-INPROGRESS-END-313');
+        $response->assertDontSee('WP06A-INPROGRESS-END-314');
+    }
+
+    public function testInProgressStatusArrayIsIgnoredWhileCsvFiltersLikeCi3(): void
+    {
         $array = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
             'csrf_test_name' => service('security')->getHash(),
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
         ]);
+        $array->assertStatus(200);
+        foreach (['001', '002', '003', '004', '005'] as $id) {
+            $array->assertSee('WP00C-REPORT-' . $id);
+        }
+        self::assertStringContainsString('id="status_id" name="status_id" value="Array"', $array->getBody());
+
         $csv = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
             'csrf_test_name' => service('security')->getHash(),
             'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => '2,4',
         ]);
+        $csv->assertStatus(200);
+        $csv->assertSee('WP00C-REPORT-002');
+        $csv->assertSee('WP00C-REPORT-004');
+        $csv->assertDontSee('WP00C-REPORT-001');
+        $csv->assertDontSee('WP00C-REPORT-003');
+        $csv->assertDontSee('WP00C-REPORT-005');
+    }
 
-        foreach ([$array, $csv] as $response) {
-            $response->assertStatus(200);
-            $response->assertSee('WP00C-REPORT-002');
-            $response->assertSee('WP00C-REPORT-004');
-            $response->assertDontSee('WP00C-REPORT-001');
-            $response->assertDontSee('WP00C-REPORT-003');
-            $response->assertDontSee('WP00C-REPORT-005');
+    public function testInProgressGarbageStatusReturnsCi3DatabaseError(): void
+    {
+        $response = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
+            'csrf_test_name' => service('security')->getHash(), 'branch_id' => '0',
+            'start_date' => '01/08/2026', 'end_date' => '30/08/2026', 'status_id' => 'abc',
+        ]);
+
+        $response->assertStatus(500);
+        self::assertStringContainsString('<title>Database Error</title>', $response->getBody());
+        self::assertStringContainsString('<h1>A Database Error Occurred</h1>', $response->getBody());
+        self::assertStringContainsString("Unknown column 'abc' in 'WHERE'", $response->getBody());
+        self::assertStringContainsString('Filename: models/Request_order_model.php', $response->getBody());
+        self::assertStringContainsString("Line Number: 2002</p>\t</div>", $response->getBody());
+    }
+
+    public function testLegacyInProgressExportAppliesCi3CamelCaseFiltersAndTrustedBranch(): void
+    {
+        $this->db->table('request_order')->truncate();
+        foreach ([
+            317 => [2, 2, 'WP06A-INPROGRESS-EXPORT-TARGET'],
+            318 => [1, 2, 'WP06A-INPROGRESS-EXPORT-OTHER-BRANCH'],
+            319 => [2, 3, 'WP06A-INPROGRESS-EXPORT-OTHER-STATUS'],
+        ] as $id => [$branch, $status, $trackId]) {
+            $job = $this->order($id, $branch, $status, 1, 1);
+            $job['trackID'] = $trackId;
+            $job['requestDate'] = '2026-08-15 00:00:00';
+            $job['date_complete'] = null;
+            $this->db->table('request_order')->insert($job);
         }
+
+        $export = $this->withSession($this->session(2, 2, 1))->get(
+            '/user/excel_in_progress_job?branchId=2&startDate=15-08-2026&endDate=15-08-2026&status=2',
+        );
+
+        $export->assertStatus(200);
+        $export->assertSee('WP06A-INPROGRESS-EXPORT-TARGET');
+        $export->assertDontSee('WP06A-INPROGRESS-EXPORT-OTHER-BRANCH');
+        $export->assertDontSee('WP06A-INPROGRESS-EXPORT-OTHER-STATUS');
+    }
+
+    public function testLegacyInProgressExportWithoutBranchShowsAllBranchesLikeCi3(): void
+    {
+        $this->db->table('request_order')->truncate();
+        foreach ([320 => 1, 321 => 2] as $id => $branch) {
+            $job = $this->order($id, $branch, 2, 1, 1);
+            $job['trackID'] = 'WP06A-INPROGRESS-EXPORT-BRANCH-' . $branch;
+            $job['requestDate'] = '2026-08-15 00:00:00';
+            $job['date_complete'] = null;
+            $this->db->table('request_order')->insert($job);
+        }
+
+        $export = $this->withSession($this->session(2, 2, 1))->get(
+            '/user/excel_in_progress_job?startDate=15-08-2026&endDate=15-08-2026&status=2',
+        );
+
+        $export->assertStatus(200);
+        $export->assertSee('WP06A-INPROGRESS-EXPORT-BRANCH-1');
+        $export->assertSee('WP06A-INPROGRESS-EXPORT-BRANCH-2');
+    }
+
+    public function testLegacyInProgressExportUsesCi3Headers(): void
+    {
+        $export = $this->withSession($this->session(1, 1, null))->get(
+            '/user/excel_in_progress_job?branchId=0&startDate=01-08-2026&endDate=30-08-2026&status=2%2C4',
+        );
+
+        $export->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/\Aapplication\/x-msexcel; name="In_Progress_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Type'),
+        );
+        self::assertMatchesRegularExpression(
+            '/\Ainline; filename="In_Progress_Report_[0-9]+\.xls"\z/',
+            $export->response()->getHeaderLine('Content-Disposition'),
+        );
+        self::assertSame('no-cache', $export->response()->getHeaderLine('Pragma'));
     }
 
     public function testInProgressExportLinkCarriesStatusIdAndExportMatchesScreen(): void
     {
         $page = $this->withSession($this->session(1, 1, null))->post('/user/report_in_progress_job', [
             'csrf_test_name' => service('security')->getHash(),
-            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => ['2', '4'],
+            'start_date' => '01/08/2026', 'end_date' => '31/08/2026', 'status_id' => '2,4',
         ]);
         $page->assertStatus(200);
         // Export link carries the active status filter (comma percent-encoded by http_build_query).
