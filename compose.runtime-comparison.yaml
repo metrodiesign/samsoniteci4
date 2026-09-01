@@ -8,8 +8,13 @@ services:
       - ./web/config/config.dev.php:/var/www/html/application/config/config.php:ro
       - ./scripts/runtime-comparison/ci3-hooks.php:/var/www/html/application/config/hooks.php:ro
       - ./scripts/runtime-comparison/ci3-hooks:/var/www/html/application/hooks:ro
+      - ./tests/wp00c/assets:/parity-assets:ro
 
   ci4:
     environment:
       CI_ENVIRONMENT: parity
       PARITY_SESSION_BOOTSTRAP: enabled
+      encryption_key: "${CI4_PARITY_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef}"
+    volumes:
+      - ./tests/wp00c/assets/synthetic-retail.png:/app/public/synthetic-retail.png:ro
+      - ./tests/wp00c/assets/synthetic-service.png:/app/public/synthetic-service.png:ro

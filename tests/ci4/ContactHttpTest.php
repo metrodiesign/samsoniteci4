@@ -314,6 +314,141 @@ final class ContactHttpTest extends CIUnitTestCase
         $this->withSession($this->sessionFor($operatorId, 2, 1))->get('/contact-list');
     }
 
+    public function testLegacyContactListingUsesCi3AuthenticationMethodsRolesAndControllerAliases(): void
+    {
+        $this->db->table('contact')->insert([
+            'fullname' => 'SYNTHETIC LEGACY CONTACT',
+            'email' => 'legacy-contact@example.invalid',
+            'samsoniteid' => 'WP00C-CONTACT-LEGACY',
+            'phone' => '1111111111',
+            'detail' => 'SYNTHETIC LEGACY DETAIL',
+            'cdate' => '2026-08-23 09:00:00',
+        ]);
+        $users = new ShadowUserStore($this->db);
+        $adminId = $users->create('legacy-contact-admin@example.invalid', password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 1, null);
+        $branchId = $users->create('legacy-contact-branch@example.invalid', password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 2, 1);
+        $providerId = $users->create('legacy-contact-provider@example.invalid', password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 3, 1);
+
+        $this->get('/contactListing')->assertRedirectTo('/login');
+
+        foreach ([$adminId => [1, null], $branchId => [2, 1], $providerId => [3, 1]] as $userId => [$role, $branch]) {
+            foreach ([
+                '/contactListing',
+                '/contactListing/0',
+                '/user/contactListing',
+                '/User/contactListing',
+                '/user/contactListing/50',
+                '/User/contactListing/50',
+                '/user/contactListing/legacy-offset',
+                '/User/contactListing/50/100',
+                '/user/contactlisting',
+                '/USER/CONTACTLISTING',
+                '/uSeR/cOnTaCtLiStInG/legacy/50',
+            ] as $path) {
+                $session = $this->sessionFor($userId, $role, $branch);
+                $response = $this->withSession($session)->get($path);
+                $response->assertStatus(200);
+                $response->assertSee('SYNTHETIC LEGACY CONTACT');
+                $this->withSession($session)->call('head', $path)->assertStatus(200);
+                $this->withSession($session)->call('options', $path)->assertStatus(200);
+                $this->withSession($session)->call('put', $path)->assertStatus(200);
+                $this->withSession($session)->call('patch', $path)->assertStatus(200);
+                $this->withSession($session)->call('delete', $path)->assertStatus(200);
+                $this->withSession($session)->post($path, ['searchText' => ''])->assertStatus(200);
+            }
+        }
+    }
+
+    public function testLegacyContactListingKeepsPostOnlySearchRawOffsetsAndCi3Pagination(): void
+    {
+        $rows = [];
+        for ($id = 1; $id <= 53; $id++) {
+            $rows[] = [
+                'fullname' => sprintf('SYNTHETIC CONTACT %03d', $id),
+                'email' => sprintf('contact-%03d@example.invalid', $id),
+                'samsoniteid' => sprintf('WP00C-CONTACT-%03d', $id),
+                'phone' => sprintf('111111%04d', $id),
+                'detail' => sprintf('SYNTHETIC DETAIL %03d', $id),
+                'cdate' => sprintf('2026-08-23 10:%02d:00', $id % 60),
+            ];
+        }
+        $this->db->table('contact')->insertBatch($rows);
+        $users = new ShadowUserStore($this->db);
+        $adminId = $users->create('contact-pagination@example.invalid', password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 1, null);
+        $session = $this->sessionFor($adminId, 1, null);
+
+        $first = (string) $this->withSession($session)->get('/contactListing')->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 053', $first);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 003', $first);
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="' . base_url('contactListing/50') . '" data-ci-pagination-page="2" rel="next">Next</a></li>',
+            $first,
+        );
+
+        $rawOffset = (string) $this->withSession($session)->get('/contactListing/1')->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 052', $rawOffset);
+        self::assertStringContainsString('SYNTHETIC CONTACT 003', $rawOffset);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 053', $rawOffset);
+
+        $second = (string) $this->withSession($session)->get('/contactListing/50')->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 003', $second);
+        self::assertStringContainsString('SYNTHETIC CONTACT 001', $second);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 053', $second);
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="' . base_url('contactListing/') . '" data-ci-pagination-page="1" rel="prev">Previous</a></li>',
+            $second,
+        );
+
+        $alias = (string) $this->withSession($session)->get('/user/contactListing/50')->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 053', $alias);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 003', $alias);
+
+        $getQuery = (string) $this->withSession($session)->get('/contactListing?searchText=NO-MATCH')->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 053', $getQuery);
+        self::assertStringContainsString('name="searchText" value=""', $getQuery);
+
+        $matched = (string) $this->withSession($session)->post('/contactListing', ['searchText' => 'CONTACT 017'])->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 017', $matched);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 018', $matched);
+
+        $whitespace = (string) $this->withSession($session)->post('/contactListing', ['searchText' => '  CONTACT 017  '])->getBody();
+        self::assertStringContainsString('name="searchText" value="  CONTACT 017  "', $whitespace);
+        self::assertStringNotContainsString('SYNTHETIC CONTACT 017', $whitespace);
+
+        $zero = (string) $this->withSession($session)->post('/contactListing', ['searchText' => '0'])->getBody();
+        self::assertStringContainsString('SYNTHETIC CONTACT 053', $zero);
+        self::assertStringContainsString('name="searchText" value="0"', $zero);
+    }
+
+    public function testLegacyContactListingEscapesStoredAndSearchValues(): void
+    {
+        $this->db->table('contact')->insert([
+            'fullname' => '<script>CONTACT-XSS</script>',
+            'email' => 'xss@example.invalid',
+            'samsoniteid' => '<img src=x onerror=alert(1)>',
+            'phone' => '1111111111',
+            'detail' => '<svg onload=alert(1)>',
+            'cdate' => '2026-08-23 11:00:00',
+        ]);
+        $users = new ShadowUserStore($this->db);
+        $adminId = $users->create('contact-xss-admin@example.invalid', password_hash('Synthetic passphrase', PASSWORD_DEFAULT), 1, null);
+        $session = $this->sessionFor($adminId, 1, null);
+
+        $listing = (string) $this->withSession($session)->get('/contactListing')->getBody();
+        self::assertStringNotContainsString('<script>CONTACT-XSS</script>', $listing);
+        self::assertStringContainsString('&lt;script&gt;CONTACT-XSS&lt;/script&gt;', $listing);
+        self::assertStringNotContainsString('<img src=x onerror=alert(1)>', $listing);
+        self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $listing);
+        self::assertStringNotContainsString('<svg onload=alert(1)>', $listing);
+        self::assertStringContainsString('&lt;svg onload=alert(1)&gt;', $listing);
+
+        $searched = (string) $this->withSession($session)
+            ->post('/contactListing', ['searchText' => '<script>SEARCH-XSS</script>'])
+            ->getBody();
+        self::assertStringNotContainsString('value="<script>SEARCH-XSS</script>"', $searched);
+        self::assertStringContainsString('value="&lt;script&gt;SEARCH-XSS&lt;/script&gt;"', $searched);
+    }
+
     /** @return array<string, string> */
     private function payload(string $suffix, string $name): array
     {

@@ -21,6 +21,37 @@ final class MenuStore
         return $query->get()->getResultArray();
     }
 
+    /** @return list<array<string, mixed>> */
+    public function legacyAll(string $search, int $offset): array
+    {
+        $query = $this->db->table('group_menu')->orderBy('id', 'ASC')->limit(15, $offset);
+        if ($search !== '' && $search !== '0') {
+            $query->like('name', $search);
+        }
+
+        return $query->get()->getResultArray();
+    }
+
+    public function legacyUserCount(string $search, ?int $branchId): int
+    {
+        if (! $this->db->tableExists($this->db->prefixTable('tbl_users'), false)) {
+            return 0;
+        }
+        $query = $this->db->table('tbl_users')->where('isDeleted', 0);
+        if ($branchId !== null && $branchId > 0) {
+            $query->where('branch_id', $branchId);
+        }
+        if ($search !== '' && $search !== '0') {
+            $query->groupStart()
+                ->like('email', $search)
+                ->orLike('name', $search)
+                ->orLike('mobile', $search)
+                ->groupEnd();
+        }
+
+        return $query->countAllResults();
+    }
+
     /** @return array<string, mixed>|null */
     public function find(int $id): ?array
     {
@@ -64,6 +95,48 @@ final class MenuStore
         if ($id === null) {
             $values['cdate'] = date('Y-m-d H:i:s');
 
+            return $this->db->table('group_menu')->insert($values) ? 'created' : 'failed';
+        }
+
+        return $this->db->table('group_menu')->where('id', $id)->update($values) ? 'updated' : 'failed';
+    }
+
+    public function legacySave(?int $id, string $name, mixed $groupTypes): string
+    {
+        if ($name === '' || mb_strlen($name) > 250 || ! is_array($groupTypes) || $groupTypes === []) {
+            return 'invalid';
+        }
+        $types = [];
+        $unique = [];
+        foreach ($groupTypes as $type) {
+            if ((! is_string($type) && ! is_int($type))
+                || preg_match('/\A[1-9][0-9]{0,3}\z/D', (string) $type) !== 1) {
+                return 'invalid';
+            }
+            $types[] = (string) $type;
+            $unique[(int) $type] = (int) $type;
+        }
+        if ($id !== null && ($id < 1 || $this->find($id) === null)) {
+            return 'not_found';
+        }
+        if ($this->db->tableExists($this->db->prefixTable('group_type'), false)
+            && $this->db->table('group_type')->whereIn('group_type_id', array_values($unique))->countAllResults()
+                !== count($unique)) {
+            return 'invalid';
+        }
+        $duplicate = $this->db->table('group_menu')->where('name', $name);
+        if ($id !== null) {
+            $duplicate->where('id !=', $id);
+        }
+        if ($duplicate->countAllResults() !== 0) {
+            return 'duplicate';
+        }
+        $values = [
+            'name' => $name,
+            'group_type' => implode(',', $types),
+            'cdate' => date('Y-m-d H:i:s'),
+        ];
+        if ($id === null) {
             return $this->db->table('group_menu')->insert($values) ? 'created' : 'failed';
         }
 

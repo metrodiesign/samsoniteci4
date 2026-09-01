@@ -32,6 +32,42 @@ final class UserStore
         return $query->get()->getResultArray();
     }
 
+    /** @return list<array<string, mixed>> */
+    public function legacyAll(?int $actorBranch, string $search, int $offset): array
+    {
+        $query = $this->legacyListingQuery($actorBranch, $search)
+            ->orderBy('users.name', 'ASC')
+            ->orderBy('users.userId', 'ASC')
+            ->limit(50, $offset);
+
+        return $query->get()->getResultArray();
+    }
+
+    public function legacyCount(?int $actorBranch, string $search): int
+    {
+        return $this->legacyListingQuery($actorBranch, $search)->countAllResults();
+    }
+
+    private function legacyListingQuery(?int $actorBranch, string $search): \CodeIgniter\Database\BaseBuilder
+    {
+        $query = $this->db->table('tbl_users users')
+            ->select('users.userId, users.email, users.name, users.mobile, users.branch_id, users.branch_type_id, users.group_id, roles.role AS role')
+            ->join('tbl_roles roles', 'roles.roleId = users.roleId', 'left')
+            ->where('users.isDeleted', 0);
+        if ($actorBranch !== null && $actorBranch > 0) {
+            $query->where('users.branch_id', $actorBranch);
+        }
+        if ($search !== '') {
+            $query->groupStart()
+                ->like('users.email', $search)
+                ->orLike('users.name', $search)
+                ->orLike('users.mobile', $search)
+                ->groupEnd();
+        }
+
+        return $query;
+    }
+
     /** @return array<string, mixed>|null */
     public function findAccessible(int $actorRole, ?int $actorBranch, int $id): ?array
     {
@@ -66,22 +102,47 @@ final class UserStore
     }
 
     /** @param array<string, mixed> $input */
-    public function save(int $actorId, int $actorRole, ?int $actorBranch, ?int $id, array $input): string
+    public function save(
+        int $actorId,
+        int $actorRole,
+        ?int $actorBranch,
+        ?int $id,
+        array $input,
+        bool $allowDuplicateLegacyUsername = false,
+    ): string
     {
         $current = $id === null ? null : $this->findAccessible($actorRole, $actorBranch, $id);
         if ($id !== null && $current === null) {
             return 'not_found';
         }
-        $values = $this->normalize($actorId, $actorRole, $actorBranch, $current, $input);
+        $values = $this->normalize(
+            $actorId,
+            $actorRole,
+            $actorBranch,
+            $current,
+            $input,
+            $allowDuplicateLegacyUsername,
+        );
         if ($values === null) {
             return 'invalid';
         }
-        foreach (['email', 'username'] as $field) {
-            $duplicate = $this->db->table('tbl_users')->where($field, $values[$field])->where('isDeleted', 0);
+        $duplicateEmail = $this->db->table('tbl_users')
+            ->where('LOWER(email)', strtolower(trim((string) $values['email'])))
+            ->where('isDeleted', 0);
+        if ($id !== null) {
+            $duplicateEmail->where('userId !=', $id);
+        }
+        if ($duplicateEmail->countAllResults() !== 0) {
+            return 'duplicate';
+        }
+        if (! $allowDuplicateLegacyUsername) {
+            $duplicateUsername = $this->db->table('tbl_users')
+                ->where('username', $values['username'])
+                ->where('isDeleted', 0);
             if ($id !== null) {
-                $duplicate->where('userId !=', $id);
+                $duplicateUsername->where('userId !=', $id);
             }
-            if ($duplicate->countAllResults() !== 0) {
+            if ($duplicateUsername->countAllResults() !== 0) {
                 return 'duplicate';
             }
         }
@@ -111,13 +172,27 @@ final class UserStore
             }
             $hash = $password ?? (string) $current['password'];
             $shadow = new ShadowUserStore($this->db);
+            $shadowUsername = (string) $values['username'];
+            if ($allowDuplicateLegacyUsername) {
+                $duplicateShadow = $this->db->table('ci4_users')
+                    ->where('username', $shadowUsername)
+                    ->where('id !=', $id)
+                    ->countAllResults() !== 0;
+                if ($duplicateShadow) {
+                    $existingShadowUsername = $this->db->table('ci4_users')
+                        ->select('username')->where('id', $id)->get()->getRow('username');
+                    $shadowUsername = is_string($existingShadowUsername) && $existingShadowUsername !== ''
+                        ? $existingShadowUsername
+                        : 'legacy-' . $id;
+                }
+            }
             $shadow->synchronizeLegacyUser(
                 $id,
                 (string) $values['email'],
                 $hash,
                 (int) $values['roleId'],
                 $values['branch_id'] === null ? null : (int) $values['branch_id'],
-                (string) $values['username'],
+                $shadowUsername,
                 (string) $values['name'],
                 (int) $values['group_id'],
                 match ((int) $values['roleId']) { 1 => 'Administrator', 2 => 'Operator', default => 'Viewer' },
@@ -222,6 +297,35 @@ final class UserStore
         return $query->get()->getResultArray();
     }
 
+    /** @return list<array<string, mixed>>|null */
+    public function legacyHistory(
+        int $actorRole,
+        ?int $actorBranch,
+        int $userId,
+        int $offset,
+    ): ?array {
+        if ($offset < 0 || $this->findAccessible($actorRole, $actorBranch, $userId) === null) {
+            return null;
+        }
+
+        return $this->db->table('tbl_last_login')
+            ->select('userId, sessionData, machineIp, userAgent, agentString, platform, createdDtm')
+            ->where('userId', $userId)
+            ->orderBy('id', 'DESC')
+            ->limit(5, $offset)
+            ->get()
+            ->getResultArray();
+    }
+
+    public function legacyHistoryCount(int $actorRole, ?int $actorBranch, int $userId): int
+    {
+        if ($this->findAccessible($actorRole, $actorBranch, $userId) === null) {
+            return 0;
+        }
+
+        return $this->db->table('tbl_last_login')->where('userId', $userId)->countAllResults();
+    }
+
     /** Total history rows for the same filter, so the view can render CI3's numbered pager. */
     public function historyCount(int $actorRole, ?int $actorBranch, int $userId, string $search = ''): int
     {
@@ -283,7 +387,14 @@ final class UserStore
      * @param array<string, mixed>      $input
      * @return array<string, int|string|null>|null
      */
-    private function normalize(int $actorId, int $actorRole, ?int $actorBranch, ?array $current, array $input): ?array
+    private function normalize(
+        int $actorId,
+        int $actorRole,
+        ?int $actorBranch,
+        ?array $current,
+        array $input,
+        bool $legacyContract,
+    ): ?array
     {
         foreach (['username', 'name', 'email', 'mobile'] as $field) {
             if (! is_string($input[$field] ?? null)) {
@@ -333,7 +444,8 @@ final class UserStore
         }
 
         return [
-            'email' => $email, 'username' => $input['username'], 'password' => $password,
+            'email' => $legacyContract ? $input['email'] : $email,
+            'username' => $input['username'], 'password' => $password,
             'name' => $input['name'], 'mobile' => $input['mobile'], 'group_id' => $group,
             'roleId' => $role, 'branch_id' => $branch, 'branch_type_id' => $branchType === null ? null : (int) $branchType,
         ];

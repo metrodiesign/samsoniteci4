@@ -9,6 +9,8 @@ use App\Orders\OrderImageStore;
 use App\Orders\OrderTransitionWorkflow;
 use App\Presentation\LegacyViewRenderer;
 use App\Reporting\TrackingReport;
+use CodeIgniter\Encryption\EncrypterInterface;
+use CodeIgniter\Encryption\Exceptions\EncryptionException;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\Files\UploadedFile;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -73,13 +75,32 @@ final class Order extends BaseController
     public function listing(?string $fixedStatus = null, ?string $legacyOffset = null): string|ResponseInterface
     {
         $rawStatus = $fixedStatus ?? $this->request->getGet('status');
+        $path = strtolower(trim($this->request->getUri()->getPath(), '/'));
         $legacyCompletedContract = $fixedStatus === '7';
-        $rawPage = $legacyOffset === null && ! $legacyCompletedContract ? $this->request->getGet('page') : null;
+        $legacyOrderListingContract = $fixedStatus === '1'
+            && ($path === 'orderslisting' || str_starts_with($path, 'orderslisting/'));
+        $legacySendOrderContract = $fixedStatus === '1'
+            && ($path === 'sendorderlisting' || str_starts_with($path, 'sendorderlisting/'));
+        $legacyTrackingContract = ($fixedStatus === '2'
+                && ($path === 'trackinglisting' || str_starts_with($path, 'trackinglisting/')))
+            || ($fixedStatus === '3'
+                && ($path === 'trackingcloselisting' || str_starts_with($path, 'trackingcloselisting/')))
+            || ($fixedStatus === '4'
+                && ($path === 'trackingreturnlisting' || str_starts_with($path, 'trackingreturnlisting/')))
+            || ($fixedStatus === '5'
+                && ($path === 'trackingcompletelisting' || str_starts_with($path, 'trackingcompletelisting/')));
+        $legacyOrdersContract = $legacyOrderListingContract || $legacySendOrderContract;
+        $rawPage = $legacyOffset === null
+            && ! $legacyCompletedContract
+            && ! $legacyOrdersContract
+            && ! $legacyTrackingContract
+            ? $this->request->getGet('page')
+            : null;
         $isPost = $this->request->getMethod() === 'POST';
-        if ($legacyCompletedContract) {
+        if ($legacyCompletedContract || $legacyOrdersContract || $legacyTrackingContract) {
             $rawSearch = $isPost ? $this->request->getPost('searchText') : null;
             $rawSdate = $isPost ? $this->request->getPost('sdate') : null;
-            $rawEdate = null;
+            $rawEdate = $legacyOrdersContract && $isPost ? $this->request->getPost('edate') : null;
         } else {
             $rawSearch = $isPost ? $this->request->getPost('searchText') : $this->request->getGet('search');
             $rawSdate = $isPost ? $this->request->getPost('sdate') : $this->request->getGet('sdate');
@@ -93,13 +114,16 @@ final class Order extends BaseController
             $page = $rawPage === null ? 1 : (is_string($rawPage) && preg_match('/\A[1-9][0-9]*\z/D', $rawPage) === 1 ? (int) $rawPage : 0);
             $offset = ($page - 1) * 50;
         }
-        $search = $legacyCompletedContract
+        $search = $legacyCompletedContract || $legacyOrdersContract || $legacyTrackingContract
             ? (is_string($rawSearch) ? $rawSearch : '')
             : (is_string($rawSearch) && mb_strlen($rawSearch) <= 128 ? trim($rawSearch) : '');
-        $sdate = $legacyCompletedContract
+        $sdate = $legacyCompletedContract || $legacyOrdersContract || $legacyTrackingContract
             ? (is_string($rawSdate) && ! empty($rawSdate) ? $rawSdate : '')
             : (is_string($rawSdate) ? $rawSdate : '');
-        $edate = is_string($rawEdate) ? $rawEdate : '';
+        $edate = $legacyOrdersContract
+            ? (is_string($rawEdate) && ! empty($rawEdate) ? $rawEdate : '')
+            : (is_string($rawEdate) ? $rawEdate : '');
+        $queryEdate = $legacySendOrderContract ? $this->legacySendOrderEndDate($edate) : $edate;
         if ($status === null || $page < 1) {
             throw PageNotFoundException::forPageNotFound();
         }
@@ -114,16 +138,27 @@ final class Order extends BaseController
         $branchId = (int) $session->get('role') === 1 ? null : (int) $session->get('BranchID');
         $db = db_connect();
         $store = new OrderStore($db);
-        $rows = $store->listing($status, $branchId, $search, $offset, $sdate, $edate, $legacyCompletedContract);
+        $rows = $store->listing(
+            $status,
+            $branchId,
+            $search,
+            $offset,
+            $sdate,
+            $queryEdate,
+            $legacyCompletedContract,
+            $legacyOrdersContract,
+            $legacyTrackingContract,
+        );
         $statusUpdates = $store->latestStatusUpdates(array_map(
             static fn (array $row): array => ['orderID' => (string) $row['orderID'], 'customerTel' => (string) $row['customerTel']],
             $rows,
         ));
 
         $profile = self::PROFILES[$status] ?? null;
-        $path = strtolower(trim($this->request->getUri()->getPath(), '/'));
         $template = match ($status) {
-            1 => $path === 'sendorderlisting' ? 'tracking/send_order' : 'tracking/order',
+            1 => $path === 'sendorderlisting' || str_starts_with($path, 'sendorderlisting/')
+                ? 'tracking/send_order'
+                : 'tracking/order',
             2 => 'tracking/tracking',
             3 => 'tracking/trackingrepair',
             4 => 'tracking/trackingreturn',
@@ -152,14 +187,25 @@ final class Order extends BaseController
             ->get()
             ->getResultArray();
         $paginationBase = match ($status) {
-            1 => $path === 'sendorderlisting' ? 'sendorderListing' : 'ordersListing',
-            2 => 'TrackingListing', 3 => 'TrackingcloseListing', 4 => 'TrackingreturnListing',
+            1 => $path === 'sendorderlisting' || str_starts_with($path, 'sendorderlisting/')
+                ? 'sendorderListing'
+                : 'ordersListing',
+            2 => 'TrackingListing', 3 => 'TrackingcloseListing', 4 => 'Trackingreturn',
             5 => 'TrackingcompleteListing', 7 => 'TrackingCompletedListing',
         };
         $pagination = $this->legacyListingPagination(
             $paginationBase,
             $offset,
-            $store->listingCount($status, $branchId, $search, $sdate, $edate, $legacyCompletedContract),
+            $store->listingCount(
+                $status,
+                $branchId,
+                $search,
+                $sdate,
+                $queryEdate,
+                $legacyCompletedContract,
+                $legacyOrdersContract,
+                $legacyTrackingContract,
+            ),
         );
         $content = (new LegacyViewRenderer(pagination: $pagination, statusUpdates: $statusUpdates))->render($template, [
             'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
@@ -169,11 +215,25 @@ final class Order extends BaseController
             'page' => $offset, 'BranchID' => $session->get('BranchID'),
         ]);
 
-        $pageTitle = $status === 1 && $path === 'orderslisting'
-            ? 'Tracking : branch Listing'
-            : 'Tracking : Listing';
+        $pageTitle = match (true) {
+            $legacyOrderListingContract => 'Tracking : branch Listing',
+            $legacySendOrderContract, $legacyTrackingContract, $legacyCompletedContract
+                => 'Tracking :  Listing',
+            default => 'Tracking : Listing',
+        };
 
         return $this->layout($pageTitle, $content, ['contentOwnsWrapper' => true]);
+    }
+
+    /** The pinned send_order datepicker submits its selected end year as Buddhist Era. */
+    private function legacySendOrderEndDate(string $value): string
+    {
+        if (preg_match('/\A([0-9]{2}\/[0-9]{2}\/)([0-9]{4})\z/D', $value, $parts) !== 1) {
+            return $value;
+        }
+        $year = (int) $parts[2];
+
+        return $year >= 2400 ? $parts[1] . ($year - 543) : $value;
     }
 
     private function legacyListingPagination(string $base, int $offset, int $total): string
@@ -208,7 +268,7 @@ final class Order extends BaseController
             $links .= '<li class="arrow"><a href="' . $previousUrl . '" data-ci-pagination-page="'
                 . ($currentPage - 1) . '" rel="prev">Previous</a></li>';
         }
-        for ($number = $start; $number <= $end; $number++) {
+        for ($number = max(1, $start - 1); $number <= $end; $number++) {
             $pageOffset = ($number - 1) * $perPage;
             if ($number === $currentPage) {
                 $links .= '<li class="active"><a href="#">' . $number . '</a></li>';
@@ -322,38 +382,138 @@ final class Order extends BaseController
 
     public function sendToProvider(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
-        return $this->transition('provider', $this->request->getPost('provider_id'), '/sendorderListing');
+        $providerId = $this->request->getPost('provider_id');
+        if (! is_scalar($providerId) || (string) $providerId === '' || (string) $providerId === '0') {
+            return $this->legacyOrderTransitionRedirect('/sendorderListing', 'error', 'Logistics Detil failed');
+        }
+        $selected = $this->request->getPost('select_list_id');
+        if (! is_array($selected) || $selected === []) {
+            return $this->legacyOrderTransitionRedirect('/sendorderListing', 'error', 'order updated failed');
+        }
+
+        return $this->transition(
+            'provider',
+            $providerId,
+            '/sendorderListing',
+            'order updated successfully',
+            $this->request->getPost('logistics_etc_detail'),
+        );
+    }
+
+    private function legacyOrderTransitionRedirect(
+        string $redirect,
+        string $flashKey,
+        string $message,
+    ): \CodeIgniter\HTTP\RedirectResponse
+    {
+        service('session')->setFlashdata($flashKey, $message);
+        $response = redirect()->to($redirect);
+        $response->setStatusCode(303);
+
+        return $response;
     }
 
     public function updateStatus(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
-        return $this->transition('status', $this->request->getPost('status_id'), '/ReportTrackingListing');
+        $statusId = $this->request->getPost('status_id');
+        if (! is_scalar($statusId) || (string) $statusId === '' || (string) $statusId === '0') {
+            return $this->legacyOrderTransitionRedirect(
+                '/ReportTrackingListing',
+                'error',
+                'Branch creation failed',
+            );
+        }
+        $selected = $this->request->getPost('select_list_id');
+        if (! is_array($selected) || $selected === []) {
+            return $this->legacyOrderTransitionRedirect(
+                '/ReportTrackingListing',
+                'error',
+                'order updated failed',
+            );
+        }
+
+        return $this->transition(
+            'status',
+            $statusId,
+            '/ReportTrackingListing',
+            'order updated successfully',
+        );
     }
 
     public function deliver(): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
-        return $this->transition('deliver', $this->request->getPost('status_id'), '/TrackingreturnListing');
+        $statusId = $this->request->getPost('status_id');
+        if (! is_scalar($statusId) || (string) $statusId === '' || (string) $statusId === '0') {
+            return $this->legacyOrderTransitionRedirect(
+                '/TrackingreturnListing',
+                'error',
+                'Branch creation failed',
+            );
+        }
+        $selected = $this->request->getPost('select_list_id');
+        if (! is_array($selected) || $selected === []) {
+            return $this->legacyOrderTransitionRedirect(
+                '/TrackingreturnListing',
+                'error',
+                'order updated failed',
+            );
+        }
+
+        return $this->transition(
+            'deliver',
+            $statusId,
+            '/TrackingreturnListing',
+            'order updated successfully',
+        );
     }
 
-    private function transition(string $mode, mixed $value, string $redirect): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
+    private function transition(
+        string $mode,
+        mixed $value,
+        string $redirect,
+        ?string $legacySuccessMessage = null,
+        mixed $legacyLogisticsDetail = null,
+    ): \CodeIgniter\HTTP\RedirectResponse|ResponseInterface
     {
         $session = service('session');
-        $result = (new OrderTransitionWorkflow(db_connect(), service('encrypter')))->transition(
+        // Provider transitions never enqueue SMS and must not depend on SMS encryption configuration.
+        $needsSmsEncryption = $mode === 'deliver' || ($mode === 'status' && (string) $value === '7');
+        $result = (new OrderTransitionWorkflow(
+            db_connect(),
+            $needsSmsEncryption ? $this->optionalSmsEncrypter() : null,
+        ))->transition(
             (int) $session->get('role'),
             $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
             $this->request->getPost('select_list_id'),
             $mode,
             $value,
+            $legacyLogisticsDetail,
         );
 
         return match ($result) {
-            'updated' => redirect()->to($redirect),
+            'updated' => $legacySuccessMessage === null
+                ? redirect()->to($redirect)
+                : $this->legacyOrderTransitionRedirect($redirect, 'success', $legacySuccessMessage),
             'invalid' => $this->response->setStatusCode(422)->setJSON(['error' => 'invalid_transition']),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
             'forbidden' => $this->response->setStatusCode(403)->setJSON(['error' => 'forbidden']),
             'conflict' => $this->response->setStatusCode(409)->setJSON(['error' => 'invalid_order_state']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'transition_unavailable']),
         };
+    }
+
+    private function optionalSmsEncrypter(): ?EncrypterInterface
+    {
+        try {
+            $encrypter = service('encrypter');
+        } catch (EncryptionException) {
+            // CI3 performs the state transition without SMS; never fall back to plaintext payloads.
+            log_message('warning', 'SMS delivery intent skipped because encryption is not configured.');
+
+            return null;
+        }
+
+        return $encrypter instanceof EncrypterInterface ? $encrypter : null;
     }
 
     public function editForm(string $rawId): string
@@ -578,14 +738,7 @@ final class Order extends BaseController
 
     public function delete(string $rawId): ResponseInterface
     {
-        $id = preg_match('/\A[1-9][0-9]*\z/D', $rawId) === 1 ? (int) $rawId : 0;
-        $session = service('session');
-        $result = (new OrderStore(db_connect()))->softDelete(
-            (int) $session->get('role'),
-            $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
-            $id,
-        );
-
+        $result = $this->softDeleteResult($rawId);
         $response = match ($result) {
             'deleted' => $this->response->setStatusCode(204),
             'not_found' => $this->response->setStatusCode(404)->setJSON(['error' => 'order_not_found']),
@@ -593,8 +746,45 @@ final class Order extends BaseController
             'conflict' => $this->response->setStatusCode(409)->setJSON(['error' => 'order_state_conflict']),
             default => $this->response->setStatusCode(503)->setJSON(['error' => 'order_unavailable']),
         };
-        // The listing deletes over fetch, so every outcome has to hand back a fresh token
-        // or the second delete in a row is rejected on a stale one (same fix as Users).
+
+        return $this->withFreshCsrfHeader($response);
+    }
+
+    public function legacyDelete(): ResponseInterface
+    {
+        $result = $this->softDeleteResult($this->request->getPost('orderid'));
+        $response = match ($result) {
+            'deleted' => $this->response->setJSON(['status' => true]),
+            'not_found' => $this->response->setStatusCode(404)
+                ->setJSON(['status' => false, 'error' => 'order_not_found']),
+            'forbidden' => $this->response->setStatusCode(403)
+                ->setJSON(['status' => false, 'error' => 'forbidden']),
+            'conflict' => $this->response->setStatusCode(409)
+                ->setJSON(['status' => false, 'error' => 'order_state_conflict']),
+            default => $this->response->setStatusCode(503)
+                ->setJSON(['status' => false, 'error' => 'order_unavailable']),
+        };
+
+        return $this->withFreshCsrfHeader($response);
+    }
+
+    private function softDeleteResult(mixed $rawId): string
+    {
+        $id = is_string($rawId) && preg_match('/\A[1-9][0-9]*\z/D', $rawId) === 1
+            ? (int) $rawId
+            : 0;
+        $session = service('session');
+
+        return (new OrderStore(db_connect()))->softDelete(
+            (int) $session->get('role'),
+            $session->get('BranchID') === null ? null : (int) $session->get('BranchID'),
+            $id,
+        );
+    }
+
+    private function withFreshCsrfHeader(ResponseInterface $response): ResponseInterface
+    {
+        // Listing deletes rotate the token, so every outcome must return its replacement.
         $security = service('security');
 
         return $response->setHeader($security->getHeaderName(), $security->getHash());
@@ -617,13 +807,28 @@ final class Order extends BaseController
         return $row;
     }
 
-    public function reportTrackingListing(string $page = '0', ?string $routeBranchId = null): string|ResponseInterface
+    public function reportTrackingListing(string $page = '0', ?string $routeBranchId = null): string
     {
+        return $this->legacyTrackingReport($page, $routeBranchId, true);
+    }
+
+    public function reportTrackingListingTest(string $page = '0', ?string $routeBranchId = null): string
+    {
+        return $this->legacyTrackingReport($page, $routeBranchId, false);
+    }
+
+    private function legacyTrackingReport(
+        string $page,
+        ?string $routeBranchId,
+        bool $defaultDatesToToday,
+    ): string {
         if (preg_match('/^[0-9]+$/D', $page) !== 1) {
             throw PageNotFoundException::forPageNotFound();
         }
 
-        $pageNumber = filter_var($page, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        $canonicalPage = ltrim($page, '0');
+        $canonicalPage = $canonicalPage === '' ? '0' : $canonicalPage;
+        $pageNumber = filter_var($canonicalPage, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
         $branchId   = $this->routeBranchId($routeBranchId);
         if ($pageNumber === false) {
             throw PageNotFoundException::forPageNotFound();
@@ -634,29 +839,44 @@ final class Order extends BaseController
         $sessionBranch = $session->get('BranchID');
         $sessionBranch = $sessionBranch === null ? null : (int) $sessionBranch;
         if ($role !== 1) {
-            if ($branchId !== null) {
+            if ($branchId !== null && $branchId > 0) {
                 (new AuthorizationPolicy())->assertBranchAccess($role, $sessionBranch, $branchId);
             }
             $branchId = $sessionBranch;
         }
+        $companyId = $role === 1 ? ($routeBranchId ?? '') : ($sessionBranch ?? '');
 
         $report       = new TrackingReport(db_connect());
         $searchText   = $this->request->getPost('searchText');
         $startDate    = $this->request->getPost('sdate');
         $endDate      = $this->request->getPost('edate');
-        $startDate = is_string($startDate) && $startDate !== '' ? $startDate : date('d/m/Y');
-        $endDate = is_string($endDate) && $endDate !== '' ? $endDate : date('d/m/Y');
+        $startDate = is_string($startDate) && $startDate !== '' && $startDate !== '0'
+            ? $startDate
+            : ($defaultDatesToToday ? date('d/m/Y') : '');
+        $endDate = is_string($endDate) && $endDate !== '' && $endDate !== '0'
+            ? $endDate
+            : ($defaultDatesToToday ? date('d/m/Y') : '');
         $rawStatusIds = $this->request->getPost('status_id');
-        $error        = null;
 
         try {
-            $rows = $report->rows($searchText, $startDate, $endDate, $rawStatusIds, $branchId);
-        } catch (InvalidArgumentException $exception) {
-            $rows  = [];
-            $error = $exception->getMessage();
+            if (! $defaultDatesToToday && $startDate !== '' && $endDate === '') {
+                $rows = [];
+            } else {
+                $rows = $report->rows(
+                    $searchText,
+                    $startDate,
+                    ! $defaultDatesToToday && $startDate === '' ? '' : $endDate,
+                    $rawStatusIds,
+                    $branchId,
+                    true,
+                );
+            }
+        } catch (InvalidArgumentException) {
+            // CI3 renders malformed or reversed legacy report ranges empty with HTTP 200.
+            $rows = [];
         }
 
-        $selected = $report->parseStatusIds($rawStatusIds);
+        $selected = $report->parseStatusIds($rawStatusIds, true);
         $content = (new LegacyViewRenderer())->render('tracking/report_tracking_test', [
             'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
             'Status' => LegacyViewRenderer::escapedRecords($report->statuses()),
@@ -664,17 +884,13 @@ final class Order extends BaseController
             'searchText' => esc(is_string($searchText) ? $searchText : ''),
             'selected_status_id' => $selected,
             'data_status_id' => implode(',', $selected),
-            'companny_id' => $branchId ?? '',
+            'companny_id' => $companyId,
             'sdate' => esc($startDate),
             'edate' => esc($endDate),
-            'BranchID' => $branchId,
+            'BranchID' => $sessionBranch,
             'GroupID' => $session->get('GroupID'),
         ]);
-        $html = $this->layout('Tracking : Listing', $content, ['contentOwnsWrapper' => true]);
-
-        return $error === null
-            ? $html
-            : $this->response->setStatusCode(422)->setBody($html);
+        return $this->layout('Tracking :  Listing', $content, ['contentOwnsWrapper' => true]);
     }
 
     private function routeBranchId(?string $branchId): ?int
@@ -682,10 +898,17 @@ final class Order extends BaseController
         if ($branchId === null) {
             return null;
         }
-        if (preg_match('/^[1-9][0-9]*$/D', $branchId) !== 1) {
+        if (preg_match('/^[0-9]+$/D', $branchId) !== 1) {
             throw PageNotFoundException::forPageNotFound();
         }
 
+        if ($branchId === '0') {
+            return null;
+        }
+        $branchId = ltrim($branchId, '0');
+        if ($branchId === '') {
+            return 0;
+        }
         $validated = filter_var($branchId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($validated === false) {
             throw PageNotFoundException::forPageNotFound();

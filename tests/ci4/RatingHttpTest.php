@@ -41,6 +41,58 @@ final class RatingHttpTest extends CIUnitTestCase
         self::assertStringContainsString('name="rating_comment"', $result->getBody());
     }
 
+    public function testLegacyModalRatingRejectsDuplicatesAndMalformedPayloadWithoutSideEffects(): void
+    {
+        $this->post('/rating/addRating', $this->legacyPayload())->assertStatus(200);
+
+        $duplicate = $this->post('/rating/addRating', $this->legacyPayload());
+        $duplicate->assertStatus(200);
+        $duplicate->assertJSONExact(['status' => false, 'message' => 'Invalid data.', 'code' => 400]);
+        self::assertSame(8, $this->db->table('rating')->countAllResults());
+        self::assertSame(1, $this->db->table('rating_comment')->countAllResults());
+
+        $this->db->table('request_order')->insert([
+            'request_id' => 91006,
+            'trackID' => 'WP00C-RATE-006',
+            'branchID' => 1,
+            'action_status' => 5,
+        ]);
+        $invalidPayload = $this->legacyPayload(91006, 'WP00C-RATE-006');
+        $invalidPayload['ratingFour'] = '0';
+        $invalid = $this->post('/rating/addRating', $invalidPayload);
+        $invalid->assertStatus(200);
+        $invalid->assertJSONExact(['status' => false, 'message' => 'Invalid data.', 'code' => 400]);
+        self::assertSame(0, $this->db->table('rating')->where('order_id', 'WP00C-RATE-006')->countAllResults());
+        self::assertSame(
+            5,
+            (int) $this->db->table('request_order')->where('request_id', 91006)->get()->getRow('action_status'),
+        );
+    }
+
+    public function testLegacyModalRatingEndpointMapsPayloadAndReturnsCi3Json(): void
+    {
+        $payload = $this->legacyPayload();
+        $payload['ratingBranchId'] = '999';
+        $payload['ratingComment'] = '  SYNTHETIC RATING COMMENT  ';
+
+        $result = $this->post('/rating/addRating', $payload);
+
+        $result->assertStatus(200);
+        $result->assertJSONExact(['status' => true, 'message' => '', 'code' => 0]);
+        self::assertSame(8, $this->db->table('rating')->countAllResults());
+        self::assertSame(1, $this->db->table('rating')->distinct()->select('branchID')->countAllResults());
+        self::assertSame(1, (int) $this->db->table('rating')->get()->getRow('branchID'));
+        self::assertSame(1, $this->db->table('rating_comment')->countAllResults());
+        self::assertSame(
+            '  SYNTHETIC RATING COMMENT  ',
+            $this->db->table('rating_comment')->get()->getRow('comment'),
+        );
+        self::assertSame(
+            7,
+            (int) $this->db->table('request_order')->where('request_id', 91005)->get()->getRow('action_status'),
+        );
+    }
+
     public function testFirstValidRatingWritesEightScoresCommentAndCompletesOrder(): void
     {
         $result = $this->post('/rating', $this->payload());
@@ -173,6 +225,25 @@ final class RatingHttpTest extends CIUnitTestCase
             'date_complete'      => '2020-01-01 00:00:00',
             'date_update_status' => '2020-01-01 00:00:00',
         ]);
+    }
+
+    /** @return array<string, string> */
+    private function legacyPayload(int $requestId = 91005, string $trackId = 'WP00C-RATE-005'): array
+    {
+        $payload = [
+            'csrf_test_name' => service('security')->getHash(),
+            'requestId' => (string) $requestId,
+            'ratingTrackId' => $trackId,
+            'ratingBranchId' => '1',
+            'ratingComment' => 'SYNTHETIC RATING COMMENT',
+        ];
+        foreach ([5, 4, 3, 2, 1, 5, 4, 3] as $index => $score) {
+            $payload['rating' . [
+                'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight',
+            ][$index]] = (string) $score;
+        }
+
+        return $payload;
     }
 
     /** @return array<string, string> */

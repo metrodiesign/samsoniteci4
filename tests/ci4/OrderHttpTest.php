@@ -290,6 +290,7 @@ final class OrderHttpTest extends CIUnitTestCase
         $response = $this->withSession($this->session(1, 1, null))->get('/TrackingCompletedListing/1');
 
         $response->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $response->getBody());
         self::assertSame(1, preg_match('/<tbody[^>]*>(.*?)<\/tbody>/s', (string) $response->getBody(), $tableBody));
         self::assertStringNotContainsString('PARITY-OFFSET-FIRST', $tableBody[1]);
         self::assertStringContainsString('WP00C-TRACK-007', $tableBody[1]);
@@ -765,6 +766,809 @@ final class OrderHttpTest extends CIUnitTestCase
         }
     }
 
+    public function testTrackingCompleteListingAnonymousRequestsRedirectLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/TrackingcompleteListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/TrackingcompleteListing', [
+            'searchText' => '', 'sdate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
+    public function testTrackingCompleteListingLegacyAliasUsesPostFiltersAndSourceOrdering(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->db->table('request_order')->insert([
+            'request_id' => 91995,
+            'requestDate' => '2025-01-01 00:00:00',
+            'trackID' => 'OLDER-COMPLETE-ORDER',
+            'orderID' => 'OLDER-COMPLETE',
+            'orderIDShow' => 'OLDER/COMPLETE',
+            'customerFullname' => 'OLDER COMPLETE CUSTOMER',
+            'customerTel' => '0000000000',
+            'branchID' => 1,
+            'branch_type_id' => 1,
+            'UserID' => 9002,
+            'action_status' => 5,
+        ]);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-005 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/TrackingcompleteListing', [
+                    'searchText' => $searchText, 'sdate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-005</td>', $body);
+            }
+
+            $zeroSearch = $this->withSession($admin)->post('/TrackingcompleteListing', [
+                'searchText' => '0', 'sdate' => '',
+            ]);
+            $zeroSearch->assertStatus(200);
+            $zeroSearch->assertSee('WP00C-TRACK-005');
+
+            $malformedDate = $this->withSession($admin)->post('/TrackingcompleteListing', [
+                'searchText' => '', 'sdate' => 'not-a-date',
+            ]);
+            $malformedDate->assertStatus(200);
+            $malformedDate->assertDontSee('WP00C-TRACK-005');
+            self::assertStringContainsString(
+                'name="sdate" value="not-a-date"',
+                (string) $malformedDate->getBody(),
+            );
+
+            $zeroDate = $this->withSession($admin)->post('/TrackingcompleteListing', [
+                'searchText' => '', 'sdate' => '0',
+            ]);
+            $zeroDate->assertStatus(200);
+            $zeroDate->assertSee('WP00C-TRACK-005');
+            self::assertStringContainsString('name="sdate" value=""', (string) $zeroDate->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        foreach ([
+            '/TrackingcompleteListing?search=PARITY-NO-MATCH',
+            '/TrackingcompleteListing?sdate=06%2F08%2F2026',
+            '/TrackingcompleteListing?page=2',
+        ] as $uri) {
+            $get = $this->withSession($admin)->get($uri);
+            $get->assertStatus(200);
+            $get->assertSee('WP00C-TRACK-005');
+            $body = (string) $get->getBody();
+            self::assertStringContainsString('name="searchText" value=""', $body);
+            self::assertStringContainsString('name="sdate" value=""', $body);
+        }
+
+        $offset = $this->withSession($admin)->get('/TrackingcompleteListing/1');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $offset->getBody());
+
+        $listing = (string) $this->withSession($admin)->get('/TrackingcompleteListing')->getBody();
+        self::assertLessThan(
+            strpos($listing, 'OLDER-COMPLETE-ORDER'),
+            strpos($listing, 'WP00C-TRACK-005'),
+        );
+    }
+
+    public function testDeliverWithoutEncryptionStillCompletesWithoutPlaintextSmsIntent(): void
+    {
+        Services::resetSingle('encrypter');
+
+        $response = $this->postTransition('/sendorder_deliver', [
+            'status_id' => '5', 'select_list_id' => ['91004'],
+        ]);
+
+        $response->assertStatus(303);
+        $response->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame('order updated successfully', service('session')->getFlashdata('success'));
+        $row = $this->db->table('request_order')->where('request_id', 91004)->get()->getRowArray();
+        self::assertSame(5, (int) $row['action_status']);
+        self::assertNotEmpty($row['date_deliver']);
+        self::assertNotEmpty($row['date_update_status']);
+        self::assertSame(1, $this->db->table('status_log')->where('action_id', 5)->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_delivery_intents')->countAllResults());
+    }
+
+    public function testDeliverLegacyValidationRedirectsWithFeedback(): void
+    {
+        $noStatus = $this->postTransition('/sendorder_deliver', [
+            'status_id' => '0', 'select_list_id' => ['91004'],
+        ]);
+        $noStatus->assertStatus(303);
+        $noStatus->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame('Branch creation failed', service('session')->getFlashdata('error'));
+        self::assertSame(
+            4,
+            (int) $this->db->table('request_order')->where('request_id', 91004)->get()->getRow('action_status'),
+        );
+
+        $noOrders = $this->postTransition('/sendorder_deliver', ['status_id' => '5']);
+        $noOrders->assertStatus(303);
+        $noOrders->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame('order updated failed', service('session')->getFlashdata('error'));
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testTrackingReturnListingAnonymousRequestsRedirectLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/TrackingreturnListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/TrackingreturnListing', [
+            'searchText' => '', 'sdate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        $deliver = $this->withSession([])->post('/sendorder_deliver', [
+            'status_id' => '5', 'select_list_id' => ['91004'],
+        ]);
+        $deliver->assertStatus(303);
+        $deliver->assertRedirectTo('/login');
+    }
+
+    public function testTrackingReturnListingLegacyAliasUsesPostFiltersAndSourceOrdering(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->db->table('request_order')->insert([
+            'request_id' => 91996,
+            'requestDate' => '2025-01-01 00:00:00',
+            'trackID' => 'OLDER-RETURN-ORDER',
+            'orderID' => 'OLDER-RETURN',
+            'orderIDShow' => 'OLDER/RETURN',
+            'customerFullname' => 'OLDER RETURN CUSTOMER',
+            'customerTel' => '0000000000',
+            'branchID' => 1,
+            'branch_type_id' => 1,
+            'UserID' => 9002,
+            'action_status' => 4,
+        ]);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-004 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/TrackingreturnListing', [
+                    'searchText' => $searchText, 'sdate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-004</td>', $body);
+            }
+
+            $zeroSearch = $this->withSession($admin)->post('/TrackingreturnListing', [
+                'searchText' => '0', 'sdate' => '',
+            ]);
+            $zeroSearch->assertStatus(200);
+            $zeroSearch->assertSee('WP00C-TRACK-004');
+
+            $malformedDate = $this->withSession($admin)->post('/TrackingreturnListing', [
+                'searchText' => '', 'sdate' => 'not-a-date',
+            ]);
+            $malformedDate->assertStatus(200);
+            $malformedDate->assertDontSee('WP00C-TRACK-004');
+            self::assertStringContainsString(
+                'name="sdate" value="not-a-date"',
+                (string) $malformedDate->getBody(),
+            );
+
+            $zeroDate = $this->withSession($admin)->post('/TrackingreturnListing', [
+                'searchText' => '', 'sdate' => '0',
+            ]);
+            $zeroDate->assertStatus(200);
+            $zeroDate->assertSee('WP00C-TRACK-004');
+            self::assertStringContainsString('name="sdate" value=""', (string) $zeroDate->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        foreach ([
+            '/TrackingreturnListing?search=PARITY-NO-MATCH',
+            '/TrackingreturnListing?sdate=05%2F08%2F2026',
+            '/TrackingreturnListing?page=2',
+        ] as $uri) {
+            $get = $this->withSession($admin)->get($uri);
+            $get->assertStatus(200);
+            $get->assertSee('WP00C-TRACK-004');
+            $body = (string) $get->getBody();
+            self::assertStringContainsString('name="searchText" value=""', $body);
+            self::assertStringContainsString('name="sdate" value=""', $body);
+        }
+
+        $offset = $this->withSession($admin)->get('/TrackingreturnListing/1');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $offset->getBody());
+
+        $listing = (string) $this->withSession($admin)->get('/TrackingreturnListing')->getBody();
+        self::assertLessThan(
+            strpos($listing, 'OLDER-RETURN-ORDER'),
+            strpos($listing, 'WP00C-TRACK-004'),
+        );
+
+        $rows = [];
+        for ($index = 1; $index <= 49; $index++) {
+            $rows[] = [
+                'request_id' => 93000 + $index,
+                'requestDate' => '2024-01-01 00:00:00',
+                'trackID' => sprintf('RETURN-PAGE-%02d', $index),
+                'orderID' => 'RETURN-' . $index,
+                'orderIDShow' => 'RETURN/' . $index,
+                'customerFullname' => 'RETURN PAGINATION CUSTOMER',
+                'customerTel' => '0000000000',
+                'branchID' => 1,
+                'branch_type_id' => 1,
+                'UserID' => 9002,
+                'action_status' => 4,
+            ];
+        }
+        $this->db->table('request_order')->insertBatch($rows);
+        $paginated = (string) $this->withSession($admin)->get('/TrackingreturnListing')->getBody();
+        self::assertStringContainsString(
+            'href="http://example.invalid/Trackingreturn/50" data-ci-pagination-page="2" rel="next">Next</a>',
+            $paginated,
+        );
+    }
+
+    public function testTrackingCloseListingAnonymousRequestsRedirectLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/TrackingcloseListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/TrackingcloseListing', [
+            'searchText' => '', 'sdate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
+    public function testTrackingCloseListingLegacyAliasUsesPostFiltersAndSourceOrdering(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->db->table('request_order')->insert([
+            'request_id' => 91997,
+            'requestDate' => '2025-01-01 00:00:00',
+            'trackID' => 'OLDER-REPAIR-ORDER',
+            'orderID' => 'OLDER-REPAIR',
+            'orderIDShow' => 'OLDER/REPAIR',
+            'customerFullname' => 'OLDER REPAIR CUSTOMER',
+            'customerTel' => '0000000000',
+            'branchID' => 1,
+            'branch_type_id' => 1,
+            'UserID' => 9002,
+            'action_status' => 3,
+        ]);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-003 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/TrackingcloseListing', [
+                    'searchText' => $searchText, 'sdate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-003</td>', $body);
+            }
+
+            $zeroSearch = $this->withSession($admin)->post('/TrackingcloseListing', [
+                'searchText' => '0', 'sdate' => '',
+            ]);
+            $zeroSearch->assertStatus(200);
+            $zeroSearch->assertSee('WP00C-TRACK-003');
+
+            $malformedDate = $this->withSession($admin)->post('/TrackingcloseListing', [
+                'searchText' => '', 'sdate' => 'not-a-date',
+            ]);
+            $malformedDate->assertStatus(200);
+            $malformedDate->assertDontSee('WP00C-TRACK-003');
+            self::assertStringContainsString(
+                'name="sdate" value="not-a-date"',
+                (string) $malformedDate->getBody(),
+            );
+
+            $zeroDate = $this->withSession($admin)->post('/TrackingcloseListing', [
+                'searchText' => '', 'sdate' => '0',
+            ]);
+            $zeroDate->assertStatus(200);
+            $zeroDate->assertSee('WP00C-TRACK-003');
+            self::assertStringContainsString('name="sdate" value=""', (string) $zeroDate->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        foreach ([
+            '/TrackingcloseListing?search=PARITY-NO-MATCH',
+            '/TrackingcloseListing?sdate=04%2F08%2F2026',
+            '/TrackingcloseListing?page=2',
+        ] as $uri) {
+            $get = $this->withSession($admin)->get($uri);
+            $get->assertStatus(200);
+            $get->assertSee('WP00C-TRACK-003');
+            $body = (string) $get->getBody();
+            self::assertStringContainsString('name="searchText" value=""', $body);
+            self::assertStringContainsString('name="sdate" value=""', $body);
+        }
+
+        $offset = $this->withSession($admin)->get('/TrackingcloseListing/1');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $offset->getBody());
+
+        $listing = (string) $this->withSession($admin)->get('/TrackingcloseListing')->getBody();
+        self::assertLessThan(
+            strpos($listing, 'OLDER-REPAIR-ORDER'),
+            strpos($listing, 'WP00C-TRACK-003'),
+        );
+    }
+
+    public function testTrackingStatusUpdateLegacyValidationRedirectsWithFeedback(): void
+    {
+        $noStatus = $this->postTransition('/sendorderUpdateStatus', [
+            'status_id' => '0', 'select_list_id' => ['91002'],
+        ]);
+        $noStatus->assertStatus(303);
+        $noStatus->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame('Branch creation failed', service('session')->getFlashdata('error'));
+        self::assertSame(
+            2,
+            (int) $this->db->table('request_order')->where('request_id', 91002)->get()->getRow('action_status'),
+        );
+
+        // CI3 redirects after this malformed submission but incorrectly reports success.
+        // Keep the redirect contract while retaining intended validation feedback.
+        $noOrders = $this->postTransition('/sendorderUpdateStatus', ['status_id' => '3']);
+        $noOrders->assertStatus(303);
+        $noOrders->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame('order updated failed', service('session')->getFlashdata('error'));
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testTrackingListingAnonymousRequestsRedirectLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/TrackingListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/TrackingListing', [
+            'searchText' => '', 'sdate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        $update = $this->withSession([])->post('/sendorderUpdateStatus', [
+            'status_id' => '3', 'select_list_id' => ['91002'],
+        ]);
+        $update->assertStatus(303);
+        $update->assertRedirectTo('/login');
+    }
+
+    public function testTrackingListingLegacyAliasUsesPostFiltersAndPreservesRawValues(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-002 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/TrackingListing', [
+                    'searchText' => $searchText, 'sdate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-002</td>', $body);
+            }
+
+            $zeroSearch = $this->withSession($admin)->post('/TrackingListing', [
+                'searchText' => '0', 'sdate' => '',
+            ]);
+            $zeroSearch->assertStatus(200);
+            $zeroSearch->assertSee('WP00C-TRACK-002');
+            self::assertStringContainsString('name="searchText" value="0"', (string) $zeroSearch->getBody());
+
+            $malformedDate = $this->withSession($admin)->post('/TrackingListing', [
+                'searchText' => '', 'sdate' => 'not-a-date',
+            ]);
+            $malformedDate->assertStatus(200);
+            $malformedDate->assertDontSee('WP00C-TRACK-002');
+            self::assertStringContainsString(
+                'name="sdate" value="not-a-date"',
+                (string) $malformedDate->getBody(),
+            );
+
+            $zeroDate = $this->withSession($admin)->post('/TrackingListing', [
+                'searchText' => '', 'sdate' => '0',
+            ]);
+            $zeroDate->assertStatus(200);
+            $zeroDate->assertSee('WP00C-TRACK-002');
+            self::assertStringContainsString('name="sdate" value=""', (string) $zeroDate->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        foreach ([
+            '/TrackingListing?search=PARITY-NO-MATCH',
+            '/TrackingListing?sdate=03%2F08%2F2026',
+            '/TrackingListing?page=2',
+        ] as $uri) {
+            $get = $this->withSession($admin)->get($uri);
+            $get->assertStatus(200);
+            $get->assertSee('WP00C-TRACK-002');
+            $body = (string) $get->getBody();
+            self::assertStringContainsString('name="searchText" value=""', $body);
+            self::assertStringContainsString('name="sdate" value=""', $body);
+        }
+
+        $offset = $this->withSession($admin)->get('/TrackingListing/1');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $offset->getBody());
+    }
+
+    public function testSendToProviderSupportsLegacyOtherLogisticsOption(): void
+    {
+        $response = $this->postTransition('/sendorderUpdate', [
+            'provider_id' => '9999',
+            'select_list_id' => ['91001'],
+            'logistics_etc_detail' => '  CUSTOM LOGISTICS DETAIL  ',
+        ]);
+
+        $response->assertStatus(303);
+        $response->assertRedirectTo('/sendorderListing');
+        self::assertSame('order updated successfully', service('session')->getFlashdata('success'));
+        $row = $this->db->table('request_order')->where('request_id', 91001)->get()->getRowArray();
+        self::assertSame(2, (int) $row['action_status']);
+        self::assertSame(0, (int) $row['provider_id']);
+        self::assertSame('  CUSTOM LOGISTICS DETAIL  ', $row['logistics_etc_detail']);
+        self::assertNotEmpty($row['date_create']);
+        self::assertNotEmpty($row['date_update_status']);
+        self::assertSame(1, $this->db->table('status_log')->where('action_id', 2)->countAllResults());
+    }
+
+    public function testSendToProviderDoesNotRequireSmsEncryptionAndShowsLegacySuccess(): void
+    {
+        Services::resetSingle('encrypter');
+
+        $response = $this->postTransition('/sendorderUpdate', [
+            'provider_id' => '1', 'select_list_id' => ['91001'],
+        ]);
+
+        $response->assertStatus(303);
+        $response->assertRedirectTo('/sendorderListing');
+        self::assertSame('order updated successfully', service('session')->getFlashdata('success'));
+        $row = $this->db->table('request_order')->where('request_id', 91001)->get()->getRowArray();
+        self::assertSame(2, (int) $row['action_status']);
+        self::assertSame(1, (int) $row['provider_id']);
+        self::assertNotEmpty($row['date_create']);
+        self::assertNotEmpty($row['date_update_status']);
+        self::assertSame(1, $this->db->table('status_log')->where('action_id', 2)->countAllResults());
+    }
+
+    public function testSendToProviderLegacyValidationRedirectsWithExactFeedback(): void
+    {
+        $noProvider = $this->postTransition('/sendorderUpdate', [
+            'provider_id' => '0', 'select_list_id' => ['91001'],
+        ]);
+        $noProvider->assertStatus(303);
+        $noProvider->assertRedirectTo('/sendorderListing');
+        self::assertSame('Logistics Detil failed', service('session')->getFlashdata('error'));
+        self::assertSame(
+            1,
+            (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'),
+        );
+
+        $noOrders = $this->postTransition('/sendorderUpdate', ['provider_id' => '1']);
+        $noOrders->assertStatus(303);
+        $noOrders->assertRedirectTo('/sendorderListing');
+        self::assertSame('order updated failed', service('session')->getFlashdata('error'));
+        self::assertSame(0, $this->db->table('status_log')->countAllResults());
+    }
+
+    public function testSendOrderListingAnonymousRequestsRedirectLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/sendorderListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/sendorderListing', [
+            'searchText' => '', 'sdate' => '', 'edate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        $update = $this->withSession([])->post('/sendorderUpdate', [
+            'provider_id' => '1', 'select_list_id' => ['91001'],
+        ]);
+        $update->assertStatus(303);
+        $update->assertRedirectTo('/login');
+    }
+
+    public function testSendOrderListingAcceptsBuddhistEndYearProducedByLegacyDatepicker(): void
+    {
+        $this->db->table('request_order')->insert([
+            'request_id' => 91998,
+            'requestDate' => '2027-01-01 00:00:00',
+            'trackID' => 'FUTURE-ORDER',
+            'orderID' => 'FUTURE',
+            'orderIDShow' => 'FUTURE/1',
+            'customerFullname' => 'FUTURE CUSTOMER',
+            'customerTel' => '0000000000',
+            'branchID' => 1,
+            'branch_type_id' => 1,
+            'UserID' => 9002,
+            'action_status' => 1,
+        ]);
+
+        try {
+            $response = $this->withSession($this->session(1, 1, null))->post('/sendorderListing', [
+                'searchText' => '', 'sdate' => '01/08/2026', 'edate' => '01/08/2569',
+            ]);
+            $response->assertStatus(200);
+            $response->assertSee('WP00C-TRACK-001');
+            $response->assertDontSee('FUTURE-ORDER');
+            self::assertStringContainsString('name="edate" value="01/08/2569"', (string) $response->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+    }
+
+    public function testSendOrderListingLegacyAliasPreservesPostFiltersAndOffsetTemplate(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-001 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/sendorderListing', [
+                    'searchText' => $searchText, 'sdate' => '', 'edate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-001</td>', $body);
+            }
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        foreach ([
+            '/sendorderListing?search=PARITY-NO-MATCH&sdate=not-a-date&edate=also-bad',
+            '/sendorderListing?page=2',
+        ] as $uri) {
+            $get = $this->withSession($admin)->get($uri);
+            $get->assertStatus(200);
+            $get->assertSee('WP00C-TRACK-001');
+            $getBody = (string) $get->getBody();
+            self::assertStringContainsString('name="searchText" value=""', $getBody);
+            self::assertStringContainsString('name="sdate" value=""', $getBody);
+            self::assertStringContainsString('name="edate" value=""', $getBody);
+        }
+
+        $offset = $this->withSession($admin)->get('/sendorderListing/1');
+        $offset->assertStatus(200);
+        $offsetBody = (string) $offset->getBody();
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', $offsetBody);
+        self::assertStringContainsString('<h3 class="box-title">LOGISTICS List</h3>', $offsetBody);
+        self::assertStringContainsString('action="http://example.invalid/sendorderUpdate"', $offsetBody);
+        self::assertStringNotContainsString('<h3 class="box-title">Request order List</h3>', $offsetBody);
+    }
+
+    public function testOrdersListingLegacyAliasPreservesPostFiltersAndIgnoresGetFilters(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        try {
+            foreach (['   ', ' WP00C-TRACK-001 ', str_repeat('X', 129)] as $searchText) {
+                $response = $this->withSession($admin)->post('/ordersListing', [
+                    'searchText' => $searchText, 'sdate' => '', 'edate' => '',
+                ]);
+                $response->assertStatus(200);
+                $body = (string) $response->getBody();
+                self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-001</td>', $body);
+            }
+
+            $zeroSearch = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '0', 'sdate' => '', 'edate' => '',
+            ]);
+            $zeroSearch->assertStatus(200);
+            $zeroSearch->assertSee('WP00C-TRACK-001');
+            self::assertStringContainsString('name="searchText" value="0"', (string) $zeroSearch->getBody());
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+
+        $getFilters = $this->withSession($admin)->get(
+            '/ordersListing?search=PARITY-NO-MATCH&sdate=not-a-date&edate=also-bad',
+        );
+        $getFilters->assertStatus(200);
+        $getFilters->assertSee('WP00C-TRACK-001');
+        $getBody = (string) $getFilters->getBody();
+        self::assertStringContainsString('name="searchText" value=""', $getBody);
+        self::assertStringContainsString('name="sdate" value=""', $getBody);
+        self::assertStringContainsString('name="edate" value=""', $getBody);
+
+        $offset = $this->withSession($admin)->get('/ordersListing/1');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking : branch Listing</title>', (string) $offset->getBody());
+    }
+
+    public function testQueueOneLegacyAliasesDateEdgeCasesMatchSourceWithoutRegressingFullDayRange(): void
+    {
+        $admin = $this->session(1, 1, null);
+        $this->db->table('request_order')->insert([
+            'request_id' => 91999,
+            'requestDate' => '2026-08-01 18:30:00',
+            'trackID' => 'FULL-DAY-ORDER',
+            'orderID' => 'FULL-DAY',
+            'orderIDShow' => 'FULL/DAY',
+            'customerFullname' => 'FULL DAY CUSTOMER',
+            'customerTel' => '0000000000',
+            'branchID' => 1,
+            'branch_type_id' => 1,
+            'UserID' => 9002,
+            'action_status' => 1,
+        ]);
+
+        try {
+            $fromOnly = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '', 'sdate' => '01/08/2026', 'edate' => '',
+            ]);
+            $fromOnly->assertStatus(200);
+            $fromOnly->assertDontSee('WP00C-TRACK-001');
+
+            $malformed = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '', 'sdate' => 'not-a-date', 'edate' => 'also-bad',
+            ]);
+            $malformed->assertStatus(200);
+            $malformed->assertDontSee('WP00C-TRACK-001');
+            self::assertStringContainsString('name="sdate" value="not-a-date"', (string) $malformed->getBody());
+
+            $endOnly = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '', 'sdate' => '', 'edate' => '01/08/2026',
+            ]);
+            $endOnly->assertStatus(200);
+            $endOnly->assertSee('WP00C-TRACK-001');
+            self::assertStringContainsString('name="edate" value="01/08/2026"', (string) $endOnly->getBody());
+
+            $zeroDates = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '', 'sdate' => '0', 'edate' => '0',
+            ]);
+            $zeroDates->assertStatus(200);
+            $zeroDates->assertSee('WP00C-TRACK-001');
+            self::assertStringContainsString('name="sdate" value=""', (string) $zeroDates->getBody());
+            self::assertStringContainsString('name="edate" value=""', (string) $zeroDates->getBody());
+
+            // Intentional correction: unlike CI3's midnight-only upper bound, CI4 keeps
+            // the complete end day while retaining the legacy POST contract.
+            $validRange = $this->withSession($admin)->post('/ordersListing', [
+                'searchText' => '', 'sdate' => '01/08/2026', 'edate' => '01/08/2026',
+            ]);
+            $validRange->assertStatus(200);
+            $validRange->assertSee('WP00C-TRACK-001');
+            $validRange->assertSee('FULL-DAY-ORDER');
+
+            $sendFromOnly = $this->withSession($admin)->post('/sendorderListing', [
+                'searchText' => '', 'sdate' => '01/08/2026', 'edate' => '',
+            ]);
+            $sendFromOnly->assertStatus(200);
+            $sendFromOnly->assertDontSee('WP00C-TRACK-001');
+
+            $sendMalformed = $this->withSession($admin)->post('/sendorderListing', [
+                'searchText' => '', 'sdate' => 'not-a-date', 'edate' => 'also-bad',
+            ]);
+            $sendMalformed->assertStatus(200);
+            $sendMalformed->assertDontSee('WP00C-TRACK-001');
+
+            $sendZeroDates = $this->withSession($admin)->post('/sendorderListing', [
+                'searchText' => '', 'sdate' => '0', 'edate' => '0',
+            ]);
+            $sendZeroDates->assertStatus(200);
+            $sendZeroDates->assertSee('WP00C-TRACK-001');
+            self::assertStringContainsString('name="sdate" value=""', (string) $sendZeroDates->getBody());
+            self::assertStringContainsString('name="edate" value=""', (string) $sendZeroDates->getBody());
+
+            $sendValidRange = $this->withSession($admin)->post('/sendorderListing', [
+                'searchText' => '', 'sdate' => '01/08/2026', 'edate' => '01/08/2026',
+            ]);
+            $sendValidRange->assertStatus(200);
+            $sendValidRange->assertSee('WP00C-TRACK-001');
+            $sendValidRange->assertSee('FULL-DAY-ORDER');
+        } finally {
+            service('incomingrequest')->setGlobal('post', []);
+            service('superglobals')->setPostArray([]);
+        }
+    }
+
+    public function testOrdersListingGuestAndLegacyDeleteEndpointMatchBrowserContract(): void
+    {
+        $guestGet = $this->withSession([])->get('/ordersListing');
+        $guestGet->assertStatus(307);
+        $guestGet->assertRedirectTo('/login');
+        $guestPost = $this->withSession([])->post('/ordersListing', [
+            'searchText' => '', 'sdate' => '', 'edate' => '',
+        ]);
+        $guestPost->assertStatus(303);
+        $guestPost->assertRedirectTo('/login');
+
+        $admin = $this->session(1, 1, null);
+        $listing = (string) $this->withSession($admin)->get('/ordersListing')->getBody();
+        self::assertSame(1, preg_match('/name="csrf_test_name" value="([^"]+)"/', $listing, $matches));
+
+        $deleted = $this->withSession($admin)->post('/deleteOrders', [
+            'orderid' => '91001', 'csrf_test_name' => $matches[1],
+        ]);
+        $deleted->assertStatus(200);
+        $deleted->assertJSONExact(['status' => true]);
+        self::assertSame(
+            8,
+            (int) $this->db->table('request_order')->where('request_id', 91001)->get()->getRow('action_status'),
+        );
+        self::assertNotSame('', $deleted->response()->getHeaderLine('X-CSRF-TOKEN'));
+    }
+
+    public function testQueueOneLegacyAliasesUseCi3LargePaginatorWindowAndAttributes(): void
+    {
+        for ($start = 1; $start <= 350; $start += 50) {
+            $rows = [];
+            for ($index = $start; $index <= min($start + 49, 350); $index++) {
+                $rows[] = [
+                    'request_id' => 92000 + $index,
+                    'requestDate' => '2026-08-01 00:00:00',
+                    'trackID' => sprintf('ORDER-PAGE-%03d', $index),
+                    'orderID' => 'ORDER-' . $index,
+                    'orderIDShow' => 'PAGE/' . $index,
+                    'customerFullname' => 'PAGINATION CUSTOMER',
+                    'customerTel' => '0000000000',
+                    'branchID' => 1,
+                    'branch_type_id' => 1,
+                    'UserID' => 9002,
+                    'action_status' => 1,
+                ];
+            }
+            $this->db->table('request_order')->insertBatch($rows);
+        }
+
+        $admin = $this->session(1, 1, null);
+        $pageOne = (string) $this->withSession($admin)->get('/ordersListing')->getBody();
+        self::assertStringContainsString('data-ci-pagination-page="2" rel="next">Next</a>', $pageOne);
+        self::assertStringContainsString('data-ci-pagination-page="8">Last</a>', $pageOne);
+        self::assertStringNotContainsString('data-ci-pagination-page="7">7</a>', $pageOne);
+
+        $lastPage = (string) $this->withSession($admin)->get('/ordersListing/350')->getBody();
+        self::assertStringContainsString('<title>Tracking : branch Listing</title>', $lastPage);
+        self::assertStringContainsString('WP00C-TRACK-001', $lastPage);
+        self::assertStringContainsString('data-ci-pagination-page="1" rel="start">First</a>', $lastPage);
+        self::assertStringContainsString('data-ci-pagination-page="7" rel="prev">Previous</a>', $lastPage);
+        self::assertStringContainsString('data-ci-pagination-page="3">3</a>', $lastPage);
+        self::assertStringNotContainsString('data-ci-pagination-page="2">2</a>', $lastPage);
+
+        $sendPageOne = (string) $this->withSession($admin)->get('/sendorderListing')->getBody();
+        self::assertStringContainsString(
+            'href="http://example.invalid/sendorderListing/50" data-ci-pagination-page="2" rel="next">Next</a>',
+            $sendPageOne,
+        );
+        self::assertStringContainsString('data-ci-pagination-page="8">Last</a>', $sendPageOne);
+
+        $sendLastPage = (string) $this->withSession($admin)->get('/sendorderListing/350')->getBody();
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', $sendLastPage);
+        self::assertStringContainsString('<h3 class="box-title">LOGISTICS List</h3>', $sendLastPage);
+        self::assertStringContainsString('WP00C-TRACK-001', $sendLastPage);
+        self::assertStringContainsString('data-ci-pagination-page="1" rel="start">First</a>', $sendLastPage);
+        self::assertStringContainsString('data-ci-pagination-page="7" rel="prev">Previous</a>', $sendLastPage);
+        self::assertStringContainsString('data-ci-pagination-page="3">3</a>', $sendLastPage);
+        self::assertStringNotContainsString('data-ci-pagination-page="2">2</a>', $sendLastPage);
+    }
+
     public function testQueueOneDateRangeFiltersBetweenFromAndToInclusive(): void
     {
         $admin = $this->session(1, 1, null);
@@ -785,21 +1589,21 @@ final class OrderHttpTest extends CIUnitTestCase
         $before->assertDontSee('WP00C-TRACK-001');
     }
 
-    public function testListingDateFilterMatchesExactDayPersistsAndIgnoresMalformedInput(): void
+    public function testModernListingDateFilterMatchesExactDayPersistsAndIgnoresMalformedInput(): void
     {
         $admin = $this->session(1, 1, null);
 
-        $match = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('02/08/2026'));
+        $match = $this->withSession($admin)->get('/orders?status=2&sdate=' . rawurlencode('02/08/2026'));
         $match->assertStatus(200);
         $match->assertSee('WP00C-TRACK-002');
         self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="02\/08\/2026")[^>]*>/s', (string) $match->getBody());
 
-        $miss = $this->withSession($admin)->get('/TrackingListing?sdate=' . rawurlencode('03/08/2026'));
+        $miss = $this->withSession($admin)->get('/orders?status=2&sdate=' . rawurlencode('03/08/2026'));
         $miss->assertStatus(200);
         $miss->assertDontSee('WP00C-TRACK-002');
         self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="03\/08\/2026")[^>]*>/s', (string) $miss->getBody());
 
-        $malformed = $this->withSession($admin)->get('/TrackingListing?sdate=abc');
+        $malformed = $this->withSession($admin)->get('/orders?status=2&sdate=abc');
         $malformed->assertStatus(200);
         $malformed->assertSee('WP00C-TRACK-002');
         self::assertMatchesRegularExpression('/<input(?=[^>]*name="sdate")(?=[^>]*value="abc")[^>]*>/s', (string) $malformed->getBody());
@@ -2155,8 +2959,13 @@ JS;
         self::assertNotEmpty($status2['date_create']);
         self::assertNotEmpty($status2['date_update_status']);
 
-        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91002'], 'status_id' => '3'])
-            ->assertRedirectTo('/ReportTrackingListing');
+        $trackingUpdated = $this->postTransition(
+            '/sendorderUpdateStatus',
+            ['select_list_id' => ['91002'], 'status_id' => '3'],
+        );
+        $trackingUpdated->assertStatus(303);
+        $trackingUpdated->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame('order updated successfully', service('session')->getFlashdata('success'));
         $status3 = $this->db->table('request_order')->where('request_id', 91002)->get()->getRowArray();
         self::assertSame(3, (int) $status3['action_status']);
         self::assertNotEmpty($status3['date_update_status']);
@@ -2165,8 +2974,13 @@ JS;
             ->assertRedirectTo('/ReportTrackingListing');
         self::assertSame(4, (int) $this->db->table('request_order')->where('request_id', 91003)->get()->getRow('action_status'));
 
-        $this->postTransition('/sendorder_deliver', ['select_list_id' => ['91004'], 'status_id' => '5'])
-            ->assertRedirectTo('/TrackingreturnListing');
+        $delivered = $this->postTransition(
+            '/sendorder_deliver',
+            ['select_list_id' => ['91004'], 'status_id' => '5'],
+        );
+        $delivered->assertStatus(303);
+        $delivered->assertRedirectTo('/TrackingreturnListing');
+        self::assertSame('order updated successfully', service('session')->getFlashdata('success'));
         $status5 = $this->db->table('request_order')->where('request_id', 91004)->get()->getRowArray();
         self::assertSame(5, (int) $status5['action_status']);
         self::assertNotEmpty($status5['date_deliver']);
@@ -2329,8 +3143,13 @@ JS;
 
         $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => ['91007'], 'status_id' => '4'], $this->session(2, 2, 1))
             ->assertStatus(404);
-        $this->postTransition('/sendorderUpdateStatus', ['select_list_id' => [], 'status_id' => '3'])
-            ->assertStatus(422);
+        $emptySelection = $this->postTransition(
+            '/sendorderUpdateStatus',
+            ['select_list_id' => [], 'status_id' => '3'],
+        );
+        $emptySelection->assertStatus(303);
+        $emptySelection->assertRedirectTo('/ReportTrackingListing');
+        self::assertSame('order updated failed', service('session')->getFlashdata('error'));
         self::assertSame(0, $this->db->table('status_log')->countAllResults());
     }
 

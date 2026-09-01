@@ -13,17 +13,34 @@ final class MasterDataStore
 
     private const PAGE_SIZE = 50;
 
+    /** @var array<string, string> */
+    private const BRANCH_SCOPE_COLUMNS = [
+        'branch' => 'branch.branch_id',
+        'book' => 'book.branch_id',
+    ];
+
     /** @return list<array<string, mixed>> */
-    public function all(string $type, string $search = '', int $page = 1): array
+    public function all(
+        string $type,
+        string $search = '',
+        int $page = 1,
+        ?int $branchId = null,
+        ?int $legacyOffset = null,
+    ): array
     {
         $definition = MasterCatalog::definition($type);
         if ($definition === null) {
             return [];
         }
         $page  = $page < 1 ? 1 : $page;
+        $offset = $legacyOffset ?? (($page - 1) * self::PAGE_SIZE);
         $query = $this->db->table($definition['table'])
             ->orderBy($definition['pk'], 'ASC')
-            ->limit(self::PAGE_SIZE, ($page - 1) * self::PAGE_SIZE);
+            ->limit(self::PAGE_SIZE, $offset);
+        $branchScopeColumn = self::BRANCH_SCOPE_COLUMNS[$type] ?? null;
+        if ($branchScopeColumn !== null && $branchId !== null && $branchId > 0) {
+            $query->where($branchScopeColumn, $branchId);
+        }
         if ($search !== '') {
             $columns = $definition['searchColumns'] ?? [$definition['label']];
             if (isset($definition['searchJoins'])) {
@@ -42,13 +59,17 @@ final class MasterDataStore
         return $query->get()->getResultArray();
     }
 
-    public function count(string $type, string $search = ''): int
+    public function count(string $type, string $search = '', ?int $branchId = null): int
     {
         $definition = MasterCatalog::definition($type);
         if ($definition === null) {
             return 0;
         }
         $query = $this->db->table($definition['table']);
+        $branchScopeColumn = self::BRANCH_SCOPE_COLUMNS[$type] ?? null;
+        if ($branchScopeColumn !== null && $branchId !== null && $branchId > 0) {
+            $query->where($branchScopeColumn, $branchId);
+        }
         if ($search !== '') {
             $columns = $definition['searchColumns'] ?? [$definition['label']];
             if (isset($definition['searchJoins'])) {
@@ -131,7 +152,9 @@ final class MasterDataStore
         if ($this->find($type, $id) === null) {
             return 'not_found';
         }
-        if ($definition['table'] === 'branch') {
+        if (in_array($type, ['statustype', 'brand', 'condition', 'estimateprice', 'fixed', 'provider'], true)) {
+            $values['cdate'] = $timestamp;
+        } elseif ($definition['table'] === 'branch') {
             $values['udate'] = $timestamp;
         }
 
@@ -175,7 +198,7 @@ final class MasterDataStore
     }
 
     /**
-     * @param array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string}> $fields
+     * @param array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, preserveEmpty?: bool, trim?: bool, preserveNull?: bool, emptyIntValue?: int, fk?: string}> $fields
      * @param array<string, mixed> $input
      * @return array<string, int|string|null>|null
      */
@@ -184,11 +207,23 @@ final class MasterDataStore
         $values = [];
         foreach ($fields as $name => $rule) {
             $raw = $input[$name] ?? null;
-            if ($raw === null && ! ($rule['required'] ?? false)) {
-                continue;
+            if ($raw === null) {
+                if ($rule['preserveNull'] ?? false) {
+                    $values[$name] = null;
+                    continue;
+                }
+                if (! ($rule['required'] ?? false)) {
+                    continue;
+                }
             }
             if ($rule['kind'] === 'int') {
                 $min = ($rule['allowZero'] ?? false) ? 0 : 1;
+                if (is_string($raw) && array_key_exists('emptyIntValue', $rule)) {
+                    $raw = trim($raw);
+                    if ($raw === '') {
+                        $raw = $rule['emptyIntValue'];
+                    }
+                }
                 if (is_string($raw) && preg_match('/^(0|[1-9][0-9]*)$/D', $raw) === 1) {
                     $raw = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => $min]]);
                 }
@@ -201,14 +236,16 @@ final class MasterDataStore
             if (! is_string($raw)) {
                 return null;
             }
-            $raw = trim($raw);
+            if ($rule['trim'] ?? true) {
+                $raw = trim($raw);
+            }
             if (($rule['required'] ?? false) && $raw === '') {
                 return null;
             }
             if (mb_strlen($raw) > ($rule['max'] ?? 250)) {
                 return null;
             }
-            $values[$name] = $raw === '' ? null : $raw;
+            $values[$name] = $raw === '' && ! ($rule['preserveEmpty'] ?? false) ? null : $raw;
         }
 
         return $values;

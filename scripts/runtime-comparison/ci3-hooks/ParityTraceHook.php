@@ -4,6 +4,7 @@ final class ParityTraceHook
 {
     public function bootstrapSession(): void
     {
+        $this->serveSyntheticAsset();
         $this->registerShutdownTrace();
         $profile = $_GET['parity_session'] ?? '';
         if (getenv('PARITY_SESSION_BOOTSTRAP') !== 'enabled' || ! in_array($profile, array('admin', 'branch'), TRUE)) {
@@ -30,6 +31,24 @@ final class ParityTraceHook
             'lastLogin' => '2026-08-30 09:00:00', 'isLoggedIn' => TRUE,
         ));
         redirect('/dashboard');
+        exit;
+    }
+
+    private function serveSyntheticAsset(): void
+    {
+        $path = isset($_SERVER['REQUEST_URI']) ? parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) : '';
+        $allowed = array('/synthetic-retail.png', '/synthetic-service.png');
+        if (! is_string($path) || ! in_array($path, $allowed, TRUE)) {
+            return;
+        }
+        $file = '/parity-assets/' . basename($path);
+        if (! is_file($file)) {
+            return;
+        }
+
+        header('Content-Type: image/png');
+        header('Content-Length: ' . filesize($file));
+        readfile($file);
         exit;
     }
 

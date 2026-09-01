@@ -23,12 +23,14 @@ final class MenuHttpTest extends CIUnitTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        service('superglobals')->setGetArray([])->setPostArray([])->setFilesArray([]);
         foreach ([
             'group_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, group_type VARCHAR(250) NOT NULL, name VARCHAR(250) NOT NULL, cdate DATETIME NOT NULL',
             'group_type' => 'group_type_id INTEGER PRIMARY KEY, group_type_name VARCHAR(250) NOT NULL, icon_menu VARCHAR(250) NOT NULL',
             'tbl_menu' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, menu_name VARCHAR(250) NOT NULL, menu_link VARCHAR(250) NOT NULL, group_type INTEGER NOT NULL, cdate DATETIME NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_name VARCHAR(250) NOT NULL, branch_user_name VARCHAR(250) NOT NULL',
             'request_order' => 'request_id INTEGER PRIMARY KEY, branchID INTEGER, action_status INTEGER',
+            'tbl_users' => 'userId INTEGER PRIMARY KEY, email VARCHAR(128), name VARCHAR(128), mobile VARCHAR(20), branch_id INTEGER, isDeleted INTEGER NOT NULL DEFAULT 0',
         ] as $table => $definition) {
             $name = $this->db->escapeIdentifiers($this->db->prefixTable($table));
             $this->db->query("DROP TABLE IF EXISTS {$name}");
@@ -813,6 +815,265 @@ final class MenuHttpTest extends CIUnitTestCase
         $this->postAsAdmin('/editMenu', ['group_id' => (string) $row['id'], 'name' => 'LEGACY UPDATED', 'group_type' => ['2']])
             ->assertRedirectTo('/menuListing');
         self::assertSame('LEGACY UPDATED', $this->db->table('group_menu')->where('id', $row['id'])->get()->getRow('name'));
+    }
+
+    public function testLegacyMenuListingUsesCi3AuthenticationRolesMethodsAliasesAndOrder(): void
+    {
+        $users = new ShadowUserStore($this->db);
+        $providerId = $users->create('menu-provider@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 3, 1);
+        $profiles = [
+            $this->session($this->adminId, 1, 1, null),
+            $this->session($this->branchId, 2, 4, 1),
+            $this->session($providerId, 3, 4, 1),
+        ];
+
+        $this->get('/menuListing')->assertRedirectTo('/login');
+        foreach ($profiles as $session) {
+            foreach ([
+                '/menuListing',
+                '/menuListing/0',
+                '/menu/menuListing',
+                '/Menu/menuListing/15',
+                '/MENU/MENULISTING/legacy/15',
+            ] as $path) {
+                $body = (string) $this->withSession($session)->get($path)->getBody();
+                $central = strpos($body, '<td>CENTRAL</td>');
+                $branch = strpos($body, '<td>BRANCH</td>');
+                self::assertNotFalse($central);
+                self::assertNotFalse($branch);
+                self::assertLessThan($branch, $central);
+                $this->withSession($session)->post($path, [])->assertStatus(200);
+                $this->withSession($session)->call('head', $path)->assertStatus(200);
+                $this->withSession($session)->call('options', $path)->assertStatus(200);
+                $this->withSession($session)->call('put', $path)->assertStatus(200);
+                $this->withSession($session)->call('patch', $path)->assertStatus(200);
+                $this->withSession($session)->call('delete', $path)->assertStatus(200);
+            }
+        }
+    }
+
+    public function testLegacyMenuListingKeepsCi3PostSearchRawOffsetsAndUserCountPaginatorBug(): void
+    {
+        $menus = [];
+        for ($id = 10; $id <= 29; $id++) {
+            $menus[] = [
+                'id' => $id,
+                'group_type' => '1',
+                'name' => sprintf('SYNTHETIC MENU %03d', $id),
+                'cdate' => '2026-08-22 10:00:00',
+            ];
+        }
+        $this->db->table('group_menu')->insertBatch($menus);
+        $users = [];
+        for ($id = 1; $id <= 16; $id++) {
+            $users[] = [
+                'userId' => 10000 + $id,
+                'email' => sprintf('paginator-%02d@example.invalid', $id),
+                'name' => sprintf('PAGINATOR USER %02d', $id),
+                'mobile' => sprintf('900000%04d', $id),
+                'branch_id' => 1,
+                'isDeleted' => 0,
+            ];
+        }
+        $this->db->table('tbl_users')->insertBatch($users);
+        $session = $this->session($this->adminId, 1, 1, null);
+
+        $first = (string) $this->withSession($session)->get('/menuListing')->getBody();
+        self::assertStringContainsString('<td>CENTRAL</td>', $first);
+        self::assertStringContainsString('<td>SYNTHETIC MENU 022</td>', $first);
+        self::assertStringNotContainsString('<td>SYNTHETIC MENU 023</td>', $first);
+        self::assertStringContainsString(
+            '<li class="arrow"><a href="' . base_url('menuListing/15') . '" data-ci-pagination-page="2" rel="next">Next</a></li>',
+            $first,
+        );
+
+        $rawOffset = (string) $this->withSession($session)->get('/menuListing/1')->getBody();
+        self::assertStringNotContainsString('<td>CENTRAL</td>', $rawOffset);
+        self::assertStringContainsString('<td>BRANCH</td>', $rawOffset);
+        self::assertStringContainsString('<td>SYNTHETIC MENU 023</td>', $rawOffset);
+
+        $second = (string) $this->withSession($session)->get('/menuListing/15')->getBody();
+        self::assertStringContainsString('<td>SYNTHETIC MENU 023</td>', $second);
+        self::assertStringContainsString('<td>SYNTHETIC MENU 029</td>', $second);
+        self::assertStringNotContainsString('<td>SYNTHETIC MENU 022</td>', $second);
+
+        $alias = (string) $this->withSession($session)->get('/menu/menuListing/15')->getBody();
+        self::assertStringContainsString('<td>CENTRAL</td>', $alias);
+        self::assertStringNotContainsString('<td>SYNTHETIC MENU 023</td>', $alias);
+
+        $getQuery = (string) $this->withSession($session)->get('/menuListing?searchText=NO-MATCH')->getBody();
+        self::assertStringContainsString('<td>CENTRAL</td>', $getQuery);
+        self::assertStringContainsString('name="searchText" value=""', $getQuery);
+
+        $matched = (string) $this->withSession($session)
+            ->post('/menuListing', ['searchText' => 'MENU 017'])
+            ->getBody();
+        self::assertStringContainsString('<td>SYNTHETIC MENU 017</td>', $matched);
+        self::assertStringNotContainsString('<td>SYNTHETIC MENU 018</td>', $matched);
+        self::assertStringNotContainsString('<ul class="pagination">', $matched);
+
+        $zero = (string) $this->withSession($session)->post('/menuListing', ['searchText' => '0'])->getBody();
+        self::assertStringContainsString('<td>CENTRAL</td>', $zero);
+        self::assertStringContainsString('name="searchText" value="0"', $zero);
+    }
+
+    public function testLegacyMenuFormsUseCi3RolesMethodsAliasesMissingAndUnknownIds(): void
+    {
+        $admin = $this->session($this->adminId, 1, 1, null);
+        $branch = $this->session($this->branchId, 2, 4, 1);
+
+        $this->get('/addNewMenu')->assertRedirectTo('/login');
+        $this->get('/editMunuOld/1')->assertRedirectTo('/login');
+        foreach ([$admin, $branch] as $session) {
+            foreach (['/addNewMenu', '/menu/addNewMenu', '/MENU/ADDNEWMENU/legacy'] as $path) {
+                foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $this->withSession($session)->call($method, $path)->assertStatus(200);
+                }
+            }
+            foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                $missing = $this->withSession($session)->call($method, '/editMunuOld');
+                $missing->assertRedirectTo('/menuListing');
+                $missing->assertStatus($method === 'get' ? 307 : 303);
+            }
+            foreach ([
+                '/editMunuOld/1',
+                '/editMunuOld/999999',
+                '/menu/editMunuOld/1',
+                '/MENU/EDITMUNUOLD/999999/legacy',
+            ] as $path) {
+                foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $response = $this->withSession($session)->call($method, $path);
+                    $response->assertStatus(200);
+                    if ($method === 'get' && str_contains($path, '999999')) {
+                        self::assertStringContainsString(
+                            'value="" name="group_id" id="group_id"',
+                            (string) $response->getBody(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    public function testLegacyMenuActionsMatchCi3ValidationRedirectFlashOrderingAndTimestamps(): void
+    {
+        $admin = $this->session($this->adminId, 1, 1, null);
+        $branch = $this->session($this->branchId, 2, 4, 1);
+
+        $invalidCreate = $this->withSession($admin)->post('/addMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'name' => '   ',
+            'group_type' => ['1'],
+        ]);
+        $invalidCreate->assertStatus(200);
+        self::assertStringContainsString('The Full Name field is required.', (string) $invalidCreate->getBody());
+        self::assertSame(2, $this->db->table('group_menu')->countAllResults());
+
+        $overlongCreate = $this->withSession($admin)->post('/addMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'name' => str_repeat('x', 501),
+            'group_type' => ['1'],
+        ]);
+        $overlongCreate->assertStatus(200);
+        self::assertStringContainsString(
+            'The Full Name field cannot exceed 500 characters in length.',
+            (string) $overlongCreate->getBody(),
+        );
+
+        $created = $this->withSession($branch)->post('/MENU/ADDMENU/legacy', [
+            'csrf_test_name' => service('security')->getHash(),
+            'name' => '  LEGACY ORDERED  ',
+            'group_type' => ['3', '1', '3'],
+        ]);
+        $created->assertRedirectTo('/addNewMenu');
+        $created->assertStatus(303);
+        $row = $this->db->table('group_menu')->where('name', 'LEGACY ORDERED')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame('3,1,3', $row['group_type']);
+        self::assertSame('New Menu created successfully', service('session')->getFlashdata('success'));
+
+        $id = (int) $row['id'];
+        $missingInvalidUpdate = $this->withSession($branch)->post('/editMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'name' => '',
+        ]);
+        $missingInvalidUpdate->assertRedirectTo('/menuListing');
+        $missingInvalidUpdate->assertStatus(303);
+
+        $unknownInvalidUpdate = $this->withSession($branch)->post('/editMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'group_id' => '999999',
+            'name' => '',
+        ]);
+        $unknownInvalidUpdate->assertStatus(200);
+        self::assertStringContainsString('The Full Name field is required.', (string) $unknownInvalidUpdate->getBody());
+        self::assertStringContainsString('value="" name="group_id" id="group_id"', (string) $unknownInvalidUpdate->getBody());
+
+        $invalidUpdate = $this->withSession($branch)->post('/editMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'group_id' => (string) $id,
+            'name' => '',
+            'group_type' => ['2'],
+        ]);
+        $invalidUpdate->assertStatus(200);
+        self::assertStringContainsString('The Full Name field is required.', (string) $invalidUpdate->getBody());
+        self::assertStringContainsString('value="LEGACY ORDERED"', (string) $invalidUpdate->getBody());
+        self::assertSame('3,1,3', $this->db->table('group_menu')->where('id', $id)->get()->getRow('group_type'));
+
+        $before = '2020-01-01 00:00:00';
+        $this->db->table('group_menu')->where('id', $id)->update(['cdate' => $before]);
+        $updated = $this->withSession($branch)->post('/menu/editMenu/legacy', [
+            'csrf_test_name' => service('security')->getHash(),
+            'group_id' => (string) $id,
+            'name' => 'LEGACY UPDATED',
+            'group_type' => ['2', '1'],
+        ]);
+        $updated->assertRedirectTo('/menuListing');
+        $updated->assertStatus(303);
+        $updatedRow = $this->db->table('group_menu')->where('id', $id)->get()->getRowArray();
+        self::assertNotNull($updatedRow);
+        self::assertSame('LEGACY UPDATED', $updatedRow['name']);
+        self::assertSame('2,1', $updatedRow['group_type']);
+        self::assertNotSame($before, $updatedRow['cdate']);
+        self::assertSame('Menu updated successfully', service('session')->getFlashdata('success'));
+
+        $duplicate = $this->withSession($admin)->post('/addMenu', [
+            'csrf_test_name' => service('security')->getHash(),
+            'name' => 'CENTRAL',
+            'group_type' => ['1'],
+        ]);
+        $duplicate->assertStatus(409);
+        self::assertSame(3, $this->db->table('group_menu')->countAllResults());
+    }
+
+    public function testLegacyMenuNonPostActionMethodsMatchCi3WithoutMutatingData(): void
+    {
+        $admin = $this->session($this->adminId, 1, 1, null);
+        $branch = $this->session($this->branchId, 2, 4, 1);
+        $before = $this->db->table('group_menu')->countAllResults();
+
+        foreach ([$admin, $branch] as $session) {
+            foreach (['/addMenu', '/menu/addMenu/legacy', '/MENU/ADDMENU/legacy'] as $path) {
+                foreach (['get', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $response = $this->withSession($session)->call($method, $path);
+                    $response->assertStatus(200);
+                    if ($method === 'get') {
+                        self::assertStringNotContainsString(
+                            'The Full Name field is required.',
+                            (string) $response->getBody(),
+                        );
+                    }
+                }
+            }
+            foreach (['/editMenu', '/menu/editMenu/legacy', '/MENU/EDITMENU/legacy'] as $path) {
+                foreach (['get', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $response = $this->withSession($session)->call($method, $path);
+                    $response->assertRedirectTo('/menuListing');
+                    $response->assertStatus($method === 'get' ? 307 : 303);
+                }
+            }
+        }
+        self::assertSame($before, $this->db->table('group_menu')->countAllResults());
     }
 
     /** @return list<string> */

@@ -209,34 +209,49 @@ final class Reports extends BaseController
         return $this->layout('Tracking : Dashboard', $content, ['contentOwnsWrapper' => true]);
     }
 
-    public function summary(string $page = '0', ?string $routeBranchId = null): string|ResponseInterface
+    public function summary(string $page = '0', ?string $routeBranchId = null): string
     {
         if (preg_match('/\A[0-9]+\z/D', $page) !== 1) {
             throw PageNotFoundException::forPageNotFound();
         }
         $filters = [
-            'searchText' => $this->input('searchText'),
-            'sdate' => $this->input('sdate'),
-            'edate' => $this->input('edate'),
-            'status_id' => $this->input('status_id'),
-            'detailBrandId' => $this->input('detailBrandId'),
-            'detailTypeId' => $this->input('detailTypeId'),
+            'searchText' => $this->legacySummaryPostString('searchText'),
+            'sdate' => $this->legacySummaryPostString('sdate'),
+            'edate' => $this->legacySummaryPostString('edate'),
+            'status_id' => $this->legacySummaryPostString('status_id'),
+            'detailBrandId' => $this->legacySummaryPostString('detailBrandId'),
+            'detailTypeId' => $this->legacySummaryPostString('detailTypeId'),
         ];
-        $branchId = $this->branchScope($routeBranchId);
-        $error = null;
+        $filters['sdate'] = $filters['sdate'] === '0' ? '' : $filters['sdate'];
+        $filters['edate'] = $filters['edate'] === '0' ? '' : $filters['edate'];
+        [$branchId, $companyId] = $this->legacySummaryBranchScope($routeBranchId);
         try {
-            $rows = (new ReportMatrix(db_connect()))->summary(
-                $filters['searchText'], $filters['sdate'], $filters['edate'],
-                $filters['status_id'], $filters['detailBrandId'], $filters['detailTypeId'], $branchId,
-                100, (int) $page,
-            );
-        } catch (InvalidArgumentException $exception) {
+            if ($filters['sdate'] !== '' && $filters['edate'] === '') {
+                $rows = [];
+            } else {
+                $rows = (new ReportMatrix(db_connect()))->summary(
+                    $filters['searchText'],
+                    $filters['sdate'],
+                    $filters['sdate'] === '' ? '' : $filters['edate'],
+                    $filters['status_id'],
+                    $filters['detailBrandId'],
+                    $filters['detailTypeId'],
+                    $branchId,
+                    100,
+                    (int) $page,
+                    true,
+                );
+            }
+        } catch (InvalidArgumentException) {
             $rows = [];
-            $error = $exception->getMessage();
         }
         $db = db_connect();
-        $role = (int) service('session')->get('role');
-        $content = (new LegacyViewRenderer())->render('tracking/reportsummary', [
+        $renderer = new LegacyViewRenderer(oldValues: [
+            'status_id' => self::legacySummarySelectedValue($filters['status_id']),
+            'detailBrandId' => self::legacySummarySelectedValue($filters['detailBrandId']),
+            'detailTypeId' => self::legacySummarySelectedValue($filters['detailTypeId']),
+        ]);
+        $content = $renderer->render('tracking/reportsummary', [
             'OrdersRecords' => LegacyViewRenderer::escapedRecords($rows),
             'Brand' => LegacyViewRenderer::escapedRecords($db->table('brand')->select('brand_id, brand_details')->orderBy('brand_id')->get()->getResultArray()),
             'Producttype' => LegacyViewRenderer::escapedRecords($db->table('type')->select('type_id, type_details')->orderBy('type_id')->get()->getResultArray()),
@@ -245,11 +260,9 @@ final class Reports extends BaseController
             'Fixed' => LegacyViewRenderer::escapedRecords($db->table('fixed')->select('fixed_id, fixed_details')->orderBy('fixed_id')->get()->getResultArray()),
             'Status' => LegacyViewRenderer::escapedRecords($db->table('statusaction')->select('status_id, status_name, status_name_th')->orderBy('status_id')->get()->getResultArray()),
             'searchText' => esc($filters['searchText']), 'sdate' => esc($filters['sdate']), 'edate' => esc($filters['edate']),
-            'status_id' => esc($filters['status_id']), 'companny_id' => $branchId ?? '', 'page' => (int) $page,
+            'status_id' => esc($filters['status_id']), 'companny_id' => $companyId, 'page' => (int) $page,
         ]);
-        $html = $this->layout('Tracking : Listing', $content, ['contentOwnsWrapper' => true]);
-
-        return $error === null ? $html : $this->response->setStatusCode(422)->setBody($html);
+        return $this->layout('Tracking :  Listing', $content, ['contentOwnsWrapper' => true]);
     }
 
     public function export(string $type): ResponseInterface
@@ -266,6 +279,7 @@ final class Reports extends BaseController
         bool $detailedRatings = false,
         ?string $routeStatusId = null,
         bool $trustRouteBranch = false,
+        ?string $routeSearchText = null,
     ): ResponseInterface {
         if (! in_array($type, ['tracking', 'summary', 'ratings', 'in-progress'], true)) {
             throw PageNotFoundException::forPageNotFound();
@@ -278,15 +292,21 @@ final class Reports extends BaseController
         if (ini_set('memory_limit', '8048M') === false) {
             log_message('warning', 'Report export could not raise memory_limit; continuing with existing ceiling.');
         }
-        [$defaultStart, $defaultEnd] = $routeStartDate !== null || $routeEndDate !== null
-            ? $this->defaultRange(self::legacyRouteDate($routeStartDate), self::legacyRouteDate($routeEndDate))
-            : $this->defaultRange($this->input('start_date'), $this->input('end_date'));
+        [$defaultStart, $defaultEnd] = $type === 'tracking'
+            ? $this->defaultRange(null, null)
+            : ($routeStartDate !== null || $routeEndDate !== null
+                ? $this->defaultRange(self::legacyRouteDate($routeStartDate), self::legacyRouteDate($routeEndDate))
+                : $this->defaultRange($this->input('start_date'), $this->input('end_date')));
         try {
             $matrix = new ReportMatrix(db_connect());
             $rows = match ($type) {
                 'tracking' => (new TrackingReport(db_connect()))->rows(
-                    $this->input('searchText'), $this->input('sdate'), $this->input('edate'),
-                    $this->input('status_id'), $branchId,
+                    $routeSearchText ?? $this->input('searchText'),
+                    $routeStartDate ?? $this->input('sdate'),
+                    $routeEndDate ?? $this->input('edate'),
+                    $routeStatusId ?? $this->input('status_id'),
+                    $branchId,
+                    $legacyExport,
                 ),
                 'summary' => $matrix->summary(
                     $this->input('searchText'), $this->input('sdate'), $this->input('edate'),
@@ -304,7 +324,11 @@ final class Reports extends BaseController
                 ),
             };
         } catch (InvalidArgumentException $exception) {
-            return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
+            if ($legacyExport && $type === 'tracking') {
+                $rows = [];
+            } else {
+                return $this->response->setStatusCode(422)->setJSON(['error' => $exception->getMessage()]);
+            }
         }
 
         if (! $legacyExport) {
@@ -339,7 +363,7 @@ final class Reports extends BaseController
             'jobs' => $records, 'OrdersRecords' => $records,
             'branchs' => $type === 'in-progress' ? array_column($rows, 'branchID', 'branchID') : [],
             'Condition' => [], 'Estimateprice' => [], 'Fixed' => [],
-            'BranchID' => service('session')->get('BranchID'),
+            'BranchID' => $type === 'tracking' ? '' : service('session')->get('BranchID'),
         ]);
 
         if ($type === 'ratings') {
@@ -359,6 +383,16 @@ final class Reports extends BaseController
                 ->setHeader('Content-Type', 'application/x-msexcel; name="' . $filename . '"')
                 ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
                 ->setHeader('Pragma', 'no-cache')
+                ->setBody($body);
+        }
+        if ($type === 'tracking') {
+            $filename = 'Report-' . time() . '.xls';
+
+            return $this->response
+                ->setHeader('Content-Type', 'application/x-msexcel; name="' . $filename . '"')
+                ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
+                ->setHeader('Pragma', 'no-cache')
+                ->setHeader('X-Content-Type-Options', 'nosniff')
                 ->setBody($body);
         }
 
@@ -383,6 +417,31 @@ final class Reports extends BaseController
         }
         if ($type === 'ratings' && ! in_array(count($segments), [0, 2], true)) {
             throw PageNotFoundException::forPageNotFound();
+        }
+        if ($type === 'tracking') {
+            if (! in_array(count($segments), [0, 4, 5], true)) {
+                throw PageNotFoundException::forPageNotFound();
+            }
+            if ($segments === []) {
+                return $this->buildExport($type, legacyExport: true);
+            }
+
+            $startDate = self::legacyTrackingRouteDate($segments[1]);
+            $endDate = self::legacyTrackingRouteDate($segments[2]);
+            if ($startDate === null) {
+                $endDate = null;
+            } elseif ($endDate === null) {
+                $endDate = '__legacy_missing_end__';
+            }
+
+            return $this->buildExport(
+                $type,
+                legacyExport: true,
+                routeStartDate: $startDate,
+                routeEndDate: $endDate,
+                routeStatusId: (int) $segments[3] === 0 ? '' : $segments[3],
+                routeSearchText: $segments[4] ?? '',
+            );
         }
         if ($type === 'in-progress' && $segments === []) {
             $branchId = $this->request->getGet('branchId');
@@ -417,6 +476,25 @@ final class Reports extends BaseController
         unset($row);
 
         return $rows;
+    }
+
+    private static function legacyTrackingRouteDate(string $value): ?string
+    {
+        if ($value === '0') {
+            return null;
+        }
+
+        $date = DateTimeImmutable::createFromFormat('!d-m-Y', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (
+            $date !== false
+            && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))
+            && $date->format('d-m-Y') === $value
+        ) {
+            return $date->format('d/m/Y');
+        }
+
+        return $value;
     }
 
     private static function legacyRouteDate(?string $value): ?string
@@ -572,6 +650,47 @@ final class Reports extends BaseController
         return (int) $requested;
     }
 
+    /** @return array{?int, int|string} */
+    private function legacySummaryBranchScope(?string $routeBranchId): array
+    {
+        $session = service('session');
+        $role = (int) $session->get('role');
+        $rawSessionBranch = $session->get('BranchID');
+        $sessionBranch = $rawSessionBranch === null ? null : (int) $rawSessionBranch;
+
+        if ($routeBranchId === null) {
+            $requested = null;
+        } else {
+            if (preg_match('/^[0-9]+$/D', $routeBranchId) !== 1) {
+                throw PageNotFoundException::forPageNotFound();
+            }
+            if ($routeBranchId === '0') {
+                $requested = null;
+            } else {
+                $canonical = ltrim($routeBranchId, '0');
+                if ($canonical === '') {
+                    $requested = 0;
+                } else {
+                    $validated = filter_var($canonical, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                    if ($validated === false) {
+                        throw PageNotFoundException::forPageNotFound();
+                    }
+                    $requested = (int) $validated;
+                }
+            }
+        }
+
+        if ($role !== 1) {
+            if ($requested !== null && $requested > 0) {
+                (new AuthorizationPolicy())->assertBranchAccess($role, $sessionBranch, $requested);
+            }
+
+            return [$sessionBranch, $sessionBranch ?? ''];
+        }
+
+        return [$requested, $routeBranchId ?? ''];
+    }
+
     private function branchScope(?string $routeBranchId = null): ?int
     {
         $session = service('session');
@@ -593,6 +712,21 @@ final class Reports extends BaseController
         }
 
         return $requested;
+    }
+
+    private static function legacySummarySelectedValue(string $value): string
+    {
+        return preg_match('/^[0-9]+$/D', $value) === 1 ? $value : '';
+    }
+
+    private function legacySummaryPostString(string $name): string
+    {
+        if (strtoupper($this->request->getMethod()) !== 'POST') {
+            return '';
+        }
+        $value = $this->request->getPost($name);
+
+        return is_string($value) ? $value : '';
     }
 
     private function input(string $name): mixed

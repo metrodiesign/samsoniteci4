@@ -52,7 +52,7 @@ final class MasterCatalog
         ],
     ];
 
-    /** @var array<string, array{table: string, pk: string, label: string, pkLabel?: string, listFields?: list<string>, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string, formText?: string, listText?: string}>}> */
+    /** @var array<string, array{table: string, pk: string, label: string, pkLabel?: string, listFields?: list<string>, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, preserveEmpty?: bool, trim?: bool, preserveNull?: bool, emptyIntValue?: int, fk?: string, formText?: string, listText?: string}>}> */
     // formText / listText / pkLabel are copied verbatim from the CI3 views under
     // samsoniteci3/application/views/master/ for UI parity. Typos, doubled spaces and stray
     // characters (e.g. the leading mark in 'ฺBookId') are intentional — do NOT "fix" them.
@@ -65,12 +65,12 @@ final class MasterCatalog
             'searchJoins' => [['table' => 'branch_type', 'on' => 'branch_type.branch_type_id = branch.branch_type']],
             'fields' => [
                 'branch_type' => ['kind' => 'int', 'required' => true, 'fk' => 'branchtype', 'formText' => 'Branch Type', 'listText' => 'Branch type'],
-                'branch_user_name' => ['kind' => 'string', 'max' => 100, 'formText' => 'Branch User', 'listText' => 'Branch User'],
+                'branch_user_name' => ['kind' => 'string', 'max' => 100, 'preserveEmpty' => true, 'formText' => 'Branch User', 'listText' => 'Branch User'],
                 'branch_name' => ['kind' => 'string', 'max' => 250, 'required' => true, 'formText' => 'Branch Name', 'listText' => 'Branch name'],
-                'branch_details' => ['kind' => 'string', 'max' => 250, 'required' => true, 'formText' => 'Detail', 'listText' => 'Detail'],
-                'default_suffix' => ['kind' => 'string', 'max' => 10, 'required' => true, 'formText' => 'PREFIX', 'listText' => 'Branch suffix'],
-                'book_order' => ['kind' => 'string', 'max' => 10, 'required' => true, 'formText' => 'book order', 'listText' => 'book order'],
-                'customer_ref' => ['kind' => 'string', 'max' => 50, 'formText' => 'Customer Ref', 'listText' => 'Ref'],
+                'branch_details' => ['kind' => 'string', 'max' => 250, 'preserveEmpty' => true, 'formText' => 'Detail', 'listText' => 'Detail'],
+                'default_suffix' => ['kind' => 'string', 'max' => 10, 'preserveEmpty' => true, 'formText' => 'PREFIX', 'listText' => 'Branch suffix'],
+                'book_order' => ['kind' => 'string', 'max' => 10, 'preserveEmpty' => true, 'formText' => 'book order', 'listText' => 'book order'],
+                'customer_ref' => ['kind' => 'string', 'max' => 50, 'preserveEmpty' => true, 'formText' => 'Customer Ref', 'listText' => 'Ref'],
             ],
         ],
         'branchtype' => [
@@ -83,7 +83,7 @@ final class MasterCatalog
             'fields' => [
                 'description_th' => ['kind' => 'string', 'max' => 250, 'required' => true, 'formText' => 'Description th', 'listText' => 'Description th'],
                 'description_en' => ['kind' => 'string', 'max' => 250, 'required' => true, 'formText' => 'Description en', 'listText' => 'Description en'],
-                'success' => ['kind' => 'int', 'required' => true, 'allowZero' => true, 'formText' => 'Config Status(0/1)', 'listText' => 'Config Status'],
+                'success' => ['kind' => 'int', 'allowZero' => true, 'preserveNull' => true, 'emptyIntValue' => 0, 'formText' => 'Config Status(0/1)', 'listText' => 'Config Status'],
             ],
         ],
         'producttype' => [
@@ -123,12 +123,12 @@ final class MasterCatalog
             'fields' => [
                 'provider_name' => ['kind' => 'string', 'max' => 250, 'required' => true, 'formText' => 'Provider Name', 'listText' => 'Provider Name'],
                 'provider_tel' => ['kind' => 'string', 'max' => 50, 'required' => true, 'formText' => 'Provider Tel', 'listText' => 'Provider Tel'],
-                'provider_datail' => ['kind' => 'string', 'max' => 4000, 'required' => true, 'formText' => 'Detail', 'listText' => 'Provider Details'],
+                'provider_datail' => ['kind' => 'string', 'max' => 4000, 'preserveEmpty' => true, 'trim' => false, 'formText' => 'Detail', 'listText' => 'Provider Details'],
             ],
         ],
     ];
 
-    /** @return array{table: string, pk: string, label: string, pkLabel?: string, listFields?: list<string>, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, fk?: string, formText?: string, listText?: string}>}|null */
+    /** @return array{table: string, pk: string, label: string, pkLabel?: string, listFields?: list<string>, searchColumns?: list<string>, searchJoins?: list<array{table: string, on: string}>, fields: array<string, array{kind: string, max?: int, required?: bool, allowZero?: bool, preserveEmpty?: bool, trim?: bool, preserveNull?: bool, emptyIntValue?: int, fk?: string, formText?: string, listText?: string}>}|null */
     public static function definition(string $type): ?array
     {
         return self::DEFINITIONS[$type] ?? null;

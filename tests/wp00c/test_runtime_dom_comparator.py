@@ -1,5 +1,6 @@
 import json
 import pathlib
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -88,6 +89,29 @@ class RuntimeDomComparatorTest(unittest.TestCase):
             "decision_id": "DOM-CSRF-001",
         }]
         result, payload = self.compare(BASE, right, rule)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("PASS", payload["status"])
+        self.assertEqual(1, payload["allowlist_rules_used"])
+
+    def test_branchtype_synthetic_images_are_valid_and_mounted_on_both_runtimes(self):
+        compose = (ROOT / "compose.runtime-comparison.yaml").read_text()
+        for name in ("synthetic-retail.png", "synthetic-service.png"):
+            path = ROOT / "tests" / "wp00c" / "assets" / name
+            data = path.read_bytes()
+            self.assertEqual(b"\x89PNG\r\n\x1a\n", data[:8], name)
+            self.assertEqual((16, 16), struct.unpack(">II", data[16:24]), name)
+            self.assertIn("./tests/wp00c/assets:/parity-assets:ro", compose)
+            self.assertIn(f"./tests/wp00c/assets/{name}:/app/public/{name}:ro", compose)
+        hook = (ROOT / "scripts" / "runtime-comparison" / "ci3-hooks" / "ParityTraceHook.php").read_text()
+        self.assertIn("serveSyntheticAsset", hook)
+        self.assertIn("/parity-assets/", hook)
+
+    def test_runtime_rule_removes_only_marked_ci4_security_script(self):
+        right = BASE.replace(
+            "</body>",
+            '<script src="/assets/js/legacy-csrf.js" data-ci4-security="legacy-csrf"></script></body>',
+        )
+        result, payload = self.compare(BASE, right)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("PASS", payload["status"])
         self.assertEqual(1, payload["allowlist_rules_used"])

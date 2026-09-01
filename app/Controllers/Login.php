@@ -54,11 +54,21 @@ final class Login extends BaseController
                     ->setBody($this->document('Unable to sign in. Try again later.'));
             }
 
+            $agent = $this->request->getUserAgent();
+            $userAgent = match (true) {
+                $agent->isBrowser() => trim($agent->getBrowser() . ' ' . $agent->getVersion()),
+                $agent->isRobot() => $agent->getRobot(),
+                $agent->isMobile() => $agent->getMobile(),
+                default => 'Unidentified User Agent',
+            };
+            $platform = trim($agent->getPlatform());
             $sessionData = (new LoginService(db_connect()))->authenticate(
                 $identifier,
                 $password,
                 $ipAddress,
-                $this->request->getUserAgent()->getAgentString(),
+                $agent->getAgentString(),
+                $userAgent,
+                $platform === '' ? 'Unknown Platform' : $platform,
             );
         } catch (Throwable $exception) {
             log_message('error', 'Login service unavailable: {exception}', [

@@ -23,10 +23,11 @@ COPY --chown=www-data:www-data tests/ci4 tests/ci4
 COPY --chown=www-data:www-data tests/wp00c/ci4-route-disposition.json tests/wp00c/ci4-route-disposition.json
 COPY --chown=www-data:www-data writable writable
 COPY --chown=www-data:www-data spark spark
+COPY --chown=www-data:www-data scripts/ci4-server-rewrite.php scripts/ci4-server-rewrite.php
 COPY --chown=www-data:www-data phpunit.xml.dist phpunit.xml.dist
 
 USER www-data
 
 EXPOSE 8080
 
-CMD ["php", "spark", "serve", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["php", "-S", "0.0.0.0:8080", "-t", "public", "scripts/ci4-server-rewrite.php"]

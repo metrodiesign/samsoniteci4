@@ -17,7 +17,10 @@ final class LoginService
         string $password,
         string $ipAddress,
         string $agentString,
+        string $userAgent = 'Unidentified User Agent',
+        string $platform = 'Unknown Platform',
     ): ?array {
+        $identifier = trim($identifier);
         $row = $this->db->table('ci4_users')
             ->select([
                 'id',
@@ -29,7 +32,10 @@ final class LoginService
                 'role_text',
                 'session_version',
             ])
-            ->where('username', trim($identifier))
+            ->groupStart()
+                ->where('username', $identifier)
+                ->orWhere('email', strtolower($identifier))
+            ->groupEnd()
             ->where('is_active', 1)
             ->get()
             ->getRowArray();
@@ -64,20 +70,20 @@ final class LoginService
             'isLoggedIn'     => true,
             'sessionVersion' => (int) $row['session_version'],
         ];
-        $historySession = $session;
-        unset(
-            $historySession['userId'],
-            $historySession['isLoggedIn'],
-            $historySession['lastLogin'],
-            $historySession['sessionVersion'],
-        );
+        $historySession = [
+            'role' => (string) $row['role_id'],
+            'GroupID' => (string) $row['group_id'],
+            'BranchID' => $row['branch_id'] === null ? null : (string) $row['branch_id'],
+            'roleText' => (string) $row['role_text'],
+            'name' => (string) $row['display_name'],
+        ];
         $inserted = $this->db->table('tbl_last_login')->insert([
             'userId'      => $userId,
             'sessionData' => json_encode($historySession, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             'machineIp'   => substr($ipAddress, 0, 1024),
-            'userAgent'   => 'Browser',
+            'userAgent'   => substr($userAgent, 0, 128),
             'agentString' => substr($agentString, 0, 1024),
-            'platform'    => 'Unknown',
+            'platform'    => substr($platform, 0, 128),
             'createdDtm'  => date('Y-m-d H:i:s'),
         ]);
 
