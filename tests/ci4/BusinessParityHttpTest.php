@@ -24,6 +24,7 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         parent::setUp();
 
         $this->createLegacyTables();
+        $this->db->resetDataCache();
         $this->db->table('ci4_users')->truncate();
         $this->seedLegacyUsers();
         (new LegacyUserImporter($this->db))->import();
@@ -37,12 +38,35 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         $this->get('/Order/ReportTrackingListing')->assertRedirectTo('/login');
     }
 
-    public function testLegacyTestRouteIsAbsent(): void
+    public function testLegacyControllerTrackingTestAliasMatchesCi3Routing(): void
     {
-        $this->expectException(PageNotFoundException::class);
-        $this->expectExceptionCode(404);
+        $anonymous = $this->withSession([])->get('/Order/ReportTrackingListingTest');
+        $anonymous->assertStatus(307);
+        $anonymous->assertRedirectTo('/login');
 
-        $this->get('/Order/ReportTrackingListingTest');
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-alias-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+
+        $base = $this->withSession($session)->get('/Order/ReportTrackingListingTest');
+        $base->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            (string) $base->getBody(),
+        );
+
+        foreach (['/Order/ReportTrackingListingTest/1', '/Order/ReportTrackingListingTest/1/2'] as $path) {
+            $branch = $this->withSession($session)->get($path);
+            $branch->assertStatus(200);
+            $body = (string) $branch->getBody();
+            self::assertMatchesRegularExpression('/WP00C-TRACK-003.*WP00C-TRACK-002/s', $body);
+            self::assertStringNotContainsString('WP00C-TRACK-009', $body);
+            self::assertMatchesRegularExpression('/<tr>\s*<td>\s*1\s*<\/td>/s', $body);
+        }
     }
 
     public function testStaleWebSessionReturnsLoginWithoutRedirectLoop(): void
@@ -78,7 +102,29 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         self::assertTrue($session->get('isLoggedIn'));
         self::assertSame(1, $session->get('sessionVersion'));
         self::assertSame(1, $this->db->table('tbl_last_login')->countAllResults());
+        $history = $this->db->table('tbl_last_login')->where('userId', 9001)->get()->getRowArray();
+        self::assertNotNull($history);
+        self::assertSame(
+            '{"role":"1","GroupID":"1","BranchID":null,"roleText":"Admin","name":"SYNTHETIC ADMIN"}',
+            $history['sessionData'],
+        );
+        self::assertSame('Unidentified User Agent', $history['userAgent']);
+        self::assertSame('Unknown Platform', $history['platform']);
         self::assertSame(1, $this->db->table('ci4_users')->where('id', 9001)->countAllResults());
+    }
+
+    public function testValidLoginAcceptsCi3EmailIdentifier(): void
+    {
+        self::assertSame(1, $this->db->table('ci4_users')->where('email', 'wp00c-admin@example.invalid')->countAllResults());
+        self::assertTrue(password_verify('Synthetic login passphrase', (string) $this->db->table('ci4_users')->where('email', 'wp00c-admin@example.invalid')->get()->getRow('password_hash')));
+        $result = $this->postWithCsrf('/loginMe', [
+            'username' => 'wp00c-admin@example.invalid',
+            'password' => 'Synthetic login passphrase',
+        ]);
+
+        $result->assertRedirectTo('/dashboard');
+        self::assertSame(9001, service('session')->get('userId'));
+        self::assertSame(1, $this->db->table('tbl_last_login')->where('userId', 9001)->countAllResults());
     }
 
     public function testInvalidUnknownAndDeletedLoginsUseGenericFailureWithoutHistory(): void
@@ -190,6 +236,241 @@ final class BusinessParityHttpTest extends CIUnitTestCase
         self::assertSame(0, $this->db->table('tbl_last_login')->countAllResults());
     }
 
+    public function testLegacyTrackingTestReportStartsUnboundedLikeCi3(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-report-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+
+        $response = $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/ReportTrackingListingTest');
+
+        $response->assertStatus(200);
+        $body = (string) $response->getBody();
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', $body);
+        self::assertStringContainsString('id="sdate" name="sdate" value=""', $body);
+        self::assertStringContainsString('id="edate" name="edate" value=""', $body);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            $body,
+        );
+    }
+
+    public function testLegacyTrackingTestReportAcceptsZeroBranchSentinelAndPaddedOffset(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-route-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+
+        $response = $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/ReportTrackingListingTest/01/0');
+
+        $response->assertStatus(200);
+        $body = (string) $response->getBody();
+        self::assertMatchesRegularExpression('/<tr>\s*<td>\s*2\s*<\/td>/s', $body);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            $body,
+        );
+        self::assertStringContainsString('id="sdate" name="sdate" value=""', $body);
+        self::assertStringContainsString('id="edate" name="edate" value=""', $body);
+
+        $paddedBranch = $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/ReportTrackingListingTest/0/01');
+        $paddedBranch->assertStatus(200);
+        $paddedBranchBody = (string) $paddedBranch->getBody();
+        self::assertMatchesRegularExpression('/WP00C-TRACK-003.*WP00C-TRACK-002/s', $paddedBranchBody);
+        self::assertStringNotContainsString('WP00C-TRACK-009', $paddedBranchBody);
+        self::assertStringContainsString('/order/excel_report/01/0/0/0/', $paddedBranchBody);
+        self::assertStringContainsString('/ReportTrackingListing/0/01', $paddedBranchBody);
+        self::assertStringContainsString('var xvalue = "01";', $paddedBranchBody);
+        self::assertStringContainsString('var xvalue = "0";', $body);
+
+        $allZeroBranch = $this->withSession($this->sessionFor($adminId, 1, null))
+            ->get('/ReportTrackingListingTest/0/00');
+        $allZeroBranch->assertStatus(200);
+        $allZeroBody = (string) $allZeroBranch->getBody();
+        self::assertStringNotContainsString('WP00C-TRACK-', $allZeroBody);
+        self::assertStringContainsString('/order/excel_report/00/0/0/0/', $allZeroBody);
+        self::assertStringContainsString('/ReportTrackingListing/0/00', $allZeroBody);
+
+        $operatorId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-route-operator@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            2,
+            1,
+        );
+        $branch = $this->withSession($this->sessionFor($operatorId, 2, 1))
+            ->get('/ReportTrackingListingTest/000/0');
+        $branch->assertStatus(200);
+        $branchBody = (string) $branch->getBody();
+        self::assertMatchesRegularExpression('/WP00C-TRACK-003.*WP00C-TRACK-002/s', $branchBody);
+        self::assertStringNotContainsString('WP00C-TRACK-009', $branchBody);
+        self::assertStringNotContainsString('CMG TotalDay', $branchBody);
+    }
+
+    public function testLegacyTrackingTestReportUsesCi3OneSidedDateRules(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-date-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+
+        $endOnly = $this->withSession($session)->post('/ReportTrackingListingTest', [
+            'csrf_test_name' => service('security')->getHash(),
+            'searchText' => '', 'sdate' => '', 'edate' => '03/08/2026',
+        ]);
+        $endOnly->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            (string) $endOnly->getBody(),
+        );
+        self::assertStringContainsString('id="sdate" name="sdate" value=""', (string) $endOnly->getBody());
+        self::assertStringContainsString(
+            'id="edate" name="edate" value="03/08/2026"',
+            (string) $endOnly->getBody(),
+        );
+
+        $startOnly = $this->withSession($session)->post('/ReportTrackingListingTest', [
+            'csrf_test_name' => service('security')->getHash(),
+            'searchText' => '', 'sdate' => '03/08/2026', 'edate' => '',
+        ]);
+        $startOnly->assertStatus(200);
+        self::assertStringNotContainsString('WP00C-TRACK-', (string) $startOnly->getBody());
+        self::assertStringContainsString(
+            'id="sdate" name="sdate" value="03/08/2026"',
+            (string) $startOnly->getBody(),
+        );
+        self::assertStringContainsString('id="edate" name="edate" value=""', (string) $startOnly->getBody());
+    }
+
+    public function testLegacyTrackingTestReportPreservesCi3ZeroAndDuplicateFilterSemantics(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-filter-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+
+        $zeroDates = $this->withSession($session)->post('/ReportTrackingListingTest', [
+            'csrf_test_name' => service('security')->getHash(),
+            'searchText' => '', 'sdate' => '0', 'edate' => '0', 'status_id' => '',
+        ]);
+        $zeroDates->assertStatus(200);
+        $zeroDateBody = (string) $zeroDates->getBody();
+        self::assertStringContainsString('id="sdate" name="sdate" value=""', $zeroDateBody);
+        self::assertStringContainsString('id="edate" name="edate" value=""', $zeroDateBody);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            $zeroDateBody,
+        );
+
+        foreach ([
+            ['0', null, '/order/excel_report/0/0/0/0/'],
+            ['0,2', '/WP00C-TRACK-009.*WP00C-TRACK-002/s', '/order/excel_report/0/0/0/0%2C2/'],
+            ['2,2', '/WP00C-TRACK-009.*WP00C-TRACK-002/s', '/order/excel_report/0/0/0/2%2C2/'],
+            ['02', '/WP00C-TRACK-009.*WP00C-TRACK-002/s', '/order/excel_report/0/0/0/2/'],
+        ] as [$status, $tracksPattern, $exportPath]) {
+            $response = $this->withSession($session)->post('/ReportTrackingListingTest', [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => '', 'sdate' => '', 'edate' => '', 'status_id' => $status,
+            ]);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            if ($tracksPattern === null) {
+                self::assertStringNotContainsString('WP00C-TRACK-', $body);
+            } else {
+                self::assertMatchesRegularExpression($tracksPattern, $body);
+                self::assertStringNotContainsString('WP00C-TRACK-007', $body);
+                self::assertStringNotContainsString('WP00C-TRACK-003', $body);
+            }
+            self::assertStringContainsString($exportPath, $body);
+        }
+    }
+
+    public function testLegacyTrackingTestReportSupportsCi3SafeReadMethods(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-test-method-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $authenticated = $this->withSession($session)->call($method, '/ReportTrackingListingTest');
+            $authenticated->assertStatus(200);
+
+            $anonymous = $this->withSession([])->call($method, '/ReportTrackingListingTest');
+            $anonymous->assertStatus(303);
+            $anonymous->assertRedirectTo('/login');
+        }
+    }
+
+    public function testLegacyTrackingReportRedirectsAnonymousMethodsLikeCi3(): void
+    {
+        $get = $this->withSession([])->get('/ReportTrackingListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/ReportTrackingListing', [
+            'searchText' => '', 'sdate' => '', 'edate' => '',
+        ]);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+    }
+
+    public function testLegacyTrackingReportPreservesRawSearchAndRendersInvalidRangesEmpty(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-report-parity-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+        foreach (['   ', ' WP00C-TRACK-002 ', str_repeat('X', 129)] as $searchText) {
+            $response = $this->withSession($session)->post('/ReportTrackingListing', [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => $searchText,
+                'sdate' => '01/08/2026',
+                'edate' => '31/08/2026',
+            ]);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            self::assertStringContainsString('<title>Tracking :  Listing</title>', $body);
+            self::assertStringContainsString('name="searchText" value="' . $searchText . '"', $body);
+            self::assertStringNotContainsString('WP00C-TRACK-002</td>', $body);
+        }
+
+        foreach ([
+            ['not-a-date', 'also-bad'],
+            ['31/08/2026', '01/08/2026'],
+        ] as [$start, $end]) {
+            $response = $this->withSession($session)->post('/ReportTrackingListing', [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => '', 'sdate' => $start, 'edate' => $end,
+            ]);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            self::assertStringContainsString('name="sdate" value="' . $start . '"', $body);
+            self::assertStringContainsString('name="edate" value="' . $end . '"', $body);
+            self::assertStringNotContainsString('WP00C-TRACK-', $body);
+        }
+    }
+
     public function testC3ReportTrackingHeadersMatchCi3(): void
     {
         // reports/tracking.php: 8 column headers become CI3 tracking/report_tracking_test.php text (AC-6).
@@ -265,6 +546,111 @@ final class BusinessParityHttpTest extends CIUnitTestCase
             ]);
         $malformed->assertStatus(200);
         self::assertStringContainsString('WP00C-TRACK-007', (string) $malformed->getBody());
+    }
+
+    public function testLegacyTrackingExportUsesRouteFiltersAndCi3DownloadHeaders(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-export-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+
+        $response = $this->withSession($this->sessionFor($adminId, 1, null))->get(
+            '/order/excel_report/0/02-08-2026/02-08-2026/2/WP00C-TRACK-002',
+        );
+
+        $response->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/^application\/x-msexcel; name="Report-[0-9]+\.xls"$/',
+            $response->response()->getHeaderLine('Content-Type'),
+        );
+        self::assertMatchesRegularExpression(
+            '/^inline; filename="Report-[0-9]+\.xls"$/',
+            $response->response()->getHeaderLine('Content-Disposition'),
+        );
+        $body = (string) $response->getBody();
+        self::assertStringContainsString('WP00C-TRACK-002', $body);
+        self::assertStringNotContainsString('WP00C-TRACK-003', $body);
+        self::assertStringNotContainsString('WP00C-TRACK-007', $body);
+        self::assertStringNotContainsString('WP00C-TRACK-009', $body);
+    }
+
+    public function testLegacyTrackingExportAcceptsEncodedMultiStatusSegments(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-export-multi-status-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+
+        $session = $this->sessionFor($adminId, 1, null);
+        $zeroPrefixed = $this->withSession($session)->get('/order/excel_report/0/0/0/0%2C2/');
+        $zeroPrefixed->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            (string) $zeroPrefixed->getBody(),
+        );
+
+        $duplicate = $this->withSession($session)->get('/order/excel_report/0/0/0/2%2C2/');
+        $duplicate->assertStatus(200);
+        $duplicateBody = (string) $duplicate->getBody();
+        self::assertMatchesRegularExpression('/WP00C-TRACK-009.*WP00C-TRACK-002/s', $duplicateBody);
+        self::assertStringNotContainsString('WP00C-TRACK-007', $duplicateBody);
+        self::assertStringNotContainsString('WP00C-TRACK-003', $duplicateBody);
+    }
+
+    public function testLegacyTrackingExportRendersMalformedAndReversedDatesEmpty(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'legacy-export-invalid-date-admin@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = $this->sessionFor($adminId, 1, null);
+
+        foreach ([
+            '/order/excel_report/0/00/00/0/',
+            '/order/excel_report/0/31-08-2026/01-08-2026/0/',
+            '/order/excel_report/0/03-08-2026/0/0/',
+        ] as $path) {
+            $response = $this->withSession($session)->get($path);
+            $response->assertStatus(200);
+            self::assertStringNotContainsString('WP00C-TRACK-', (string) $response->getBody());
+            self::assertMatchesRegularExpression(
+                '/^application\/x-msexcel; name="Report-[0-9]+\.xls"$/',
+                $response->response()->getHeaderLine('Content-Type'),
+            );
+        }
+
+        $endOnly = $this->withSession($session)->get('/order/excel_report/0/0/03-08-2026/0/');
+        $endOnly->assertStatus(200);
+        self::assertMatchesRegularExpression(
+            '/WP00C-TRACK-009.*WP00C-TRACK-007.*WP00C-TRACK-003.*WP00C-TRACK-002/s',
+            (string) $endOnly->getBody(),
+        );
+    }
+
+    public function testLegacyTrackingExportKeepsCmgColumnForBranchSession(): void
+    {
+        $operatorId = (new ShadowUserStore($this->db))->create(
+            'legacy-export-operator@example.invalid',
+            password_hash('Synthetic report passphrase', PASSWORD_DEFAULT),
+            2,
+            1,
+        );
+
+        $response = $this->withSession($this->sessionFor($operatorId, 2, 1))->get(
+            '/order/excel_report/1/01-08-2026/31-08-2026/0/',
+        );
+
+        $response->assertStatus(200);
+        self::assertStringContainsString('<strong>CMG TotalDay</strong>', (string) $response->getBody());
+        self::assertStringContainsString('WP00C-TRACK-002', (string) $response->getBody());
+        self::assertStringNotContainsString('WP00C-TRACK-007', (string) $response->getBody());
     }
 
     public function testTrackingReportEnforcesSessionBranch(): void

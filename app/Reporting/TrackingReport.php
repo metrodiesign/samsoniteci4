@@ -14,7 +14,7 @@ final class TrackingReport
     }
 
     /** @return list<int> */
-    public function parseStatusIds(mixed $rawStatusIds): array
+    public function parseStatusIds(mixed $rawStatusIds, bool $legacyContract = false): array
     {
         if (! is_string($rawStatusIds)) {
             return [];
@@ -27,14 +27,23 @@ final class TrackingReport
 
         $statusIds = [];
         foreach (explode(',', $rawStatusIds) as $rawStatusId) {
-            $statusId = filter_var($rawStatusId, FILTER_VALIDATE_INT, [
-                'options' => ['min_range' => 1, 'max_range' => 2_147_483_647],
+            $canonicalStatusId = ltrim($rawStatusId, '0');
+            $canonicalStatusId = $canonicalStatusId === '' ? '0' : $canonicalStatusId;
+            $statusId = filter_var($canonicalStatusId, FILTER_VALIDATE_INT, [
+                'options' => [
+                    'min_range' => $legacyContract ? 0 : 1,
+                    'max_range' => 2_147_483_647,
+                ],
             ]);
             if ($statusId === false) {
                 return [];
             }
 
-            $statusIds[(int) $statusId] = (int) $statusId;
+            if ($legacyContract) {
+                $statusIds[] = (int) $statusId;
+            } else {
+                $statusIds[(int) $statusId] = (int) $statusId;
+            }
         }
 
         return array_values($statusIds);
@@ -49,9 +58,12 @@ final class TrackingReport
         mixed $endDate,
         mixed $rawStatusIds,
         ?int $branchId,
+        bool $legacyContract = false,
     ): array {
-        $searchText = is_string($searchText) ? trim($searchText) : '';
-        if (strlen($searchText) > 128) {
+        $searchText = is_string($searchText)
+            ? ($legacyContract ? $searchText : trim($searchText))
+            : '';
+        if (! $legacyContract && strlen($searchText) > 128) {
             throw new InvalidArgumentException('Search text is too long.');
         }
 
@@ -93,7 +105,7 @@ final class TrackingReport
             ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
             ->where('orders.action_status >', 0);
 
-        if ($searchText !== '') {
+        if ($legacyContract ? ! empty($searchText) : $searchText !== '') {
             $builder->groupStart()
                 ->like('orders.trackID', $searchText)
                 ->orLike('orders.orderID', $searchText)
@@ -107,7 +119,7 @@ final class TrackingReport
                 ->groupEnd();
         }
 
-        $statusIds = $this->parseStatusIds($rawStatusIds);
+        $statusIds = $this->parseStatusIds($rawStatusIds, $legacyContract);
         if ($statusIds !== []) {
             $builder->whereIn('orders.action_status', $statusIds);
         }

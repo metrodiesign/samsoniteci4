@@ -496,6 +496,162 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertStringNotContainsString('<td>6</td><td>2</td>', $export->getBody());
     }
 
+    public function testSummaryLegacyControllerAliasMatchesCi3Routing(): void
+    {
+        $anonymous = $this->withSession([])->get('/Order/reportsummary');
+        $anonymous->assertStatus(307);
+        $anonymous->assertRedirectTo('/login');
+
+        $session = $this->session(1, 1, null);
+        $base = $this->withSession($session)->get('/Order/reportsummary');
+        $base->assertStatus(200);
+        self::assertSame(8, $this->summaryRowCount((string) $base->getBody()));
+
+        foreach (['/Order/reportsummary/1', '/Order/reportsummary/1/2'] as $path) {
+            $branch = $this->withSession($session)->get($path);
+            $branch->assertStatus(200);
+            self::assertSame(4, $this->summaryRowCount((string) $branch->getBody()));
+            self::assertStringContainsString('/reportsummary/0/1', (string) $branch->getBody());
+        }
+    }
+
+    public function testSummaryUsesCi3AuthenticationMethodsAndExactTitle(): void
+    {
+        $get = $this->withSession([])->get('/reportsummary');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/reportsummary', []);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $anonymous = $this->withSession([])->call($method, '/reportsummary');
+            $anonymous->assertStatus(303);
+            $anonymous->assertRedirectTo('/login');
+
+            $authenticated = $this->withSession($this->session(1, 1, null))
+                ->call($method, '/reportsummary');
+            $authenticated->assertStatus(200);
+        }
+
+        $page = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
+        $page->assertStatus(200);
+        self::assertStringContainsString('<title>Tracking :  Listing</title>', (string) $page->getBody());
+    }
+
+    public function testSummaryUsesCi3PostOnlyRawSearchContract(): void
+    {
+        $session = $this->session(1, 1, null);
+
+        $get = $this->withSession($session)->get('/reportsummary?searchText=WP00C-REPORT-002');
+        $get->assertStatus(200);
+        self::assertSame(8, $this->summaryRowCount((string) $get->getBody()));
+        self::assertStringContainsString('name="searchText" value=""', (string) $get->getBody());
+
+        foreach (['   ', ' WP00C-REPORT-002 ', str_repeat('X', 129)] as $searchText) {
+            $response = $this->withSession($session)->post('/reportsummary', [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => $searchText,
+                'sdate' => '', 'edate' => '', 'status_id' => '',
+                'detailBrandId' => '', 'detailTypeId' => '',
+            ]);
+            $response->assertStatus(200);
+            self::assertSame(0, $this->summaryRowCount((string) $response->getBody()));
+            self::assertStringContainsString(
+                'name="searchText" value="' . $searchText . '"',
+                (string) $response->getBody(),
+            );
+        }
+    }
+
+    public function testSummaryUsesCi3LegacyDateEdgeContract(): void
+    {
+        $session = $this->session(1, 1, null);
+        foreach ([
+            ['0', '0', 8, '', ''],
+            ['', '03/08/2026', 8, '', '03/08/2026'],
+            ['03/08/2026', '', 0, '03/08/2026', ''],
+            ['not-a-date', 'also-bad', 0, 'not-a-date', 'also-bad'],
+            ['31/08/2026', '01/08/2026', 0, '31/08/2026', '01/08/2026'],
+        ] as [$start, $end, $expectedRows, $displayStart, $displayEnd]) {
+            $response = $this->withSession($session)->post('/reportsummary', [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => '', 'sdate' => $start, 'edate' => $end,
+                'status_id' => '', 'detailBrandId' => '', 'detailTypeId' => '',
+            ]);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            self::assertSame($expectedRows, $this->summaryRowCount($body));
+            self::assertStringContainsString('id="sdate" name="sdate" value="' . $displayStart . '"', $body);
+            self::assertStringContainsString('id="edate" name="edate" value="' . $displayEnd . '"', $body);
+        }
+    }
+
+    public function testSummaryUsesCi3EqualityFiltersAndPreservesSelectedMasters(): void
+    {
+        $session = $this->session(1, 1, null);
+        foreach ([
+            ['status_id', '2', 1, '<option value="2" selected>', null],
+            ['status_id', '02', 1, '<option value="2" selected>', null],
+            ['status_id', '2,3', 1, null, '<option value="2" selected>'],
+            ['status_id', ' 2 ', 1, null, '<option value="2" selected>'],
+            ['status_id', 'abc', 0, null, null],
+            ['detailBrandId', '01', 4, '<option value="1" selected>', null],
+            ['detailBrandId', ' 1 ', 4, null, '<option value="1" selected>'],
+            ['detailBrandId', 'abc', 0, null, null],
+            ['detailTypeId', '01', 4, '<option value="1" selected>', null],
+            ['detailTypeId', 'abc', 0, null, null],
+        ] as [$field, $value, $expectedRows, $selectedOption, $forbiddenOption]) {
+            $post = [
+                'csrf_test_name' => service('security')->getHash(),
+                'searchText' => '', 'sdate' => '', 'edate' => '',
+                'status_id' => '', 'detailBrandId' => '', 'detailTypeId' => '',
+            ];
+            $post[$field] = $value;
+            $response = $this->withSession($session)->post('/reportsummary', $post);
+            $response->assertStatus(200);
+            $body = (string) $response->getBody();
+            self::assertSame($expectedRows, $this->summaryRowCount($body));
+            if ($selectedOption !== null) {
+                self::assertStringContainsString($selectedOption, $body);
+            }
+            if ($forbiddenOption !== null) {
+                self::assertStringNotContainsString($forbiddenOption, $body);
+            }
+        }
+    }
+
+    public function testSummaryPreservesCi3RawBranchRoutesAndSentinels(): void
+    {
+        $admin = $this->session(1, 1, null);
+
+        $zero = $this->withSession($admin)->get('/reportsummary/0/0');
+        $zero->assertStatus(200);
+        self::assertSame(8, $this->summaryRowCount((string) $zero->getBody()));
+        self::assertStringContainsString('var xvalue = "0";', (string) $zero->getBody());
+
+        $padded = $this->withSession($admin)->get('/reportsummary/0/01');
+        $padded->assertStatus(200);
+        $paddedBody = (string) $padded->getBody();
+        self::assertSame(4, $this->summaryRowCount($paddedBody));
+        self::assertStringContainsString('/reportsummary/0/01', $paddedBody);
+        self::assertStringContainsString('/order/excel_report/01/0/0/0/', $paddedBody);
+        self::assertStringContainsString('var xvalue = "01";', $paddedBody);
+
+        $doubleZero = $this->withSession($admin)->get('/reportsummary/0/00');
+        $doubleZero->assertStatus(200);
+        self::assertSame(0, $this->summaryRowCount((string) $doubleZero->getBody()));
+        self::assertStringContainsString('var xvalue = "00";', (string) $doubleZero->getBody());
+
+        $branch = $this->withSession($this->session(2, 2, 1))->get('/reportsummary/0/01');
+        $branch->assertStatus(200);
+        $branchBody = (string) $branch->getBody();
+        self::assertSame(4, $this->summaryRowCount($branchBody));
+        self::assertStringContainsString('/reportsummary/0/1', $branchBody);
+        self::assertStringContainsString('var xvalue = "1";', $branchBody);
+    }
+
     public function testSummaryOmitsMissingMasterAndAppliesBranchStatusBrandTypeFilters(): void
     {
         $all = $this->withSession($this->session(1, 1, null))->get('/reportsummary');
@@ -543,6 +699,7 @@ final class ReportHttpTest extends CIUnitTestCase
             $expectedDisposition = match ($path) {
                 '/user/excel_ratings' => 'inline; filename="Rating_Report_',
                 '/user/excel_in_progress_job' => 'inline; filename="In_Progress_Report_',
+                '/Order/excel_report' => 'inline; filename="Report-',
                 default => 'attachment; filename=',
             };
             self::assertStringContainsString(
@@ -565,18 +722,19 @@ final class ReportHttpTest extends CIUnitTestCase
         }
     }
 
-    public function testReportEdgesRejectBadDatesLargeSearchAndCrossBranchWithoutDataLeak(): void
+    public function testReportEdgesPreserveLegacyEmptyResultsAndCrossBranchProtection(): void
     {
         $invalidDate = $this->withSession($this->session(1, 1, null))->post('/reportsummary', [
             'csrf_test_name' => service('security')->getHash(), 'sdate' => '31/02/2026', 'edate' => '01/03/2026',
         ]);
-        $invalidDate->assertStatus(422);
+        $invalidDate->assertStatus(200);
         $invalidDate->assertDontSee('WP00C-REPORT-001');
 
         $large = $this->withSession($this->session(1, 1, null))->post('/reportsummary', [
             'csrf_test_name' => service('security')->getHash(), 'searchText' => str_repeat('x', 129),
         ]);
-        $large->assertStatus(422);
+        $large->assertStatus(200);
+        $large->assertDontSee('WP00C-REPORT-001');
 
         try {
             $this->withSession($this->session(2, 2, 1))->get('/reportsummary/0/2');
@@ -615,7 +773,7 @@ final class ReportHttpTest extends CIUnitTestCase
         self::assertSame(100, $this->summaryRowCount((string) $filteredFirst->getBody()));
         self::assertStringContainsString('baseURL + "reportsummary/" + value', (string) $filteredFirst->getBody());
         $filteredSecond = $this->withSession($this->session(1, 1, null))->get('/reportsummary/100?searchText=WP00C-PAGE');
-        self::assertSame(1, $this->summaryRowCount((string) $filteredSecond->getBody()));
+        self::assertSame(9, $this->summaryRowCount((string) $filteredSecond->getBody()));
         self::assertStringContainsString('WP00C-PAGE-010', (string) $filteredSecond->getBody());
         self::assertStringNotContainsString('WP00C-PAGE-110', (string) $filteredSecond->getBody());
     }
@@ -1159,6 +1317,11 @@ final class ReportHttpTest extends CIUnitTestCase
         $central = $this->withSession($this->session(1, 1, null))->get('/ReportTrackingListing');
         $central->assertStatus(200);
         $central->assertSee('CMG TotalDay');
+
+        $filteredCentral = $this->withSession($this->session(1, 1, null))
+            ->get('/ReportTrackingListing/0/1');
+        $filteredCentral->assertStatus(200);
+        $filteredCentral->assertSee('CMG TotalDay');
 
         $branch = $this->withSession($this->session(2, 2, 1))->get('/ReportTrackingListing/0/1');
         $branch->assertStatus(200);

@@ -12,6 +12,15 @@ final class BackgroundStore
         'image_trackstatus_laptop_th', 'image_trackstatus_mobile_th', 'image_contact_laptop_th', 'image_contact_mobile_th',
     ];
 
+    private const LEGACY_BASENAMES = [
+        'image_track_laptop' => 'track_laptop',
+        'image_track_mobile' => 'track_mobile',
+        'image_trackstatus_laptop' => 'trackstatus_laptop',
+        'image_trackstatus_mobile' => 'trackstatus_mobile',
+        'image_contact_laptop' => 'contact_laptop',
+        'image_contact_mobile' => 'contact_mobile',
+    ];
+
     public function __construct(private BaseConnection $db)
     {
     }
@@ -20,6 +29,12 @@ final class BackgroundStore
     public function all(): array
     {
         return $this->db->table('tbl_background_web')->orderBy('id', 'DESC')->limit(100)->get()->getResultArray();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function legacyAll(): array
+    {
+        return $this->db->table('tbl_background_web')->orderBy('id', 'ASC')->get()->getResultArray();
     }
 
     /** @return array<string, mixed>|null */
@@ -40,6 +55,31 @@ final class BackgroundStore
         }
         foreach ($images as $field => $name) {
             if (! in_array($field, self::FIELDS, true) || preg_match('/\A[a-f0-9]{32}\.png\z/D', $name) !== 1) {
+                return 'invalid';
+            }
+        }
+        $values = ['status' => $status, 'date' => date('Y-m-d H:i:s'), ...$images];
+        if ($id === null) {
+            return $this->db->table('tbl_background_web')->insert($values) ? 'created' : 'failed';
+        }
+
+        return $this->db->table('tbl_background_web')->where('id', $id)->update($values) ? 'updated' : 'failed';
+    }
+
+    /** @param array<string, string> $images */
+    public function legacySave(?int $id, mixed $status, array $images): string
+    {
+        $status = is_string($status) && preg_match('/\A[01]\z/D', $status) === 1 ? (int) $status : null;
+        $row = $id === null ? null : $this->find($id);
+        if ($status === null || ($id !== null && $row === null)) {
+            return $id !== null && $row === null ? 'not_found' : 'invalid';
+        }
+        foreach ($images as $field => $name) {
+            $basename = self::LEGACY_BASENAMES[$field] ?? null;
+            if ($basename === null || preg_match(
+                '/\Auploads\/web\/' . preg_quote($basename, '/') . '\.(?:png|jpe?g|gif|webp|bmp)\z/Di',
+                $name,
+            ) !== 1) {
                 return 'invalid';
             }
         }

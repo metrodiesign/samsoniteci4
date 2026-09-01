@@ -82,7 +82,7 @@ class App extends BaseConfig
     |
     */
     // Needed only to accept CI3's URL-encoded resetPasswordConfirmUser/{code}/{email} links.
-    public string $permittedURIChars = 'a-z 0-9~%.:@_\-';
+    public string $permittedURIChars = 'a-z 0-9~%,.:@_\-';
 
     /**
      * --------------------------------------------------------------------------

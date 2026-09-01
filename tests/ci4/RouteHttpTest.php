@@ -140,7 +140,7 @@ final class RouteHttpTest extends CIUnitTestCase
 
     public function testUnknownAndUnapprovedImplicitEntriesReturnReal404ForAnonymousAndAuthenticatedUsers(): void
     {
-        foreach (['/wp00c-missing-route', '/menu/deleteUser', '/menu/changePassword', '/order/do_upload_multi', '/Order/ReportTrackingListingTest'] as $path) {
+        foreach (['/wp00c-missing-route', '/menu/deleteUser', '/menu/changePassword', '/order/do_upload_multi'] as $path) {
             $this->assert404($path, false);
             $this->assert404($path, true);
         }

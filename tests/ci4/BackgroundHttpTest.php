@@ -215,6 +215,260 @@ final class BackgroundHttpTest extends CIUnitTestCase
         self::assertSame($probe($branch, '/backgrounds/' . $id), $probe($branch, '/backgrounds/new'));
     }
 
+    public function testLegacyBackgroundListingUsesCi3AuthenticationRolesMethodsAliasesAndOrder(): void
+    {
+        for ($id = 1; $id <= 3; $id++) {
+            $this->db->table('tbl_background_web')->insert([
+                'image_track_laptop' => 'SYNTHETIC-TRACK-' . $id . '.png',
+                'status' => $id === 1 ? 1 : 0,
+                'date' => '2026-08-25 0' . $id . ':00:00',
+            ]);
+        }
+        $users = new ShadowUserStore($this->db);
+        $providerId = $users->create(
+            'background-provider@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 3, 1,
+        );
+        $profiles = [
+            $this->session(),
+            [
+                'userId' => $this->branchId, 'role' => 2, 'GroupID' => 4, 'BranchID' => 1,
+                'sessionVersion' => 1, 'isLoggedIn' => true,
+            ],
+            [
+                'userId' => $providerId, 'role' => 3, 'GroupID' => 4, 'BranchID' => 1,
+                'sessionVersion' => 1, 'isLoggedIn' => true,
+            ],
+        ];
+
+        $this->get('/BackgroundListing')->assertRedirectTo('/login');
+        foreach ($profiles as $session) {
+            foreach ([
+                '/BackgroundListing',
+                '/BackgroundListing/50',
+                '/background_web/BackgroundListing',
+                '/Background_web/BackgroundListing/50',
+                '/BACKGROUND_WEB/BACKGROUNDLISTING/legacy/50',
+            ] as $path) {
+                $body = (string) $this->withSession($session)->get($path)->getBody();
+                self::assertLessThan(strpos($body, 'SYNTHETIC-TRACK-2.png'), strpos($body, 'SYNTHETIC-TRACK-1.png'));
+                self::assertLessThan(strpos($body, 'SYNTHETIC-TRACK-3.png'), strpos($body, 'SYNTHETIC-TRACK-2.png'));
+                $this->withSession($session)->post($path, [])->assertStatus(200);
+                $this->withSession($session)->call('head', $path)->assertStatus(200);
+                $this->withSession($session)->call('options', $path)->assertStatus(200);
+                $this->withSession($session)->call('put', $path)->assertStatus(200);
+                $this->withSession($session)->call('patch', $path)->assertStatus(200);
+                $this->withSession($session)->call('delete', $path)->assertStatus(200);
+            }
+        }
+    }
+
+    public function testLegacyBackgroundListingDoesNotApplyModernHundredRowLimit(): void
+    {
+        $rows = [];
+        for ($id = 1; $id <= 105; $id++) {
+            $rows[] = [
+                'image_track_laptop' => sprintf('SYNTHETIC-BACKGROUND-%03d.png', $id),
+                'status' => $id % 2,
+                'date' => '2026-08-25 05:00:00',
+            ];
+        }
+        $this->db->table('tbl_background_web')->insertBatch($rows);
+
+        $body = (string) $this->withSession($this->session())->get('/BackgroundListing')->getBody();
+        $first = strpos($body, 'SYNTHETIC-BACKGROUND-001.png');
+        $last = strpos($body, 'SYNTHETIC-BACKGROUND-105.png');
+        self::assertNotFalse($first);
+        self::assertNotFalse($last);
+        self::assertLessThan($last, $first);
+        self::assertStringNotContainsString('<ul class="pagination">', $body);
+    }
+
+    public function testLegacyBackgroundFormsUseCi3RolesMethodsAliasesMissingAndUnknownIds(): void
+    {
+        $this->db->table('tbl_background_web')->insert([
+            'image_track_laptop' => 'SYNTHETIC-EDIT.png',
+            'status' => 1,
+            'date' => '2026-08-25 04:00:00',
+        ]);
+        $id = (int) $this->db->insertID();
+        $branch = [
+            'userId' => $this->branchId, 'role' => 2, 'GroupID' => 4, 'BranchID' => 1,
+            'sessionVersion' => 1, 'isLoggedIn' => true,
+        ];
+
+        $this->get('/BackgroundNew')->assertRedirectTo('/login');
+        $this->get('/editBackgroundOld/' . $id)->assertRedirectTo('/login');
+        foreach ([$this->session(), $branch] as $session) {
+            foreach (['/BackgroundNew', '/background_web/BackgroundNew', '/BACKGROUND_WEB/BACKGROUNDNEW/legacy'] as $path) {
+                foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $this->withSession($session)->call($method, $path)->assertStatus(200);
+                }
+            }
+            foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                $missing = $this->withSession($session)->call($method, '/editBackgroundOld');
+                $missing->assertRedirectTo('/BackgroundListing');
+                $missing->assertStatus($method === 'get' ? 307 : 303);
+            }
+            foreach ([
+                '/editBackgroundOld/' . $id,
+                '/editBackgroundOld/999999',
+                '/background_web/editBackgroundOld/' . $id,
+                '/BACKGROUND_WEB/EDITBACKGROUNDOLD/999999/legacy',
+            ] as $path) {
+                foreach (['get', 'post', 'head', 'options', 'put', 'patch', 'delete'] as $method) {
+                    $response = $this->withSession($session)->call($method, $path);
+                    $response->assertStatus(200);
+                    if ($method === 'get' && str_contains($path, '999999')) {
+                        self::assertStringContainsString(
+                            'value="" name="background_id" id="background_id"',
+                            (string) $response->getBody(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    public function testLegacyBackgroundStatusOnlyCreateUpdateAndDeleteMatchCi3ContractsForAllRoles(): void
+    {
+        $branch = [
+            'userId' => $this->branchId, 'role' => 2, 'GroupID' => 4, 'BranchID' => 1,
+            'sessionVersion' => 1, 'isLoggedIn' => true,
+        ];
+
+        $adminCreate = $this->withSession($this->session())->post('/addBackground', [
+            'csrf_test_name' => service('security')->getHash(),
+            'status' => '0',
+        ]);
+        $adminCreate->assertRedirectTo('/BackgroundListing');
+        $adminRow = $this->db->table('tbl_background_web')->orderBy('id', 'ASC')->get()->getRowArray();
+        self::assertNotNull($adminRow);
+        self::assertSame(0, (int) $adminRow['status']);
+        self::assertNull($adminRow['image_track_laptop']);
+
+        $branchCreate = $this->withSession($branch)->post('/BACKGROUND_WEB/ADDBACKGROUND/legacy', [
+            'csrf_test_name' => service('security')->getHash(),
+            'status' => '1',
+        ]);
+        $branchCreate->assertRedirectTo('/BackgroundListing');
+        self::assertSame(2, $this->db->table('tbl_background_web')->countAllResults());
+
+        $id = (int) $adminRow['id'];
+        $updated = $this->withSession($branch)->post('/background_web/editBackground/legacy', [
+            'csrf_test_name' => service('security')->getHash(),
+            'background_id' => (string) $id,
+            'status' => '1',
+        ]);
+        $updated->assertRedirectTo('/BackgroundListing');
+        self::assertSame(1, (int) $this->db->table('tbl_background_web')->where('id', $id)->get()->getRow('status'));
+
+        $deleted = $this->withSession($branch)->post('/deleteBackground', [
+            'csrf_test_name' => service('security')->getHash(),
+            'Backgroundid' => (string) $id,
+        ]);
+        $deleted->assertStatus(200);
+        self::assertSame('{"status":true}', (string) $deleted->response()->getBody());
+        self::assertSame('text/html; charset=UTF-8', $deleted->response()->getHeaderLine('Content-Type'));
+        self::assertSame(1, $this->db->table('tbl_background_web')->countAllResults());
+
+        $replayed = $this->withSession($branch)->post('/background_web/deleteBackground/legacy', [
+            'csrf_test_name' => service('security')->getHash(),
+            'Backgroundid' => (string) $id,
+        ]);
+        $replayed->assertStatus(200);
+        self::assertSame('{"status":false}', (string) $replayed->response()->getBody());
+    }
+
+    public function testLegacyBackgroundPngUploadUsesCi3PreviewUrlWithPrivateValidatedStorage(): void
+    {
+        $legacyImages = [
+            'image_track_laptop' => 'track_laptop.png',
+            'image_track_mobile' => 'track_mobile.png',
+            'image_trackstatus_laptop' => 'trackstatus_laptop.png',
+            'image_trackstatus_mobile' => 'trackstatus_mobile.png',
+            'image_contact_laptop' => 'contact_laptop.png',
+            'image_contact_mobile' => 'contact_mobile.png',
+        ];
+        $files = [];
+        foreach ($legacyImages as $field => $alias) {
+            $files[$field] = [
+                'name' => $alias, 'type' => 'image/png', 'tmp_name' => $this->png,
+                'error' => UPLOAD_ERR_OK, 'size' => filesize($this->png),
+            ];
+        }
+        service('superglobals')->setFilesArray($files);
+        $created = $this->postWithoutImage('/addBackground', ['status' => '1'], false);
+        $created->assertRedirectTo('/BackgroundListing');
+        $row = $this->db->table('tbl_background_web')->get()->getRowArray();
+        self::assertNotNull($row);
+
+        $listing = (string) $this->withSession($this->session())->get('/BackgroundListing')->getBody();
+        $edit = (string) $this->withSession($this->session())
+            ->get('/editBackgroundOld/' . (int) $row['id'])
+            ->getBody();
+        foreach ($legacyImages as $field => $alias) {
+            self::assertSame('uploads/web/' . $alias, $row[$field]);
+            self::assertStringContainsString('src="' . base_url('uploads/web/' . $alias) . '"', $edit);
+            $image = $this->get('/uploads/web/' . $alias);
+            $image->assertStatus(200);
+            self::assertSame('image/png', $image->response()->getHeaderLine('Content-Type'));
+            self::assertStringStartsWith("\x89PNG\r\n\x1a\n", (string) $image->response()->getBody());
+            @unlink(WRITEPATH . 'uploads/backgrounds/legacy-' . $alias);
+        }
+        foreach (['track_laptop.png', 'trackstatus_laptop.png', 'contact_laptop.png'] as $alias) {
+            self::assertStringContainsString('src="' . base_url('uploads/web/' . $alias) . '"', $listing);
+        }
+        service('superglobals')->setFilesArray([]);
+    }
+
+    public function testLegacyBackgroundUppercasePngExtensionKeepsCi3PreviewPathCase(): void
+    {
+        $created = $this->postWithImage('/addBackground', 'hero.PNG', ['status' => '1']);
+        $created->assertRedirectTo('/BackgroundListing');
+        $row = $this->db->table('tbl_background_web')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame('uploads/web/track_laptop.PNG', $row['image_track_laptop']);
+        $listing = (string) $this->withSession($this->session())->get('/BackgroundListing')->getBody();
+        self::assertStringContainsString(
+            'src="' . base_url('uploads/web/track_laptop.PNG') . '"',
+            $listing,
+        );
+        $this->get('/uploads/web/track_laptop.PNG')->assertStatus(200);
+
+        @unlink(WRITEPATH . 'uploads/backgrounds/legacy-track_laptop.PNG');
+        service('superglobals')->setFilesArray([]);
+    }
+
+    public function testLegacyBackgroundValidatedJpegUploadKeepsCi3ExtensionAndServesReencodedJpeg(): void
+    {
+        $jpeg = tempnam(sys_get_temp_dir(), 'wp00c-bg-jpeg-');
+        self::assertIsString($jpeg);
+        $image = imagecreatetruecolor(2, 2);
+        self::assertInstanceOf(\GdImage::class, $image);
+        imagejpeg($image, $jpeg, 90);
+        imagedestroy($image);
+        service('superglobals')->setFilesArray(['image_track_laptop' => [
+            'name' => 'hero.JPG', 'type' => 'image/jpeg', 'tmp_name' => $jpeg,
+            'error' => UPLOAD_ERR_OK, 'size' => filesize($jpeg),
+        ]]);
+
+        $created = $this->postWithoutImage('/addBackground', ['status' => '1'], false);
+        $created->assertRedirectTo('/BackgroundListing');
+        $row = $this->db->table('tbl_background_web')->get()->getRowArray();
+        self::assertNotNull($row);
+        self::assertSame('uploads/web/track_laptop.JPG', $row['image_track_laptop']);
+        $listing = (string) $this->withSession($this->session())->get('/BackgroundListing')->getBody();
+        self::assertStringContainsString('src="' . base_url('uploads/web/track_laptop.JPG') . '"', $listing);
+        $served = $this->get('/uploads/web/track_laptop.JPG');
+        $served->assertStatus(200);
+        self::assertSame('image/jpeg', $served->response()->getHeaderLine('Content-Type'));
+        self::assertStringStartsWith("\xFF\xD8", (string) $served->response()->getBody());
+
+        @unlink($jpeg);
+        @unlink(WRITEPATH . 'uploads/backgrounds/legacy-track_laptop.JPG');
+        service('superglobals')->setFilesArray([]);
+    }
+
     /** @param array<string, string> $payload */
     private function postWithImage(string $path, string $clientName, array $payload)
     {

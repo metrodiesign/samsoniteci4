@@ -22,27 +22,35 @@ final class BranchTypeImageStore
         $size = $file->getSize();
         $info = is_file($path) ? @getimagesize($path) : false;
         $mime = is_file($path) ? (new \finfo(FILEINFO_MIME_TYPE))->file($path) : false;
+        $allowedMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp'];
         if ($file->getError() !== UPLOAD_ERR_OK || $size < 1 || $size > self::MAX_BYTES
-            || $mime !== 'image/png' || $info === false || ($info[2] ?? null) !== IMAGETYPE_PNG
+            || ! in_array($mime, $allowedMimes, true) || $info === false
             || $info[0] < 1 || $info[0] > 4096 || $info[1] < 1 || $info[1] > 4096) {
-            throw new InvalidArgumentException('Invalid branch-type PNG');
+            throw new InvalidArgumentException('Invalid branch-type image');
+        }
+        $bytes = file_get_contents($path);
+        $image = is_string($bytes) ? @imagecreatefromstring($bytes) : false;
+        if (! $image instanceof \GdImage) {
+            throw new InvalidArgumentException('Invalid branch-type image');
         }
         if (! is_dir($this->directory) && ! mkdir($this->directory, 0750, true) && ! is_dir($this->directory)) {
+            imagedestroy($image);
             throw new InvalidArgumentException('Branch-type image storage unavailable');
         }
 
         $name = bin2hex(random_bytes(16)) . '.png';
         $target = $this->directory . '/' . $name;
-        $source = fopen($path, 'rb');
         $destination = fopen($target, 'xb');
-        if ($source === false || $destination === false || stream_copy_to_stream($source, $destination) !== $size) {
-            is_resource($source) && fclose($source);
-            is_resource($destination) && fclose($destination);
+        imagesavealpha($image, true);
+        $written = is_resource($destination) && imagepng($image, $destination, 6);
+        imagedestroy($image);
+        if (is_resource($destination)) {
+            fclose($destination);
+        }
+        if (! $written) {
             @unlink($target);
             throw new InvalidArgumentException('Branch-type image storage unavailable');
         }
-        fclose($source);
-        fclose($destination);
         chmod($target, 0640);
 
         return $name;

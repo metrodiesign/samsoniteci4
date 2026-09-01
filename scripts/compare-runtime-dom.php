@@ -194,6 +194,18 @@ function runtimeRules(DOMDocument $left, DOMDocument $right, string $page, array
             'decision_id' => 'DOM-CSRF-' . $suffix, 'used' => false, 'index' => 'runtime-csrf',
         ];
     }
+    $legacyCsrfScriptSelector = '//script[@data-ci4-security="legacy-csrf"]';
+    $leftLegacyCsrfScript = $leftXPath->query($legacyCsrfScriptSelector);
+    $rightLegacyCsrfScript = $rightXPath->query($legacyCsrfScriptSelector);
+    if (($leftLegacyCsrfScript !== false && $leftLegacyCsrfScript->length > 0)
+        || ($rightLegacyCsrfScript !== false && $rightLegacyCsrfScript->length > 0)) {
+        $rules[] = [
+            'page' => $page, 'template' => $page, 'selector' => $legacyCsrfScriptSelector, 'attribute' => '#remove',
+            'reason' => 'approved CI4-only AJAX CSRF adapter with no visual output',
+            'decision_id' => 'DOM-LEGACY-CSRF-SCRIPT-' . $suffix, 'used' => false,
+            'index' => 'runtime-legacy-csrf-script',
+        ];
+    }
     $runtimeIdRules = [
         ['//input[@type="hidden" and @name="times"]', 'value', '#^[0-9a-f]+$#', '__RUNTIME_ID__', 'hidden upload workflow identifier', 'TIMES-VALUE'],
         ['//form[@id="upload"]', 'action', '#/order/do_upload_multi/[0-9a-f]+#', '/order/do_upload_multi/__RUNTIME_ID__', 'upload workflow action identifier', 'TIMES-ACTION'],

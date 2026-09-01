@@ -25,8 +25,9 @@ final class ImportHttpTest extends CIUnitTestCase
         $encryption->driver = 'Sodium';
         $encryption->key = str_repeat("\x50", 32);
         Services::injectMock('encrypter', Services::encrypter($encryption, false));
+        service('superglobals')->setFilesArray([]);
         foreach ([
-            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), detailTypeId INTEGER, detailBrandId INTEGER, branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), waranty_cmg VARCHAR(100), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
+            'request_order' => 'request_id INTEGER PRIMARY KEY AUTOINCREMENT, requestDate DATETIME NOT NULL, trackID VARCHAR(100) NOT NULL UNIQUE, numberID VARCHAR(100), orderID VARCHAR(100), orderIDShow VARCHAR(100), customerFullname VARCHAR(250), customerTel VARCHAR(100), detailDatePurchase DATETIME, detailTypeId INTEGER, detailBrandId INTEGER, branchID INTEGER, branch_type_id INTEGER, UserID INTEGER, date_create DATETIME, date_repair DATETIME, date_repair_complete DATETIME, date_repair_waranty DATETIME, date_update_status DATETIME, action_status INTEGER, RepairPrice DECIMAL(8,2), waranty_cmg VARCHAR(100), number_cmg VARCHAR(100), create_by_user VARCHAR(250)',
             'status_log' => 'id INTEGER PRIMARY KEY AUTOINCREMENT, order_id VARCHAR(100) NOT NULL, action_id INTEGER, update_id INTEGER, cdate DATETIME NOT NULL',
             'tracking_status' => 'status_id INTEGER PRIMARY KEY, description_th VARCHAR(250), description_en VARCHAR(250) NOT NULL, success INTEGER NOT NULL',
             'branch' => 'branch_id INTEGER PRIMARY KEY, branch_type INTEGER NOT NULL, default_suffix VARCHAR(10) NOT NULL',
@@ -61,6 +62,861 @@ final class ImportHttpTest extends CIUnitTestCase
         $users = new ShadowUserStore($this->db);
         $users->create('import-a@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 2, 1);
         $users->create('import-b@example.invalid', password_hash('pass', PASSWORD_DEFAULT), 2, 2);
+    }
+
+    public function testLegacyStatusListingUsesCi3AuthenticationAndSafeReadMethods(): void
+    {
+        $get = $this->withSession([])->get('/UploadexcelListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/UploadexcelListing', []);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $anonymous = $this->withSession([])->call($method, '/UploadexcelListing');
+            $anonymous->assertStatus(303);
+            $anonymous->assertRedirectTo('/login');
+        }
+
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $authenticated = $this->withSession($this->session(1, 1))->call($method, '/UploadexcelListing');
+            $authenticated->assertStatus(200);
+            self::assertStringContainsString(
+                '<title>Tracking : branch Listing</title>',
+                (string) $authenticated->getBody(),
+            );
+        }
+    }
+
+    public function testLegacyPriceListingUsesCi3AuthenticationAndSafeReadMethods(): void
+    {
+        $get = $this->withSession([])->get('/UploadexcelpriceListing');
+        $get->assertStatus(307);
+        $get->assertRedirectTo('/login');
+
+        $post = $this->withSession([])->post('/UploadexcelpriceListing', []);
+        $post->assertStatus(303);
+        $post->assertRedirectTo('/login');
+
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $anonymous = $this->withSession([])->call($method, '/UploadexcelpriceListing');
+            $anonymous->assertStatus(303);
+            $anonymous->assertRedirectTo('/login');
+        }
+
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $authenticated = $this->withSession($this->session(1, 1))
+                ->call($method, '/UploadexcelpriceListing');
+            $authenticated->assertStatus(200);
+            self::assertStringContainsString(
+                '<title>Tracking : branch Listing</title>',
+                (string) $authenticated->getBody(),
+            );
+        }
+    }
+
+    public function testLegacyPriceActionRoutesSupportCi3SafeMethods(): void
+    {
+        foreach (['ExcelPriceDataAdd', 'ExcelPriceConfirm'] as $path) {
+            $anonymousGet = $this->withSession([])->get('/' . $path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+            foreach (['HEAD', 'OPTIONS'] as $method) {
+                $anonymous = $this->withSession([])->call($method, '/' . $path);
+                $anonymous->assertStatus(303);
+                $anonymous->assertRedirectTo('/login');
+            }
+        }
+
+        foreach (['GET', 'HEAD', 'OPTIONS'] as $method) {
+            $preview = $this->withSession($this->session(1, 1))->call($method, '/ExcelPriceDataAdd');
+            $preview->assertStatus(200);
+        }
+
+        $confirmGet = $this->withSession($this->session(1, 1))->get('/ExcelPriceConfirm');
+        $confirmGet->assertStatus(307);
+        $confirmGet->assertRedirectTo('/UploadexcelpriceListing');
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $confirm = $this->withSession($this->session(1, 1))->call($method, '/ExcelPriceConfirm');
+            $confirm->assertStatus(303);
+            $confirm->assertRedirectTo('/UploadexcelpriceListing');
+        }
+    }
+
+    public function testLegacyNewOrderRoutesUseCi3AuthenticationAndSafeMethodContracts(): void
+    {
+        foreach (['UploadneworderexcelListing', 'ExcelNewOrderDataAdd', 'ExcelNewOrderConfirm'] as $path) {
+            $anonymousGet = $this->withSession([])->get('/' . $path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+
+            foreach (['POST', 'HEAD', 'OPTIONS'] as $method) {
+                $anonymous = $this->withSession([])->call($method, '/' . $path);
+                $anonymous->assertStatus(303);
+                $anonymous->assertRedirectTo('/login');
+            }
+        }
+
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $listing = $this->withSession($this->session(1, 1))
+                ->call($method, '/UploadneworderexcelListing');
+            $listing->assertStatus(200);
+            self::assertStringContainsString(
+                '<title>Tracking : Upload NEW REQUEST Listing</title>',
+                (string) $listing->getBody(),
+            );
+        }
+        foreach (['GET', 'HEAD', 'OPTIONS'] as $method) {
+            $preview = $this->withSession($this->session(1, 1))->call($method, '/ExcelNewOrderDataAdd');
+            $preview->assertStatus(200);
+        }
+
+        $confirmGet = $this->withSession($this->session(1, 1))->get('/ExcelNewOrderConfirm');
+        $confirmGet->assertStatus(307);
+        $confirmGet->assertRedirectTo('/UploadneworderexcelListing');
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $confirm = $this->withSession($this->session(1, 1))->call($method, '/ExcelNewOrderConfirm');
+            $confirm->assertStatus(303);
+            $confirm->assertRedirectTo('/UploadneworderexcelListing');
+        }
+    }
+
+    public function testLegacyNewOrderPreviewRendersCi3ErrorFormForInvalidFiles(): void
+    {
+        $missing = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+            'Submit' => 'Upload',
+        ]);
+        $missing->assertStatus(200);
+        self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+            (string) $missing->getBody(),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        ));
+        self::assertStringContainsString(
+            'action="http://example.invalid/ExcelNewOrderDataAdd"',
+            (string) $missing->getBody(),
+        );
+
+        $text = tempnam(sys_get_temp_dir(), 'legacy-new-order-text-');
+        self::assertIsString($text);
+        file_put_contents($text, 'not a spreadsheet');
+        try {
+            foreach (['new-order.txt', 'new-order.XLSX'] as $name) {
+                $path = $name === 'new-order.txt' ? $text : $this->xlsx([
+                    ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'],
+                    ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-NEW'],
+                ]);
+                $response = $this->previewAs(
+                    'new-order',
+                    $path,
+                    1,
+                    1,
+                    $name,
+                    '/ExcelNewOrderDataAdd',
+                );
+                $response->assertStatus(200);
+                self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+                    (string) $response->getBody(),
+                    ENT_QUOTES | ENT_HTML5,
+                    'UTF-8',
+                ));
+            }
+        } finally {
+            unlink($text);
+        }
+
+        self::assertSame(0, $this->db->table('ci4_import_batches')->countAllResults());
+    }
+
+    public function testLegacyPricePreviewRendersCi3ErrorFormForInvalidFiles(): void
+    {
+        $missing = $this->withSession($this->session(1, 1))->post('/ExcelPriceDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+            'Submit' => 'Upload',
+        ]);
+        $missing->assertStatus(200);
+        self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+            (string) $missing->getBody(),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        ));
+        self::assertStringContainsString(
+            'action="http://example.invalid/ExcelPriceDataAdd"',
+            (string) $missing->getBody(),
+        );
+
+        $text = tempnam(sys_get_temp_dir(), 'legacy-price-text-');
+        self::assertIsString($text);
+        file_put_contents($text, 'not a spreadsheet');
+        try {
+            foreach (['price.txt', 'price.XLSX'] as $name) {
+                $path = $name === 'price.txt' ? $text : $this->xlsx([
+                    ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'],
+                    ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE'],
+                ]);
+                $response = $this->previewAs('price', $path, 1, 1, $name, '/ExcelPriceDataAdd');
+                $response->assertStatus(200);
+                self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+                    (string) $response->getBody(),
+                    ENT_QUOTES | ENT_HTML5,
+                    'UTF-8',
+                ));
+            }
+        } finally {
+            unlink($text);
+        }
+
+        self::assertSame(0, $this->db->table('ci4_import_batches')->countAllResults());
+    }
+
+    public function testLegacyNewOrderUsesCi3UnambiguousPartialStatusLookup(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCC', '20/08/2026', '300.00', 'IN', 'IGNORED-BY-CI3'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd');
+
+        $preview->assertStatus(200);
+        $batch = $this->db->table('ci4_import_batches')->where('kind', 'new-order')->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(1, (int) $batch['accepted_count']);
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        self::assertSame(
+            4,
+            (int) $this->db->table('request_order')->where('orderIDShow', 'WPA/300')->get()->getRow('action_status'),
+        );
+    }
+
+    public function testLegacyNewOrderPreviewSkipsRowsWithoutOrderIdLikeCi3(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['', 'IGNORED ROW', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '100.00', 'IN', 'IGNORED'],
+            ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-NEW'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd');
+
+        $preview->assertStatus(200);
+        $body = (string) $preview->getBody();
+        self::assertStringContainsString('id="count_ex" name="count_ex" value="1"', $body);
+        self::assertStringNotContainsString('IGNORED ROW', $body);
+        $batch = $this->db->table('ci4_import_batches')->where('kind', 'new-order')->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(1, (int) $batch['row_count']);
+        self::assertSame(1, (int) $batch['accepted_count']);
+        self::assertSame(0, (int) $batch['rejected_count']);
+    }
+
+    public function testLegacyNewOrderPreviewShowsCi3DuplicateContextWithoutAcceptingIt(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/100', 'DUPLICATE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-DUPLICATE'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd');
+
+        $preview->assertStatus(200);
+        $body = html_entity_decode((string) $preview->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('WPA/100 (เล่มที่/เลขที่ ซ้ำในระบบ)', $body);
+        self::assertStringContainsString('class="error-table"', $body);
+        $batch = $this->db->table('ci4_import_batches')->where('kind', 'new-order')->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(0, (int) $batch['accepted_count']);
+        self::assertSame(1, (int) $batch['rejected_count']);
+    }
+
+    public function testLegacyNewOrderKeepsCi3TelephoneSensitiveDuplicatePresentationButRejectsOrderIdDuplicate(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/100', 'DUPLICATE CUSTOMER', '1111111111', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-DUPLICATE'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd');
+
+        $preview->assertStatus(200);
+        $body = html_entity_decode((string) $preview->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringNotContainsString('(เล่มที่/เลขที่ ซ้ำในระบบ)', $body);
+        self::assertStringNotContainsString('class="error-table"', $body);
+        self::assertSame(
+            0,
+            (int) $this->db->table('ci4_import_batches')
+                ->where('kind', 'new-order')->get()->getRow('accepted_count'),
+        );
+    }
+
+    public function testLegacyNewOrderConfirmDoesNotReportSuccessWhenEveryRowWasRejected(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/100', 'DUPLICATE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-DUPLICATE'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd')->assertStatus(200);
+        $batch = $this->db->table('ci4_import_batches')->where('kind', 'new-order')->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(0, (int) $batch['accepted_count']);
+        $ordersBefore = $this->db->table('request_order')->countAllResults();
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadneworderexcelListing');
+        self::assertSame('กรุณาตรวจสอบข้อมูลอีกครั้งค่ะ', service('session')->getFlashdata('error'));
+        self::assertSame($ordersBefore, $this->db->table('request_order')->countAllResults());
+        self::assertSame(
+            'previewed',
+            $this->db->table('ci4_import_batches')->where('batch_id', $batch['batch_id'])->get()->getRow('state'),
+        );
+    }
+
+    public function testLegacyNewOrderConfirmPreservesCi3CustomerNameCellWhitespace(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/305', '  NEW CUSTOMER  ', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '305.00', 'IN', 'IGNORED'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd')->assertStatus(200);
+        $batchId = (string) $this->db->table('ci4_import_batches')
+            ->where('kind', 'new-order')->get()->getRow('batch_id');
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batchId,
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $created = $this->db->table('request_order')->where('orderIDShow', 'WPA/305')->get()->getRowArray();
+        self::assertNotNull($created);
+        self::assertSame('  NEW CUSTOMER  ', $created['customerFullname']);
+        self::assertSame('  NEW CUSTOMER  ', $created['create_by_user']);
+    }
+
+    public function testLegacyNewOrderConfirmKeepsCi3PositiveNumericCountSemantics(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/304', 'NUMERIC COUNT', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '304.00', 'IN', 'IGNORED'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd')->assertStatus(200);
+        $batchId = (string) $this->db->table('ci4_import_batches')
+            ->where('kind', 'new-order')->get()->getRow('batch_id');
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '0.5',
+            'batch_id' => $batchId,
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        self::assertSame('Upload updated successfully', service('session')->getFlashdata('success'));
+        self::assertSame(1, $this->db->table('request_order')->where('orderIDShow', 'WPA/304')->countAllResults());
+    }
+
+    public function testLegacyNewOrderConfirmUsesCi3RedirectFeedbackAndWriteContract(): void
+    {
+        $invalid = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '0',
+            'batch_id' => '',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $invalid->assertStatus(303);
+        $invalid->assertRedirectTo('/UploadneworderexcelListing');
+        self::assertSame('กรุณาตรวจสอบข้อมูลอีกครั้งค่ะ', service('session')->getFlashdata('error'));
+
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('new-order', $this->xlsx([
+            $headers,
+            ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'IGNORED-BY-CI3'],
+        ]), 1, 1, null, '/ExcelNewOrderDataAdd');
+        $preview->assertStatus(200);
+        $batchId = (string) $this->db->table('ci4_import_batches')
+            ->where('kind', 'new-order')->get()->getRow('batch_id');
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batchId,
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadneworderexcelListing');
+        self::assertSame('Upload updated successfully', service('session')->getFlashdata('success'));
+
+        $created = $this->db->table('request_order')->where('orderIDShow', 'WPA/300')->get()->getRowArray();
+        self::assertNotNull($created);
+        self::assertMatchesRegularExpression('/\AG[0-9]{8}\z/D', (string) $created['trackID']);
+        self::assertSame('300', $created['numberID']);
+        self::assertSame('WPA', $created['number_cmg']);
+        self::assertSame('WPA300', $created['orderID']);
+        self::assertSame('2026-08-22 00:00:00', $created['requestDate']);
+        self::assertSame('2026-08-20 00:00:00', $created['date_repair']);
+        self::assertSame('2026-08-22 00:00:00', $created['date_repair_complete']);
+        self::assertNull($created['date_update_status']);
+        self::assertSame(4, (int) $created['action_status']);
+        self::assertSame(1, (int) $created['branchID']);
+        self::assertSame(1, (int) $created['branch_type_id']);
+        self::assertNull($created['UserID']);
+        self::assertSame('NEW CUSTOMER', $created['create_by_user']);
+        self::assertSame($created['date_create'], $created['detailDatePurchase']);
+        self::assertSame(1, $this->db->table('status_log')
+            ->where('order_id', $created['trackID'])->where('action_id', 4)->countAllResults());
+        self::assertSame(0, $this->db->table('uploadstaus')->countAllResults());
+    }
+
+    public function testCentralAdminLegacyNewOrderUsesCi3BranchNinetyWhenItExists(): void
+    {
+        $this->db->table('branch')->insert([
+            'branch_id' => 90,
+            'branch_type' => 6,
+            'default_suffix' => 'CMG',
+        ]);
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'new-order-central-90@example.invalid',
+            password_hash('pass', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = [
+            'userId' => $adminId, 'role' => 1, 'GroupID' => 1, 'BranchID' => null,
+            'sessionVersion' => 1, 'isLoggedIn' => true,
+        ];
+        $path = $this->xlsx([
+            ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'],
+            ['WPA/303', 'ADMIN BRANCH 90', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '303.00', 'IN', 'IGNORED'],
+        ]);
+        service('superglobals')->setFilesArray(['file' => [
+            'name' => 'new-order.xlsx',
+            'type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'tmp_name' => $path,
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($path),
+        ]]);
+        $preview = $this->withSession($session)->post('/ExcelNewOrderDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $preview->assertStatus(200);
+        $batch = $this->db->table('ci4_import_batches')->where('owner_user_id', $adminId)->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(1, (int) $batch['accepted_count']);
+
+        $confirmed = $this->withSession($session)->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $created = $this->db->table('request_order')->where('orderIDShow', 'WPA/303')->get()->getRowArray();
+        self::assertNotNull($created);
+        self::assertSame(90, (int) $created['branchID']);
+        self::assertSame(6, (int) $created['branch_type_id']);
+    }
+
+    public function testCentralAdminLegacyNewOrderImportDerivesValidBranchFromOrderPrefix(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'new-order-central@example.invalid',
+            password_hash('pass', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $session = [
+            'userId' => $adminId, 'role' => 1, 'GroupID' => 1, 'BranchID' => null,
+            'sessionVersion' => 1, 'isLoggedIn' => true,
+        ];
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $path = $this->xlsx([
+            $headers,
+            ['WPA/301', 'ADMIN BRANCH A', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '301.00', 'IN', 'IGNORED-A'],
+            ['WPB/302', 'ADMIN BRANCH B', '0000000000', '22/08/2026', 'REPAIR', '20/08/2026', '302.00', 'OUT', 'IGNORED-B'],
+        ]);
+        service('superglobals')->setFilesArray(['file' => [
+            'name' => 'new-order.xlsx',
+            'type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'tmp_name' => $path,
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($path),
+        ]]);
+
+        $preview = $this->withSession($session)->post('/ExcelNewOrderDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $preview->assertStatus(200);
+        $batch = $this->db->table('ci4_import_batches')->where('owner_user_id', $adminId)->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertNull($batch['owner_branch_id']);
+        self::assertSame(2, (int) $batch['accepted_count']);
+
+        $confirmed = $this->withSession($session)->post('/ExcelNewOrderConfirm', [
+            'count_ex' => '2',
+            'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadneworderexcelListing');
+        self::assertSame(1, (int) $this->db->table('request_order')
+            ->where('orderIDShow', 'WPA/301')->get()->getRow('branchID'));
+        self::assertSame(2, (int) $this->db->table('request_order')
+            ->where('orderIDShow', 'WPB/302')->get()->getRow('branchID'));
+    }
+
+    public function testLegacyPriceImportUsesCmgAndPriceAsServerSideEligibility(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('price', $this->xlsx([
+            $headers,
+            ['WPA/200', 'PRICE CUSTOMER', 'x', 'not-a-date', 'UNKNOWN', '', '321.50', '', 'CMG-PRICE'],
+        ]), 1, 1, null, '/ExcelPriceDataAdd');
+
+        $preview->assertStatus(200);
+        $body = html_entity_decode((string) $preview->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('ข้อมูลถูกต้อง กรุณากด Comfirm เพื่ออัพโหลดราคา', $body);
+        $batch = $this->db->table('ci4_import_batches')->where('kind', 'price')->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertSame(1, (int) $batch['accepted_count']);
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelPriceConfirm', [
+            'count_ex' => '1', 'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        self::assertSame(
+            '321.50',
+            number_format((float) $this->db->table('request_order')->where('request_id', 2)->get()->getRow('RepairPrice'), 2, '.', ''),
+        );
+    }
+
+    public function testLegacyPriceConfirmUsesCi3RedirectFeedbackAndWriteContract(): void
+    {
+        $invalid = $this->withSession($this->session(1, 1))->post('/ExcelPriceConfirm', [
+            'count_ex' => '0', 'batch_id' => '',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $invalid->assertStatus(303);
+        $invalid->assertRedirectTo('/UploadexcelpriceListing');
+        self::assertSame('กรุณาตรวจสอบข้อมูลอีกครั้งค่ะ', service('session')->getFlashdata('error'));
+
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $preview = $this->previewAs('price', $this->xlsx([
+            $headers,
+            ['WPA/200', 'PRICE CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '275.50', 'IN', 'CMG-PRICE'],
+        ]), 1, 1, null, '/ExcelPriceDataAdd');
+        $preview->assertStatus(200);
+        $batchId = (string) $this->db->table('ci4_import_batches')->where('kind', 'price')->get()->getRow('batch_id');
+        $logsBefore = $this->db->table('status_log')->countAllResults();
+        $uploadsBefore = $this->db->table('uploadstaus')->countAllResults();
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelPriceConfirm', [
+            'count_ex' => '1', 'batch_id' => $batchId,
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadexcelpriceListing');
+        self::assertSame('Upload updated successfully', service('session')->getFlashdata('success'));
+        self::assertSame(
+            '275.50',
+            number_format((float) $this->db->table('request_order')->where('request_id', 2)->get()->getRow('RepairPrice'), 2, '.', ''),
+        );
+        self::assertSame(4, (int) $this->db->table('request_order')->where('request_id', 2)->get()->getRow('action_status'));
+        self::assertSame($logsBefore, $this->db->table('status_log')->countAllResults());
+        self::assertSame($uploadsBefore, $this->db->table('uploadstaus')->countAllResults());
+    }
+
+    public function testLegacyNewOrderControllerAliasesMatchCi3Routing(): void
+    {
+        foreach (['/upload_excel/UploadneworderexcelListing', '/Upload_excel/UploadneworderexcelListing'] as $path) {
+            $listing = $this->withSession($this->session(1, 1))->get($path);
+            $listing->assertStatus(200);
+            self::assertStringContainsString(
+                'action="http://example.invalid/ExcelNewOrderDataAdd"',
+                (string) $listing->getBody(),
+            );
+        }
+
+        $preview = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelNewOrderDataAdd');
+        $preview->assertStatus(200);
+        self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+            (string) $preview->getBody(),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        ));
+
+        $confirm = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelNewOrderConfirm');
+        $confirm->assertStatus(307);
+        $confirm->assertRedirectTo('/UploadneworderexcelListing');
+    }
+
+    public function testLegacyPriceControllerAliasesMatchCi3Routing(): void
+    {
+        foreach (['/upload_excel/UploadexcelpriceListing', '/Upload_excel/UploadexcelpriceListing'] as $path) {
+            $listing = $this->withSession($this->session(1, 1))->get($path);
+            $listing->assertStatus(200);
+            self::assertStringContainsString(
+                'action="http://example.invalid/ExcelPriceDataAdd"',
+                (string) $listing->getBody(),
+            );
+        }
+
+        $preview = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelPriceDataAdd');
+        $preview->assertStatus(200);
+        self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+            (string) $preview->getBody(),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        ));
+
+        $confirm = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelPriceConfirm');
+        $confirm->assertStatus(307);
+        $confirm->assertRedirectTo('/UploadexcelpriceListing');
+    }
+
+    public function testLegacyStatusControllerAliasesMatchCi3Routing(): void
+    {
+        foreach (['/upload_excel/UploadexcelListing', '/Upload_excel/UploadexcelListing'] as $path) {
+            $listing = $this->withSession($this->session(1, 1))->get($path);
+            $listing->assertStatus(200);
+            self::assertStringContainsString('action="http://example.invalid/ExcelDataAdd"', (string) $listing->getBody());
+        }
+
+        $preview = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelDataAdd');
+        $preview->assertStatus(200);
+        self::assertStringContainsString('กรุณาตรวจสอบข้อมูลค่ะ', html_entity_decode(
+            (string) $preview->getBody(),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        ));
+
+        $confirm = $this->withSession($this->session(1, 1))->get('/upload_excel/ExcelConfirm');
+        $confirm->assertStatus(307);
+        $confirm->assertRedirectTo('/UploadexcelListing');
+    }
+
+    public function testLegacyStatusActionRoutesSupportCi3SafeMethods(): void
+    {
+        foreach (['ExcelDataAdd', 'ExcelConfirm'] as $path) {
+            $anonymousGet = $this->withSession([])->get('/' . $path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+
+            foreach (['HEAD', 'OPTIONS'] as $method) {
+                $anonymous = $this->withSession([])->call($method, '/' . $path);
+                $anonymous->assertStatus(303);
+                $anonymous->assertRedirectTo('/login');
+            }
+        }
+
+        foreach (['GET', 'HEAD', 'OPTIONS'] as $method) {
+            $preview = $this->withSession($this->session(1, 1))->call($method, '/ExcelDataAdd');
+            $preview->assertStatus(200);
+        }
+
+        $confirmGet = $this->withSession($this->session(1, 1))->get('/ExcelConfirm');
+        $confirmGet->assertStatus(307);
+        $confirmGet->assertRedirectTo('/UploadexcelListing');
+        foreach (['HEAD', 'OPTIONS'] as $method) {
+            $confirm = $this->withSession($this->session(1, 1))->call($method, '/ExcelConfirm');
+            $confirm->assertStatus(303);
+            $confirm->assertRedirectTo('/UploadexcelListing');
+        }
+    }
+
+    public function testLegacyStatusPreviewRendersCi3ErrorFormForMissingAndWrongExtension(): void
+    {
+        $missing = $this->withSession($this->session(1, 1))->post('/ExcelDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+            'Submit' => 'Upload',
+        ]);
+        $missing->assertStatus(200);
+        self::assertStringContainsString(
+            'กรุณาตรวจสอบข้อมูลค่ะ',
+            html_entity_decode((string) $missing->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
+        self::assertStringContainsString('action="http://example.invalid/ExcelDataAdd"', (string) $missing->getBody());
+
+        $text = tempnam(sys_get_temp_dir(), 'legacy-status-text-');
+        self::assertIsString($text);
+        file_put_contents($text, 'not a spreadsheet');
+        try {
+            $wrongExtension = $this->previewAs('status', $text, 1, 1, 'status.txt', '/ExcelDataAdd');
+            $wrongExtension->assertStatus(200);
+            self::assertStringContainsString(
+                'กรุณาตรวจสอบข้อมูลค่ะ',
+                html_entity_decode((string) $wrongExtension->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
+            self::assertStringContainsString(
+                '<title>Tracking : branch Listing</title>',
+                (string) $wrongExtension->getBody(),
+            );
+        } finally {
+            unlink($text);
+        }
+
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $uppercase = $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]), 1, 1, 'status.XLSX', '/ExcelDataAdd');
+        $uppercase->assertStatus(200);
+        self::assertStringContainsString(
+            'กรุณาตรวจสอบข้อมูลค่ะ',
+            html_entity_decode((string) $uppercase->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
+
+        self::assertSame(0, $this->db->table('ci4_import_batches')->countAllResults());
+        self::assertSame(0, $this->db->table('ci4_import_rows')->countAllResults());
+    }
+
+    public function testLegacyStatusConfirmUsesCi3RedirectAndFeedbackContract(): void
+    {
+        $invalid = $this->withSession($this->session(1, 1))->post('/ExcelConfirm', [
+            'count_ex' => '0',
+            'batch_id' => '',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $invalid->assertStatus(303);
+        $invalid->assertRedirectTo('/UploadexcelListing');
+
+        self::assertSame('กรุณาตรวจสอบข้อมูลอีกครั้งค่ะ', service('session')->getFlashdata('error'));
+
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]), 1, 1, null, '/ExcelDataAdd')->assertStatus(200);
+        $batchId = (string) $this->db->table('ci4_import_batches')->where('kind', 'status')->get()->getRow('batch_id');
+
+        $confirmed = $this->withSession($this->session(1, 1))->post('/ExcelConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batchId,
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadexcelListing');
+
+        self::assertSame('Upload updated successfully', service('session')->getFlashdata('success'));
+        $legacyUpload = $this->db->table('uploadstaus')->get()->getRowArray();
+        self::assertNotNull($legacyUpload);
+        self::assertSame('22/08/2026', $legacyUpload['updatetime']);
+        self::assertSame('20/08/2026', $legacyUpload['startdate']);
+        self::assertSame(0, (int) $legacyUpload['user_id']);
+    }
+
+    public function testLegacyStatusPreviewKeepsExistingOrderContextForRejectedState(): void
+    {
+        $this->db->table('request_order')->where('request_id', 1)->update(['action_status' => 1]);
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $response = $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]), 1, 1, null, '/ExcelDataAdd');
+
+        $response->assertStatus(200);
+        $body = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('WPA/100 (Status New)', $body);
+        self::assertStringContainsString('value="TRACK-STATUS"', $body);
+        self::assertStringContainsString('Customer Name:STATUS CUSTOMER', $body);
+        self::assertSame(
+            0,
+            (int) $this->db->table('ci4_import_batches')->where('kind', 'status')->get()->getRow('accepted_count'),
+        );
+    }
+
+    public function testLegacyStatusPreviewPreservesRawCellsButTrimsWarrantyAndCmg(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $response = $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', '  STATUS CUSTOMER  ', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', ' IN ', ' CMG-STATUS '],
+        ]), 1, 1, null, '/ExcelDataAdd');
+
+        $response->assertStatus(200);
+        $body = (string) $response->getBody();
+        self::assertStringContainsString('value="  STATUS CUSTOMER  "', $body);
+        self::assertStringContainsString('value="IN"', $body);
+        self::assertStringContainsString('value="CMG-STATUS"', $body);
+    }
+
+    public function testLegacyStatusPreviewKeepsOrderContextWhenRowValuesAreInvalid(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $response = $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '0000000000', 'bad-date', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]), 1, 1, null, '/ExcelDataAdd');
+
+        $response->assertStatus(200);
+        $body = html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertStringContainsString('value="TRACK-STATUS"', $body);
+        self::assertStringContainsString('Customer Name:STATUS CUSTOMER', $body);
+        self::assertStringNotContainsString('(เล่มที่/เลขที่ ไม่มีในระบบ)', $body);
+    }
+
+    public function testLegacyStatusPreviewDistinguishesTelephoneMismatchLikeCi3(): void
+    {
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $response = $this->previewAs('status', $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '9999999999', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]), 1, 1, null, '/ExcelDataAdd');
+
+        $response->assertStatus(200);
+        self::assertStringContainsString(
+            '(เบอร์โทรไม่ตรงกับระบบ)',
+            html_entity_decode((string) $response->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
+    }
+
+    public function testCentralAdminLegacyStatusImportDerivesOwnedBranchesFromOrders(): void
+    {
+        $adminId = (new ShadowUserStore($this->db))->create(
+            'import-central@example.invalid',
+            password_hash('pass', PASSWORD_DEFAULT),
+            1,
+            null,
+        );
+        $headers = ['order_id', 'customer_name', 'telephone', 'updated_at', 'status', 'repair_started_at', 'repair_price', 'warranty', 'number_cmg'];
+        $path = $this->xlsx([
+            $headers,
+            ['WPA/100', 'STATUS CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '250.00', 'IN', 'CMG-STATUS'],
+        ]);
+        service('superglobals')->setFilesArray(['file' => [
+            'name' => 'status.xlsx',
+            'type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'tmp_name' => $path,
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($path),
+        ]]);
+        $session = [
+            'userId' => $adminId, 'role' => 1, 'GroupID' => 1, 'BranchID' => null,
+            'sessionVersion' => 1, 'isLoggedIn' => true,
+        ];
+
+        $preview = $this->withSession($session)->post('/ExcelDataAdd', [
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $preview->assertStatus(200);
+        self::assertStringContainsString('Customer Name:STATUS CUSTOMER', (string) $preview->getBody());
+        $batch = $this->db->table('ci4_import_batches')->where('owner_user_id', $adminId)->get()->getRowArray();
+        self::assertNotNull($batch);
+        self::assertNull($batch['owner_branch_id']);
+
+        $confirmed = $this->withSession($session)->post('/ExcelConfirm', [
+            'count_ex' => '1',
+            'batch_id' => $batch['batch_id'],
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $confirmed->assertStatus(303);
+        $confirmed->assertRedirectTo('/UploadexcelListing');
+        self::assertSame(4, (int) $this->db->table('request_order')->where('request_id', 1)->get()->getRow('action_status'));
     }
 
     public function testThreePreviewsCreateOwnedEncryptedBatchesWithoutBusinessWrites(): void
@@ -242,11 +1098,26 @@ final class ImportHttpTest extends CIUnitTestCase
             'new-order' => ['/ExcelNewOrderDataAdd', '/ExcelNewOrderConfirm', ['WPA/300', 'NEW CUSTOMER', '0000000000', '22/08/2026', 'SUCCESS', '20/08/2026', '300.00', 'IN', 'CMG-NEW']],
         ];
         foreach ($flows as $kind => [$previewPath, $confirmPath, $row]) {
-            $this->previewAs($kind, $this->xlsx([$headers, $row]), 1, 1, null, $previewPath)->assertStatus(200);
+            $preview = $this->previewAs($kind, $this->xlsx([$headers, $row]), 1, 1, null, $previewPath);
+            $preview->assertStatus(200);
+            if (in_array($kind, ['status', 'price'], true)) {
+                $previewBody = html_entity_decode((string) $preview->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                self::assertStringContainsString(
+                    'Customer Name:' . ($kind === 'status' ? 'STATUS CUSTOMER' : 'PRICE CUSTOMER'),
+                    $previewBody,
+                );
+                self::assertStringContainsString('request Date:01/08/2026', $previewBody);
+            }
             $batch = (string) $this->db->table('ci4_import_batches')->where('kind', $kind)->get()->getRow('batch_id');
-            $this->withSession($this->session(1, 1))->post($confirmPath, [
-                'batch_id' => $batch, 'csrf_test_name' => service('security')->getHash(),
-            ])->assertRedirectTo('/imports/' . $kind . '?confirmed=1');
+            $confirm = $this->withSession($this->session(1, 1))->post($confirmPath, [
+                'batch_id' => $batch, 'count_ex' => '1',
+                'csrf_test_name' => service('security')->getHash(),
+            ]);
+            $confirm->assertRedirectTo(match ($kind) {
+                'status' => '/UploadexcelListing',
+                'price' => '/UploadexcelpriceListing',
+                default => '/UploadneworderexcelListing',
+            });
         }
         self::assertSame(3, $this->db->table('ci4_import_batches')->where('state', 'confirmed')->countAllResults());
     }

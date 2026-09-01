@@ -26,6 +26,10 @@ Options -Indexes
 	RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
 	RewriteRule ^ http://%1%{REQUEST_URI} [R=301,L]
 
+	# Route the six mutable legacy CMS backgrounds through validated private storage,
+	# even when a pinned fallback asset exists under public/uploads/web.
+	RewriteRule ^(uploads/web/(?:track_laptop|track_mobile|trackstatus_laptop|trackstatus_mobile|contact_laptop|contact_mobile)\.png)$ index.php/$1 [L,QSA]
+
 	# Checks to see if the user is attempting to access a valid file,
 	# such as an image or css document, if this isn't true it sends the
 	# request to the front controller, index.php

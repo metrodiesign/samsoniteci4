@@ -195,7 +195,13 @@ final class LegacyViewRenderer
             $html,
         );
 
-        return is_string($result) ? $result : $html;
+        $secured = is_string($result) ? $result : $html;
+        if (! str_contains($secured, 'jQuery.ajax(') && ! str_contains($secured, '$.ajax(')) {
+            return $secured;
+        }
+
+        return $secured . '<script src="' . base_url('assets/js/legacy-csrf.js')
+            . '" data-ci4-security="legacy-csrf"></script>';
     }
 }
 
@@ -266,9 +272,21 @@ final class LegacyRequestOrderAdapter
         return esc($this->statusUpdates[$order . "\0" . $phone] ?? '');
     }
 
-    public function get_orderIDShowBytel(string $telephone): string
+    public function get_orderIDShowBytel(string $orderId): string
     {
-        return '';
+        if (! $this->db->tableExists($this->db->prefixTable('request_order'), false)
+            || ! $this->db->fieldExists('orderIDShow', 'request_order')) {
+            return '';
+        }
+
+        $builder = $this->db->table('request_order')->where('orderIDShow', $orderId);
+        $sessionBranch = service('session')->get('BranchID');
+        if ($sessionBranch !== null && (int) $sessionBranch > 0
+            && $this->db->fieldExists('branchID', 'request_order')) {
+            $builder->where('branchID', (int) $sessionBranch);
+        }
+
+        return $builder->countAllResults() > 0 ? '1' : '';
     }
 
     public function getProviderName(mixed $providerId): string

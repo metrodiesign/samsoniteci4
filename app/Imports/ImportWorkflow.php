@@ -19,13 +19,27 @@ final class ImportWorkflow
     }
 
     /** @return array{batch_id: string, accepted: int, rejected: int, rows: list<array{row: int, accepted: bool, error: string|null, data: array<string, mixed>}>} */
-    public function preview(string $kind, int $ownerId, ?int $ownerBranch, string $path, string $extension): array
+    public function preview(
+        string $kind,
+        int $ownerId,
+        ?int $ownerBranch,
+        string $path,
+        string $extension,
+        bool $legacyContract = false,
+    ): array
     {
-        if (! in_array($kind, ['status', 'price', 'new-order'], true) || $ownerId < 1 || $ownerBranch === null) {
+        if (! in_array($kind, ['status', 'price', 'new-order'], true) || $ownerId < 1
+            || ($kind === 'new-order' && $ownerBranch === null && ! $legacyContract)) {
             throw new InvalidArgumentException('Invalid import owner.');
         }
         $rows = ($extension === 'xls' ? new XlsReader() : new XlsxReader())->rows($path);
         $headers = array_map(static fn (string $value): string => strtolower(trim($value)), array_shift($rows));
+        if ($legacyContract && $kind === 'new-order') {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn (array $cells): bool => trim((string) ($cells[0] ?? '')) !== '',
+            ));
+        }
         if ($headers !== self::HEADERS || $rows === []) {
             throw new InvalidArgumentException('Invalid import headers or empty workbook.');
         }
@@ -34,16 +48,34 @@ final class ImportWorkflow
         $stored = [];
         $accepted = 0;
         foreach ($rows as $offset => $cells) {
+            $rawPayload = array_combine(self::HEADERS, $cells);
             $payload = array_combine(self::HEADERS, array_map('trim', $cells));
             if (! is_array($payload)) {
                 throw new RuntimeException('Unable to map import row.');
             }
-            [$valid, $error, $normalized] = $this->validateRow($kind, $ownerBranch, $payload);
+            [$valid, $error, $normalized] = $this->validateRow(
+                $kind,
+                $ownerBranch,
+                $payload,
+                $legacyContract,
+            );
+            if ($legacyContract && $kind === 'new-order') {
+                $normalized['_legacy_customer_name'] = $rawPayload['customer_name'];
+                if (mb_strlen($rawPayload['customer_name']) > 250) {
+                    $valid = false;
+                    $error = 'invalid_new_order';
+                }
+            }
             $accepted += $valid ? 1 : 0;
             $rowNumber = $offset + 2;
+            $displayPayload = $legacyContract ? $rawPayload : $payload;
+            if ($legacyContract) {
+                $displayPayload['warranty'] = trim($displayPayload['warranty']);
+                $displayPayload['number_cmg'] = trim($displayPayload['number_cmg']);
+            }
             $preview[] = [
                 'row' => $rowNumber, 'accepted' => $valid, 'error' => $error,
-                'data' => [...$payload, '_track_id' => $normalized['track_id'] ?? '',
+                'data' => [...$displayPayload, '_track_id' => $normalized['track_id'] ?? '',
                     '_action_status' => $normalized['original_action_status'] ?? 0],
             ];
             $stored[] = [
@@ -80,7 +112,7 @@ final class ImportWorkflow
     public function confirm(string $kind, string $batchId, int $ownerId, ?int $ownerBranch): string
     {
         if (! in_array($kind, ['status', 'price', 'new-order'], true)
-            || preg_match('/\A[a-f0-9]{32}\z/D', $batchId) !== 1 || $ownerId < 1 || $ownerBranch === null) {
+            || preg_match('/\A[a-f0-9]{32}\z/D', $batchId) !== 1 || $ownerId < 1) {
             return 'invalid';
         }
         $owned = static fn ($query) => $query
@@ -95,6 +127,9 @@ final class ImportWorkflow
         }
         if ($batch['state'] !== 'previewed') {
             return 'conflict';
+        }
+        if ((int) $batch['accepted_count'] < 1) {
+            return 'invalid';
         }
 
         $timestamp = date('Y-m-d H:i:s');
@@ -112,10 +147,15 @@ final class ImportWorkflow
                 ->where('batch_id', $batchId)->where('accepted', 1)->orderBy('row_number', 'ASC')->get()->getResultArray();
             foreach ($rows as $row) {
                 $payload = $this->decrypt((string) $row['payload_ciphertext']);
+                $payloadBranch = is_numeric($payload['branch_id'] ?? null) ? (int) $payload['branch_id'] : 0;
+                if ($payloadBranch < 1 || ($ownerBranch !== null && $payloadBranch !== $ownerBranch)) {
+                    throw new RuntimeException('Import row branch changed after preview.');
+                }
+                $effectiveBranch = $ownerBranch ?? $payloadBranch;
                 match ($kind) {
-                    'status' => $this->confirmStatus($payload, $ownerId, $ownerBranch, $timestamp),
-                    'price' => $this->confirmPrice($payload, $ownerBranch),
-                    'new-order' => $this->confirmNewOrder($payload, $ownerId, $ownerBranch, $timestamp),
+                    'status' => $this->confirmStatus($payload, $ownerId, $effectiveBranch, $timestamp),
+                    'price' => $this->confirmPrice($payload, $effectiveBranch),
+                    'new-order' => $this->confirmNewOrder($payload, $ownerId, $effectiveBranch, $timestamp),
                 };
             }
             $confirmed = $owned($this->db->table('ci4_import_batches'))
@@ -149,16 +189,33 @@ final class ImportWorkflow
     }
 
     /** @param array<string, string> $payload @return array{bool, string|null, array<string, mixed>} */
-    private function validateRow(string $kind, int $branchId, array $payload): array
+    private function validateRow(
+        string $kind,
+        ?int $branchId,
+        array $payload,
+        bool $legacyContract,
+    ): array
     {
         $price = str_replace(',', '', $payload['repair_price']);
+        if ($kind === 'price' && $legacyContract) {
+            return $this->validatePriceRow($branchId, $payload, $price, true);
+        }
         if (! is_numeric($price) || (float) $price < 0 || (float) $price > 9_999_999.99
             || preg_match('/\A[0-9]{10,20}\z/D', $payload['telephone']) !== 1
             || $this->date($payload['updated_at']) === null || $this->date($payload['repair_started_at']) === null) {
             return [false, 'invalid_row', $payload];
         }
-        $status = $this->db->table('tracking_status')
-            ->where('description_en', $payload['status'])->get()->getRowArray();
+        if ($kind === 'new-order' && $legacyContract) {
+            $statusMatches = $this->db->table('tracking_status')
+                ->like('description_en', $payload['status'], 'both')
+                ->limit(2)
+                ->get()
+                ->getResultArray();
+            $status = count($statusMatches) === 1 ? $statusMatches[0] : null;
+        } else {
+            $status = $this->db->table('tracking_status')
+                ->where('description_en', $payload['status'])->get()->getRowArray();
+        }
         if ($status === null) {
             return [false, 'unknown_status', $payload];
         }
@@ -167,7 +224,9 @@ final class ImportWorkflow
             'updated_at' => $this->date($payload['updated_at']),
             'repair_started_at' => $this->date($payload['repair_started_at']),
             'tracking_status_id' => (int) $status['status_id'], 'success' => (int) $status['success'],
-            'branch_id' => $branchId,
+            'branch_id' => $branchId, '_legacy_contract' => $legacyContract,
+            '_legacy_updated_at' => $payload['updated_at'],
+            '_legacy_repair_started_at' => $payload['repair_started_at'],
         ];
         if ($kind === 'new-order') {
             if (preg_match('#\A[^/]{1,10}/[A-Za-z0-9._-]{1,100}\z#D', $payload['order_id']) !== 1
@@ -175,25 +234,87 @@ final class ImportWorkflow
                 || $this->db->table('request_order')->where('orderIDShow', $payload['order_id'])->countAllResults() !== 0) {
                 return [false, 'invalid_new_order', $normalized];
             }
+            if ($branchId === null) {
+                $derivedBranch = $legacyContract
+                    ? $this->db->table('branch')->select('branch_id')->where('branch_id', 90)->get()->getRow('branch_id')
+                    : null;
+                if (! is_numeric($derivedBranch)) {
+                    $prefix = explode('/', $payload['order_id'], 2)[0];
+                    $derivedBranch = $this->db->table('branch')
+                        ->select('branch_id')->where('default_suffix', $prefix)->get()->getRow('branch_id');
+                }
+                if (! is_numeric($derivedBranch) || (int) $derivedBranch < 1) {
+                    return [false, 'invalid_new_order_branch', $normalized];
+                }
+                $normalized['branch_id'] = (int) $derivedBranch;
+            }
 
             return [true, null, $normalized];
         }
-        $query = $this->db->table('request_order')->select('request_id, trackID, action_status')
-            ->where('branchID', $branchId);
+        $query = $this->db->table('request_order')->select('request_id, trackID, action_status, branchID');
+        if ($branchId !== null) {
+            $query->where('branchID', $branchId);
+        }
         if ($kind === 'price') {
             $query->where('number_cmg', $payload['number_cmg']);
         } else {
             $query->where('orderIDShow', $payload['order_id'])->where('customerTel', $payload['telephone']);
         }
         $order = $query->get()->getRowArray();
-        if ($order === null || ($kind === 'status' && ! in_array((int) $order['action_status'], [2, 3], true))
+        if ($order === null) {
+            return [false, 'order_not_eligible', $normalized];
+        }
+        $normalized = [
+            ...$normalized, 'request_id' => (int) $order['request_id'], 'track_id' => (string) $order['trackID'],
+            'original_action_status' => (int) $order['action_status'], 'branch_id' => (int) $order['branchID'],
+        ];
+        if (($kind === 'status' && ! in_array((int) $order['action_status'], [2, 3], true))
             || ($kind === 'price' && (float) $price <= 0)) {
             return [false, 'order_not_eligible', $normalized];
         }
 
+        return [true, null, $normalized];
+    }
+
+    /** @param array<string, string> $payload @return array{bool, string|null, array<string, mixed>} */
+    private function validatePriceRow(
+        ?int $branchId,
+        array $payload,
+        string $price,
+        bool $legacyContract,
+    ): array {
+        $normalized = [
+            ...$payload,
+            'repair_price' => is_numeric($price) ? number_format((float) $price, 2, '.', '') : $price,
+            'branch_id' => $branchId,
+            'tracking_status_id' => 0,
+            'success' => 0,
+            '_legacy_contract' => $legacyContract,
+            '_legacy_updated_at' => $payload['updated_at'],
+            '_legacy_repair_started_at' => $payload['repair_started_at'],
+        ];
+        if (! is_numeric($price) || (float) $price <= 0 || (float) $price > 9_999_999.99
+            || $payload['number_cmg'] === '') {
+            return [false, 'invalid_row', $normalized];
+        }
+
+        $query = $this->db->table('request_order')
+            ->select('request_id, trackID, action_status, branchID')
+            ->where('number_cmg', $payload['number_cmg']);
+        if ($branchId !== null) {
+            $query->where('branchID', $branchId);
+        }
+        $order = $query->get()->getRowArray();
+        if ($order === null) {
+            return [false, 'order_not_eligible', $normalized];
+        }
+
         return [true, null, [
-            ...$normalized, 'request_id' => (int) $order['request_id'], 'track_id' => (string) $order['trackID'],
+            ...$normalized,
+            'request_id' => (int) $order['request_id'],
+            'track_id' => (string) $order['trackID'],
             'original_action_status' => (int) $order['action_status'],
+            'branch_id' => (int) $order['branchID'],
         ]];
     }
 
@@ -232,6 +353,7 @@ final class ImportWorkflow
         $updated = $this->db->table('request_order')
             ->where('request_id', $payload['request_id'])->where('trackID', $payload['track_id'])
             ->where('branchID', $branchId)->where('action_status', $payload['original_action_status'])->update($updates);
+        $legacyContract = ($payload['_legacy_contract'] ?? false) === true;
         if (! $updated || $this->db->affectedRows() !== 1
             || ! $this->db->table('status_log')->insert([
                 'order_id' => $payload['track_id'], 'action_id' => null,
@@ -240,9 +362,12 @@ final class ImportWorkflow
             || ! $this->db->table('uploadstaus')->insert([
                 'tracking_id' => str_replace('/', '', (string) $payload['order_id']),
                 'Listname' => $payload['customer_name'], 'Telephone' => $payload['telephone'],
-                'updatetime' => $payload['updated_at'], 'startdate' => $payload['repair_started_at'],
+                'updatetime' => $legacyContract ? $payload['_legacy_updated_at'] : $payload['updated_at'],
+                'startdate' => $legacyContract
+                    ? $payload['_legacy_repair_started_at']
+                    : $payload['repair_started_at'],
                 'Userstatus' => $payload['status'], 'tracking_status' => $payload['tracking_status_id'],
-                'cdate' => substr($timestamp, 0, 10), 'user_id' => $ownerId,
+                'cdate' => substr($timestamp, 0, 10), 'user_id' => $legacyContract ? 0 : $ownerId,
                 'RepairPrice' => $payload['repair_price'], 'waranty_cmg' => $payload['warranty'],
                 'number_cmg' => $payload['number_cmg'],
             ])) {
@@ -253,7 +378,16 @@ final class ImportWorkflow
     /** @param array<string, mixed> $payload */
     private function confirmPrice(array $payload, int $branchId): void
     {
-        $this->assertPayload($payload, $branchId);
+        foreach (['request_id', 'track_id', 'branch_id', 'number_cmg', 'repair_price'] as $field) {
+            if (! array_key_exists($field, $payload)) {
+                throw new RuntimeException('Incomplete price import row payload.');
+            }
+        }
+        if ((int) $payload['request_id'] < 1 || ! is_string($payload['track_id'])
+            || (int) $payload['branch_id'] !== $branchId || ! is_string($payload['repair_price'])
+            || ! is_numeric($payload['repair_price'])) {
+            throw new RuntimeException('Invalid price import row payload.');
+        }
         $updated = $this->db->table('request_order')
             ->where('request_id', $payload['request_id'])->where('trackID', $payload['track_id'])
             ->where('branchID', $branchId)->where('number_cmg', $payload['number_cmg'])
@@ -275,23 +409,34 @@ final class ImportWorkflow
         if ($branch === null || count($parts) !== 2 || $parts[1] === '') {
             throw new RuntimeException('Invalid new order import branch.');
         }
-        $suffix = trim((string) ($branch['default_suffix'] ?? ''));
+        $legacyContract = ($payload['_legacy_contract'] ?? false) === true;
+        $suffix = $legacyContract ? 'G' : trim((string) ($branch['default_suffix'] ?? ''));
         if ($suffix === '' || strlen($suffix) > 10) {
             throw new RuntimeException('Invalid new order import branch.');
         }
         $now = new DateTimeImmutable('now');
         $trackId = (new OrderSequence($this->db))->next($now, $suffix);
         $action = (int) $payload['success'] === 1 ? 4 : 2;
+        $customerName = $legacyContract && is_string($payload['_legacy_customer_name'] ?? null)
+            ? $payload['_legacy_customer_name']
+            : $payload['customer_name'];
         $order = [
             'requestDate' => $payload['updated_at'], 'trackID' => $trackId, 'numberID' => $parts[1],
             'orderID' => str_replace('/', '', (string) $payload['order_id']), 'orderIDShow' => $payload['order_id'],
-            'customerFullname' => $payload['customer_name'], 'customerTel' => $payload['telephone'],
-            'branchID' => $branchId, 'branch_type_id' => (int) $branch['branch_type'], 'UserID' => $ownerId,
+            'customerFullname' => $customerName, 'customerTel' => $payload['telephone'],
+            'branchID' => $branchId, 'branch_type_id' => (int) $branch['branch_type'],
             'date_create' => $timestamp, 'date_repair' => $payload['repair_started_at'],
-            'date_update_status' => $payload['updated_at'], 'action_status' => $action,
-            'RepairPrice' => $payload['repair_price'], 'waranty_cmg' => $payload['warranty'],
-            'number_cmg' => $payload['number_cmg'], 'create_by_user' => (string) $ownerId,
+            'action_status' => $action, 'RepairPrice' => $payload['repair_price'],
+            'waranty_cmg' => $payload['warranty'],
+            'number_cmg' => $legacyContract ? $parts[0] : $payload['number_cmg'],
+            'create_by_user' => $legacyContract ? $customerName : (string) $ownerId,
         ];
+        if ($legacyContract) {
+            $order['detailDatePurchase'] = $timestamp;
+        } else {
+            $order['UserID'] = $ownerId;
+            $order['date_update_status'] = $payload['updated_at'];
+        }
         if ($action === 4) {
             $order['date_repair_complete'] = $payload['updated_at'];
         }

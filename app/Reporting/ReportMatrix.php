@@ -469,15 +469,24 @@ final class ReportMatrix
         ?int $branchId,
         ?int $limit = null,
         int $offset = 0,
+        bool $legacyContract = false,
     ): array {
-        $search = is_string($searchText) ? trim($searchText) : '';
-        if (mb_strlen($search) > 128) {
+        $search = is_string($searchText) ? ($legacyContract ? $searchText : trim($searchText)) : '';
+        if (! $legacyContract && mb_strlen($search) > 128) {
             throw new InvalidArgumentException('Search text is too long.');
         }
         [$start, $end] = $this->dates($startDate, $endDate);
-        $brandId = $this->optionalId($rawBrandId, 'brand');
-        $typeId = $this->optionalId($rawTypeId, 'type');
-        $statuses = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
+        if ($legacyContract) {
+            $brandId = $this->legacyEqualityId($rawBrandId);
+            $typeId = $this->legacyEqualityId($rawTypeId);
+            $statusId = $this->legacyEqualityId($rawStatusIds);
+            $statuses = [];
+        } else {
+            $brandId = $this->optionalId($rawBrandId, 'brand');
+            $typeId = $this->optionalId($rawTypeId, 'type');
+            $statusId = null;
+            $statuses = (new TrackingReport($this->db))->parseStatusIds($rawStatusIds);
+        }
         $query = $this->db->table('request_order orders')
             // The column list mirrors CI3's reportsummary view one for one; it renders 26 columns
             // and the export shares the same rows, so trimming this select shrinks both.
@@ -500,14 +509,16 @@ final class ReportMatrix
             ->join('statusaction statuses', 'statuses.status_id = orders.action_status', 'left')
             ->where('orders.action_status >', 0);
         $this->scope($query, 'orders.requestDate', 'orders.branchID', $start, $end, $branchId);
-        if ($search !== '') {
+        if ($legacyContract ? ! empty($search) : $search !== '') {
             $query->groupStart()->like('orders.trackID', $search)->orLike('orders.orderID', $search)
                 ->orLike('orders.customerFullname', $search)->orLike('orders.detailSKUName', $search)
                 ->orLike('orders.orderIDShow', $search)->orLike('branches.branch_name', $search)
                 ->orLike('orders.customerTel', $search)->orLike('orders.customerEmail', $search)
                 ->orLike('statuses.status_name', $search)->groupEnd();
         }
-        if ($statuses !== []) {
+        if ($legacyContract && $statusId !== null) {
+            $query->where('orders.action_status', $statusId);
+        } elseif ($statuses !== []) {
             $query->whereIn('orders.action_status', $statuses);
         }
         if ($brandId !== null) {
@@ -517,7 +528,10 @@ final class ReportMatrix
             $query->where('orders.detailTypeId', $typeId);
         }
 
-        $query->orderBy('orders.requestDate', 'DESC')->orderBy('orders.request_id', 'DESC');
+        $query->orderBy('orders.requestDate', 'DESC');
+        if (! $legacyContract) {
+            $query->orderBy('orders.request_id', 'DESC');
+        }
         if ($limit !== null) {
             $query->limit($limit, $offset);
         }
@@ -579,6 +593,15 @@ final class ReportMatrix
         }
 
         return $date;
+    }
+
+    private function legacyEqualityId(mixed $value): ?int
+    {
+        if (! is_string($value) || $value === '' || $value === '0') {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function optionalId(mixed $value, string $label): ?int

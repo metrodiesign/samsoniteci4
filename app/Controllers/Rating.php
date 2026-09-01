@@ -34,6 +34,48 @@ final class Rating extends BaseController
         ]);
     }
 
+    public function legacySubmit(): ResponseInterface
+    {
+        $requestId = $this->positiveInteger($this->request->getPost('requestId'));
+        $trackId = $this->request->getPost('ratingTrackId');
+        $comment = $this->request->getPost('ratingComment');
+        $scores = [];
+        foreach (['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'] as $suffix) {
+            $score = $this->positiveInteger($this->request->getPost('rating' . $suffix));
+            if ($score === null || $score > 5) {
+                return $this->legacyFailure('Invalid data.', 400);
+            }
+            $scores[] = $score;
+        }
+        if ($requestId === null || ! is_string($trackId)
+            || ($comment !== null && ! is_string($comment))) {
+            return $this->legacyFailure('Invalid data.', 400);
+        }
+        $comment = is_string($comment) ? $comment : '';
+        if (mb_strlen($comment) > 2000) {
+            return $this->legacyFailure('Invalid data.', 400);
+        }
+
+        try {
+            $result = (new RatingWorkflow(db_connect()))->submit(
+                $requestId,
+                $trackId,
+                $scores,
+                $comment,
+            );
+        } catch (InvalidArgumentException) {
+            return $this->legacyFailure('Invalid data.', 400);
+        } catch (Throwable $exception) {
+            log_message('error', 'Legacy rating workflow unavailable: {exception}', ['exception' => $exception::class]);
+
+            return $this->legacyFailure('Sorry an error occurred, processing was unsuccessful.', 500);
+        }
+
+        return $result === 'recorded'
+            ? $this->response->setJSON(['status' => true, 'message' => '', 'code' => 0])
+            : $this->legacyFailure('Invalid data.', 400);
+    }
+
     public function submit(): ResponseInterface
     {
         $requestId = $this->positiveInteger($this->request->getPost('request_id'));
@@ -76,6 +118,11 @@ final class Rating extends BaseController
             'duplicate' => $this->response->setStatusCode(409)->setJSON(['error' => 'rating_already_recorded']),
             default => $this->response->setStatusCode(404)->setJSON(['error' => 'rating_order_not_found']),
         };
+    }
+
+    private function legacyFailure(string $message, int $code): ResponseInterface
+    {
+        return $this->response->setJSON(['status' => false, 'message' => $message, 'code' => $code]);
     }
 
     private function positiveInteger(mixed $value): ?int

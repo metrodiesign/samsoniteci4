@@ -19,6 +19,7 @@ final class UserHttpTest extends CIUnitTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        service('superglobals')->setGetArray([])->setPostArray([])->setFilesArray([]);
         foreach ([
             'tbl_users' => 'userId INTEGER PRIMARY KEY AUTOINCREMENT, email VARCHAR(128) NOT NULL, username VARCHAR(50) NOT NULL, password VARCHAR(255) NOT NULL, name VARCHAR(128), mobile VARCHAR(20), group_id INTEGER, roleId INTEGER NOT NULL, branch_id INTEGER, branch_type_id INTEGER, isDeleted INTEGER NOT NULL DEFAULT 0, createdBy INTEGER, createdDtm DATETIME NOT NULL, updatedBy INTEGER, updatedDtm DATETIME',
             'tbl_roles' => 'roleId INTEGER PRIMARY KEY, role VARCHAR(64) NOT NULL',
@@ -58,6 +59,382 @@ final class UserHttpTest extends CIUnitTestCase
         $this->seedUser(9001, 'admin', 'admin@example.invalid', 1, null, 1, 'ADMIN');
         $this->seedUser(9002, 'operator-a', 'a@example.invalid', 2, 1, 4, 'OPERATOR A');
         $this->seedUser(9003, 'operator-b', 'b@example.invalid', 3, 2, 4, 'OPERATOR B');
+    }
+
+    public function testLegacyUserListingUsesCi3AuthenticationAndSafeMethodContracts(): void
+    {
+        foreach (['/userListing', '/userListing/50', '/user/userListing', '/User/userListing'] as $path) {
+            $anonymousGet = $this->withSession([])->get($path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+            foreach (['POST', 'HEAD', 'OPTIONS'] as $method) {
+                $anonymous = $this->withSession([])->call($method, $path);
+                $anonymous->assertStatus(303);
+                $anonymous->assertRedirectTo('/login');
+            }
+        }
+
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $listing = $this->withSession($this->session(9002, 2, 1, 4))->call($method, '/userListing');
+            $listing->assertStatus(200);
+            self::assertStringContainsString('<title>Tracking : User Listing</title>', (string) $listing->getBody());
+        }
+        $offset = $this->withSession($this->session(9002, 2, 1, 4))->get('/userListing/50');
+        $offset->assertStatus(200);
+        self::assertStringContainsString('name="searchText" value=""', (string) $offset->getBody());
+    }
+
+    public function testLegacyUserListingUsesPostOnlyRawSearchAndCi3ZeroSemantics(): void
+    {
+        $admin = $this->session(9001, 1, null, 1);
+
+        $getQuery = $this->withSession($admin)->get('/userListing?search=' . rawurlencode('OPERATOR A'));
+        $getQuery->assertStatus(200);
+        $getQuery->assertSee('ADMIN');
+        $getQuery->assertSee('OPERATOR A');
+        $getQuery->assertSee('OPERATOR B');
+        self::assertStringContainsString('name="searchText" value=""', (string) $getQuery->getBody());
+
+        $rawSpaces = $this->withSession($admin)->post('/userListing', ['searchText' => '   ']);
+        $rawSpaces->assertStatus(200);
+        self::assertSame(0, substr_count((string) $rawSpaces->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        self::assertStringContainsString('name="searchText" value="   "', (string) $rawSpaces->getBody());
+
+        $zero = $this->withSession($admin)->post('/userListing', ['searchText' => '0']);
+        $zero->assertStatus(200);
+        self::assertSame(3, substr_count((string) $zero->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        self::assertStringContainsString('name="searchText" value="0"', (string) $zero->getBody());
+
+        $mobile = $this->withSession($admin)->post('/userListing', ['searchText' => '0000000000']);
+        self::assertSame(3, substr_count((string) $mobile->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+    }
+
+    public function testLegacyUserListingKeepsCi3LikeWildcardSearchWithoutSqlInjection(): void
+    {
+        $admin = $this->session(9001, 1, null, 1);
+        $percent = $this->withSession($admin)->post('/userListing', ['searchText' => '%']);
+        $percent->assertStatus(200);
+        self::assertSame(3, substr_count((string) $percent->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        self::assertStringContainsString('name="searchText" value="%"', (string) $percent->getBody());
+
+        $underscore = $this->withSession($admin)->post('/userListing', ['searchText' => 'OPERATOR _']);
+        $underscore->assertStatus(200);
+        self::assertSame(2, substr_count((string) $underscore->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+
+        $injection = $this->withSession($admin)->post('/userListing', [
+            'searchText' => "%' OR 1=1 -- ",
+        ]);
+        $injection->assertStatus(200);
+        self::assertSame(0, substr_count((string) $injection->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        self::assertSame(3, $this->db->table('tbl_users')->countAllResults());
+    }
+
+    public function testLegacyUserListingUsesFiftyRowOffsetPaginationAndNameOrdering(): void
+    {
+        $this->db->table('tbl_users')->update(['isDeleted' => 1]);
+        $rows = [];
+        $hash = password_hash('Synthetic passphrase', PASSWORD_DEFAULT);
+        for ($number = 1; $number <= 101; $number++) {
+            $rows[] = [
+                'userId' => 10000 + $number,
+                'email' => sprintf('legacy-%03d@example.invalid', $number),
+                'username' => sprintf('legacy-%03d', $number),
+                'password' => $hash,
+                'name' => sprintf('LEGACY-%03d', $number),
+                'mobile' => sprintf('000000%04d', $number),
+                'group_id' => 4,
+                'roleId' => 2,
+                'branch_id' => 1,
+                'branch_type_id' => 1,
+                'isDeleted' => 0,
+                'createdBy' => 9001,
+                'createdDtm' => '2026-08-22 09:00:00',
+            ];
+        }
+        $this->db->table('tbl_users')->insertBatch(array_reverse($rows));
+        $session = $this->session(9001, 1, null, 1);
+
+        $first = $this->withSession($session)->get('/userListing');
+        self::assertSame(50, substr_count((string) $first->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        preg_match_all('/<td>([0-9]+)<\/td>\s*<td>LEGACY-[0-9]{3}<\/td>/', (string) $first->getBody(), $firstNumbers);
+        self::assertSame(array_map('strval', range(1, 50)), $firstNumbers[1]);
+        self::assertStringContainsString('/userListing/50', (string) $first->getBody());
+        self::assertStringContainsString('data-ci-pagination-page="2" rel="next">Next</a>', (string) $first->getBody());
+
+        $second = $this->withSession($session)->get('/userListing/50');
+        self::assertSame(50, substr_count((string) $second->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        preg_match_all('/<td>([0-9]+)<\/td>\s*<td>LEGACY-[0-9]{3}<\/td>/', (string) $second->getBody(), $secondNumbers);
+        self::assertSame(array_map('strval', range(51, 100)), $secondNumbers[1]);
+        self::assertStringContainsString('data-ci-pagination-page="1" rel="prev">Previous</a>', (string) $second->getBody());
+        self::assertStringContainsString('/userListing/100', (string) $second->getBody());
+
+        $last = $this->withSession($session)->get('/userListing/100');
+        self::assertSame(1, substr_count((string) $last->getBody(), 'class="btn btn-sm btn-danger deleteUser"'));
+        self::assertMatchesRegularExpression('/<td>101<\/td>\s*<td>LEGACY-101<\/td>/', (string) $last->getBody());
+    }
+
+    public function testLegacyUserActionRoutesRenderCi3FormsMethodsAndControllerAliases(): void
+    {
+        foreach (['/addNew', '/addNewUser', '/editOld/9002', '/editUser', '/deleteUser', '/checkEmailExists'] as $path) {
+            $anonymousGet = $this->withSession([])->get($path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+        }
+
+        $admin = $this->session(9001, 1, null, 1);
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $add = $this->withSession($admin)->call($method, '/addNew');
+            $add->assertStatus(200);
+            self::assertStringContainsString(
+                '<form role="form" id="addUser" action="http://example.invalid/addNewUser" method="post"',
+                (string) $add->getBody(),
+            );
+        }
+        $edit = $this->withSession($admin)->get('/editOld/9002');
+        $edit->assertStatus(200);
+        self::assertStringContainsString('value="9002" name="userId" id="userId"', (string) $edit->getBody());
+        $missingId = $this->withSession($admin)->get('/editOld');
+        $missingId->assertStatus(307);
+        $missingId->assertRedirectTo('/userListing');
+
+        foreach (['/user/addNew', '/User/addNew'] as $path) {
+            $alias = $this->withSession($admin)->get($path);
+            $alias->assertStatus(200);
+            self::assertStringContainsString('action="http://example.invalid/addNewUser"', (string) $alias->getBody());
+        }
+        foreach (['/user/editOld/9002', '/User/editOld/9002'] as $path) {
+            $this->withSession($admin)->get($path)->assertStatus(200);
+        }
+
+        $branchAdd = $this->withSession($this->session(9002, 2, 1, 4))->get('/addNew');
+        $branchAdd->assertStatus(200);
+        self::assertStringNotContainsString('<option value="1">Administrator</option>', (string) $branchAdd->getBody());
+        self::assertStringContainsString('<option value="2">Operator</option>', (string) $branchAdd->getBody());
+    }
+
+    public function testLegacyAddNewUserUsesCi3ValidationRedirectFeedbackAndBranchDerivedValues(): void
+    {
+        $session = $this->session(9002, 2, 1, 4);
+        $invalid = $this->withSession($session)->post('/addNewUser', [
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $invalid->assertStatus(200);
+        $invalidBody = html_entity_decode((string) $invalid->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach ([
+            'The Full Name field is required.',
+            'The Email field is required.',
+            'The Password field is required.',
+            'The Confirm Password field is required.',
+            'The Role field is required.',
+            'The Mobile Number field is required.',
+        ] as $message) {
+            self::assertStringContainsString($message, $invalidBody);
+        }
+        self::assertSame(3, $this->db->table('tbl_users')->countAllResults());
+
+        $created = $this->withSession($session)->post('/addNewUser', [
+            'fname' => 'jOhN DOE',
+            'email' => 'legacy-new@example.invalid',
+            'password' => 'Valid passphrase 1',
+            'cpassword' => 'Valid passphrase 1',
+            'role' => '2',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $created->assertStatus(303);
+        $created->assertRedirectTo('/addNew');
+        self::assertSame('New User created successfully', service('session')->getFlashdata('success'));
+        $legacy = $this->db->table('tbl_users')->where('email', 'legacy-new@example.invalid')->get()->getRowArray();
+        self::assertNotNull($legacy);
+        self::assertSame('John Doe', $legacy['name']);
+        self::assertSame('branch-a', $legacy['username']);
+        self::assertSame(4, (int) $legacy['group_id']);
+        self::assertSame(2, (int) $legacy['roleId']);
+        self::assertSame(1, (int) $legacy['branch_id']);
+        self::assertSame(1, (int) $legacy['branch_type_id']);
+        self::assertSame(9002, (int) $legacy['createdBy']);
+        self::assertTrue(password_verify('Valid passphrase 1', (string) $legacy['password']));
+        self::assertSame(1, $this->db->table('ci4_users')->where('id', $legacy['userId'])->countAllResults());
+    }
+
+    public function testCentralAdminLegacyAddNewUserDerivesBranchTypeAndUsernameFromSelectedBranch(): void
+    {
+        $created = $this->withSession($this->session(9001, 1, null, 1))->post('/addNewUser', [
+            'group_id' => '4',
+            'branch_type' => '2',
+            'branch_id' => '1',
+            'fname' => 'CENTRAL CREATED USER',
+            'email' => 'central-created@example.invalid',
+            'password' => 'Valid passphrase 1',
+            'cpassword' => 'Valid passphrase 1',
+            'role' => '2',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $created->assertStatus(303);
+        $created->assertRedirectTo('/addNew');
+        $legacy = $this->db->table('tbl_users')->where('email', 'central-created@example.invalid')->get()->getRowArray();
+        self::assertNotNull($legacy);
+        self::assertSame('branch-a', $legacy['username']);
+        self::assertSame(1, (int) $legacy['branch_id']);
+        self::assertSame(1, (int) $legacy['branch_type_id']);
+        self::assertSame(4, (int) $legacy['group_id']);
+        self::assertSame(9001, (int) $legacy['createdBy']);
+    }
+
+    public function testLegacyAddNewUserPreservesCi3EmailCaseWhileNormalizingShadowIdentity(): void
+    {
+        $created = $this->withSession($this->session(9002, 2, 1, 4))->post('/addNewUser', [
+            'fname' => 'EMAIL CASE USER',
+            'email' => 'Case.User@Example.INVALID',
+            'password' => 'Valid passphrase 1',
+            'cpassword' => 'Valid passphrase 1',
+            'role' => '2',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $created->assertStatus(303);
+        $legacy = $this->db->table('tbl_users')->where('email', 'Case.User@Example.INVALID')->get()->getRowArray();
+        self::assertNotNull($legacy);
+        self::assertSame('Case.User@Example.INVALID', $legacy['email']);
+        self::assertSame(
+            'case.user@example.invalid',
+            $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('email'),
+        );
+    }
+
+    public function testLegacyAddNewUserAcceptsCi3TrimmedNumericRoleValue(): void
+    {
+        $created = $this->withSession($this->session(9002, 2, 1, 4))->post('/addNewUser', [
+            'fname' => 'TRIMMED ROLE USER',
+            'email' => 'trimmed-role@example.invalid',
+            'password' => 'Valid passphrase 1',
+            'cpassword' => 'Valid passphrase 1',
+            'role' => ' 2 ',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $created->assertStatus(303);
+        self::assertSame('New User created successfully', service('session')->getFlashdata('success'));
+        self::assertSame(
+            2,
+            (int) $this->db->table('tbl_users')->where('email', 'trimmed-role@example.invalid')->get()->getRow('roleId'),
+        );
+    }
+
+    public function testLegacyAddNewUserAllowsCi3BranchUsernameReuseWithUniqueShadowIdentity(): void
+    {
+        $this->db->table('tbl_users')->where('userId', 9002)->update(['username' => 'branch-a']);
+        $this->db->table('ci4_users')->where('id', 9002)->update(['username' => 'branch-a']);
+        $created = $this->withSession($this->session(9002, 2, 1, 4))->post('/addNewUser', [
+            'fname' => 'SECOND BRANCH USER',
+            'email' => 'second-branch@example.invalid',
+            'password' => 'Valid passphrase 1',
+            'cpassword' => 'Valid passphrase 1',
+            'role' => '2',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $created->assertStatus(303);
+        self::assertSame('New User created successfully', service('session')->getFlashdata('success'));
+        $legacy = $this->db->table('tbl_users')->where('email', 'second-branch@example.invalid')->get()->getRowArray();
+        self::assertNotNull($legacy);
+        self::assertSame('branch-a', $legacy['username']);
+        $shadowUsername = $this->db->table('ci4_users')->where('id', $legacy['userId'])->get()->getRow('username');
+        self::assertSame('legacy-' . $legacy['userId'], $shadowUsername);
+    }
+
+    public function testLegacyEditUserUsesCi3ValidationRedirectFeedbackAndPasswordSemantics(): void
+    {
+        $session = $this->session(9002, 2, 1, 4);
+        $invalid = $this->withSession($session)->post('/editUser', [
+            'userId' => '9002',
+            'fname' => '',
+            'email' => 'bad-email',
+            'password' => '',
+            'cpassword' => '',
+            'role' => '',
+            'mobile' => '123',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $invalid->assertStatus(200);
+        $invalidBody = html_entity_decode((string) $invalid->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach ([
+            'The Full Name field is required.',
+            'The Email field must contain a valid email address.',
+            'The Role field is required.',
+            'The Mobile Number field must be at least 10 characters in length.',
+        ] as $message) {
+            self::assertStringContainsString($message, $invalidBody);
+        }
+        $beforeHash = (string) $this->db->table('tbl_users')->where('userId', 9002)->get()->getRow('password');
+
+        $updated = $this->withSession($session)->post('/editUser', [
+            'userId' => '9002',
+            'fname' => 'jANE DOE',
+            'email' => 'a@example.invalid',
+            'password' => '',
+            'cpassword' => '',
+            'role' => '2',
+            'mobile' => '0123456789',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $updated->assertStatus(303);
+        $updated->assertRedirectTo('/userListing');
+        self::assertSame('User updated successfully', service('session')->getFlashdata('success'));
+        $legacy = $this->db->table('tbl_users')->where('userId', 9002)->get()->getRowArray();
+        self::assertSame('Jane Doe', $legacy['name']);
+        self::assertSame('0123456789', $legacy['mobile']);
+        self::assertSame($beforeHash, $legacy['password']);
+        self::assertSame(9002, (int) $legacy['updatedBy']);
+        self::assertSame('Jane Doe', $this->db->table('ci4_users')->where('id', 9002)->get()->getRow('display_name'));
+    }
+
+    public function testLegacyDeleteUserAndEmailCheckKeepCi3JsonAndBooleanContracts(): void
+    {
+        $admin = $this->session(9001, 1, null, 1);
+        $safeGet = $this->withSession($admin)->get('/deleteUser');
+        $safeGet->assertStatus(200);
+        self::assertSame('{"status":false}', (string) $safeGet->response()->getBody());
+
+        $deleted = $this->withSession($admin)->post('/deleteUser', [
+            'userId' => '9003',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        $deleted->assertStatus(200);
+        self::assertSame('{"status":true}', (string) $deleted->response()->getBody());
+        self::assertNotSame('', $deleted->response()->getHeaderLine('X-CSRF-TOKEN'));
+        self::assertSame(1, (int) $this->db->table('tbl_users')->where('userId', 9003)->get()->getRow('isDeleted'));
+        self::assertSame(0, (int) $this->db->table('ci4_users')->where('id', 9003)->get()->getRow('is_active'));
+
+        $replayed = $this->withSession($admin)->post('/deleteUser', [
+            'userId' => '9003',
+            'csrf_test_name' => $deleted->response()->getHeaderLine('X-CSRF-TOKEN'),
+        ]);
+        self::assertSame('{"status":false}', (string) $replayed->response()->getBody());
+
+        $self = $this->withSession($this->session(9002, 2, 1, 4))->post('/deleteUser', [
+            'userId' => '9002',
+            'csrf_test_name' => service('security')->getHash(),
+        ]);
+        self::assertSame('{"status":false}', (string) $self->response()->getBody());
+        self::assertSame(0, (int) $this->db->table('tbl_users')->where('userId', 9002)->get()->getRow('isDeleted'));
+
+        foreach ([
+            [['email' => 'a@example.invalid'], 'false'],
+            [['email' => 'available@example.invalid'], 'true'],
+            [['email' => 'a@example.invalid', 'userId' => '9002'], 'true'],
+        ] as [$payload, $expected]) {
+            $response = $this->withSession($this->session(9002, 2, 1, 4))->post('/checkEmailExists', [
+                ...$payload,
+                'csrf_test_name' => service('security')->getHash(),
+            ]);
+            $response->assertStatus(200);
+            self::assertSame($expected, (string) $response->response()->getBody());
+        }
+        $alias = $this->withSession($admin)->get('/user/checkEmailExists');
+        $alias->assertStatus(200);
+        self::assertSame('true', (string) $alias->response()->getBody());
     }
 
     public function testUserCrudScopesListingsAndSoftDeletesBothStores(): void
@@ -210,6 +587,90 @@ final class UserHttpTest extends CIUnitTestCase
             'cNewPassword' => 'Another replacement passphrase',
         ], 2);
         $legacy->assertRedirectTo('/loadChangePass?changed=1');
+    }
+
+    public function testLegacyLoginHistoryUsesCi3AuthenticationMethodsRoutesAndAliases(): void
+    {
+        foreach ([
+            '/login-history',
+            '/login-history/9002',
+            '/login-history/9002/5',
+            '/user/loginHistoy',
+            '/User/loginHistoy',
+            '/menu/loginHistoy',
+            '/Menu/loginHistoy',
+            '/user/loginHistoy/9002',
+            '/User/loginHistoy/9002',
+            '/menu/loginHistoy/9002',
+            '/Menu/loginHistoy/9002',
+        ] as $path) {
+            $anonymousGet = $this->withSession([])->get($path);
+            $anonymousGet->assertStatus(307);
+            $anonymousGet->assertRedirectTo('/login');
+            foreach (['POST', 'HEAD', 'OPTIONS'] as $method) {
+                $anonymous = $this->withSession([])->call($method, $path);
+                $anonymous->assertStatus(303);
+                $anonymous->assertRedirectTo('/login');
+            }
+        }
+
+        $session = $this->session(9002, 2, 1, 4);
+        foreach (['GET', 'POST', 'HEAD', 'OPTIONS'] as $method) {
+            $own = $this->withSession($session)->call($method, '/login-history');
+            $own->assertStatus(200);
+            self::assertStringContainsString('<title>Tracking : User Login History</title>', (string) $own->getBody());
+        }
+        foreach (['/login-history/9002', '/login-history/9002/5', '/user/loginHistoy/9002'] as $path) {
+            $response = $this->withSession($session)->get($path);
+            $response->assertStatus(200);
+            self::assertStringContainsString('OPERATOR A : a@example.invalid', (string) $response->getBody());
+        }
+    }
+
+    public function testLegacyLoginHistoryDisplaysPostSearchWithoutFilteringAndUsesExactOffsets(): void
+    {
+        for ($index = 1; $index <= 7; $index++) {
+            $this->db->table('tbl_last_login')->insert([
+                'userId' => 9002,
+                'sessionData' => '{"index":' . $index . '}',
+                'machineIp' => '127.0.0.' . $index,
+                'userAgent' => 'Browser',
+                'agentString' => 'LEGACY-HIST-' . $index,
+                'platform' => 'Test',
+                'createdDtm' => sprintf('2026-08-%02d 09:00:00', $index),
+            ]);
+        }
+        $session = $this->session(9002, 2, 1, 4);
+        $searched = $this->withSession($session)->post('/login-history', ['searchText' => 'NO-MATCH']);
+        $searched->assertStatus(200);
+        $searchedBody = (string) $searched->getBody();
+        self::assertStringContainsString('name="searchText" value="NO-MATCH"', $searchedBody);
+        self::assertMatchesRegularExpression('/LEGACY-HIST-7.*LEGACY-HIST-3/s', $searchedBody);
+        self::assertStringNotContainsString('LEGACY-HIST-2', $searchedBody);
+        self::assertStringContainsString('/login-history/9002/5', $searchedBody);
+        self::assertStringContainsString('data-ci-pagination-page="2" rel="next">Next</a>', $searchedBody);
+
+        $getQuery = $this->withSession($session)->get('/login-history?searchText=NO-MATCH');
+        self::assertStringContainsString('name="searchText" value=""', (string) $getQuery->getBody());
+        self::assertStringContainsString('LEGACY-HIST-7', (string) $getQuery->getBody());
+
+        $offsetOne = $this->withSession($session)->get('/login-history/9002/1');
+        $offsetOneBody = (string) $offsetOne->getBody();
+        self::assertMatchesRegularExpression('/LEGACY-HIST-6.*LEGACY-HIST-2/s', $offsetOneBody);
+        self::assertStringNotContainsString('LEGACY-HIST-7', $offsetOneBody);
+        self::assertStringNotContainsString('LEGACY-HIST-1', $offsetOneBody);
+
+        $offsetFive = $this->withSession($session)->get('/login-history/9002/5');
+        self::assertMatchesRegularExpression('/LEGACY-HIST-2.*LEGACY-HIST-1/s', (string) $offsetFive->getBody());
+        self::assertStringContainsString(
+            'data-ci-pagination-page="1" rel="prev">Previous</a>',
+            (string) $offsetFive->getBody(),
+        );
+
+        $controllerAlias = $this->withSession($session)->get('/user/loginHistoy/9002');
+        $controllerAlias->assertStatus(200);
+        self::assertStringContainsString('OPERATOR A : a@example.invalid', (string) $controllerAlias->getBody());
+        self::assertStringNotContainsString('LEGACY-HIST-', (string) $controllerAlias->getBody());
     }
 
     public function testLoginHistoryAndBranchBookJsonAreEscapedAndBranchScoped(): void
